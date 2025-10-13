@@ -11,6 +11,7 @@ import ShippingPolicy from './pages/ShippingPolicy';
 import CancellationPolicy from './pages/CancellationPolicy';
 import ReturnPolicy from './pages/ReturnPolicy';
 import ReplacementExchange from './pages/ReplacementExchange';
+import DeleteMyAccount from './pages/DeleteMyAccount';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
             <Route path="/cancellation" element={<CancellationPolicy />} />
             <Route path="/returns" element={<ReturnPolicy />} />
             <Route path="/replacement-exchange" element={<ReplacementExchange />} />
+            <Route path="/delete-my-account" element={<DeleteMyAccount />} />
           </Routes>
         </main>
         <Footer />

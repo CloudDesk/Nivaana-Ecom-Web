@@ -35,8 +35,39 @@ export interface BannerItem {
   ctaLink: string;
 }
 
+// User interface
+export interface User {
+  id: number;
+  useremail: string;
+  usermobilenumber: number;
+  firstname: string;
+  lastname: string;
+  gender: string;
+  gstnumber: string;
+  isbusinessuser: boolean;
+}
+
+// OTP Request/Response interfaces
+export interface OTPRequest {
+  usermobilenumber: number;
+}
+
+export interface OTPVerifyRequest {
+  usermobilenumber: number;
+  otp: number;
+}
+
+export interface OTPRequestResponse {
+  message: string;
+}
+
+export interface OTPVerifyResponse {
+  token: string;
+  user: User;
+}
+
 // API Response interfaces
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data: T;
   pagination?: {
@@ -48,7 +79,7 @@ export interface ApiResponse<T = any> {
     hasPrev: boolean;
   };
   meta?: {
-    filters: any[];
+    filters: unknown[];
     total: number;
     filtered: boolean;
   };

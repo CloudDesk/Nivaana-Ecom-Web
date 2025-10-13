@@ -95,6 +95,11 @@ const Footer: React.FC = () => {
                   Replacement and Exchange
                 </Link>
               </li>
+              <li>
+                <Link to="/delete-my-account" className="text-primary-gold/80 hover:text-primary-gold transition-colors duration-200">
+                  Delete My Account
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
