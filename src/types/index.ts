@@ -50,6 +50,7 @@ export interface User {
 // OTP Request/Response interfaces
 export interface OTPRequest {
   usermobilenumber: number;
+  verifyOnly?: boolean;
 }
 
 export interface OTPVerifyRequest {

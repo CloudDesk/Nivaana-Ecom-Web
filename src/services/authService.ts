@@ -15,10 +15,14 @@ class AuthService {
   /**
    * Request OTP for mobile authentication
    * @param usermobilenumber - User's mobile number
+   * @param verifyOnly - If true, only verify existing user (don't create new user)
    * @returns Promise with OTP request response
    */
-  async requestOTP(usermobilenumber: number): Promise<ApiResponse<OTPRequestResponse>> {
-    const payload: OTPRequest = { usermobilenumber };
+  async requestOTP(usermobilenumber: number, verifyOnly: boolean = false): Promise<ApiResponse<OTPRequestResponse>> {
+    const payload: OTPRequest = { 
+      usermobilenumber,
+      verifyOnly
+    };
     return apiService.post<OTPRequestResponse>('/mobile-auth/request-otp', payload);
   }
 
@@ -40,11 +44,12 @@ class AuthService {
    * @returns Promise with deletion confirmation
    */
   async deleteAccount(userid: number, useremail?: string): Promise<ApiResponse<any>> {
-    const url = useremail 
-      ? `/confirm/delete-account?userid=${userid}&useremail=${encodeURIComponent(useremail)}`
-      : `/confirm/delete-account?userid=${userid}`;
+    const payload: { userid: number; useremail?: string } = { userid };
+    if (useremail) {
+      payload.useremail = useremail;
+    }
     
-    return apiService.delete(url);
+    return apiService.post('/mobile-auth/delete-account', payload);
   }
 }
 

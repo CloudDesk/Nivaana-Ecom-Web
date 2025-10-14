@@ -88,12 +88,15 @@ export class ProductService {
     return apiService.get<Product[]>('/products?isdealoftheday=true');
   }
 
+
+ 
+
   /**
    * Get featured products (deal of the day)
    * @returns Promise with products data
    */
   async getFeaturedProducts(): Promise<ApiResponse<Product[]>> {
-    return this.getDealOfTheDayProducts();
+    return apiService.get<Product[]>('/products?limit=3');
   }
 
   /**

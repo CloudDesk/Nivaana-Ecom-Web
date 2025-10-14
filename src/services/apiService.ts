@@ -72,11 +72,14 @@ class ApiService {
       // Check if response is ok
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(
+        const error = new Error(
           errorData.message || 
           errorData.error || 
           `HTTP Error: ${response.status} ${response.statusText}`
-        );
+        ) as Error & { statusCode?: number; details?: string };
+        error.statusCode = response.status;
+        error.details = errorData.details;
+        throw error;
       }
 
       // Parse response

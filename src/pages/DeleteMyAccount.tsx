@@ -40,13 +40,18 @@ const DeleteMyAccount: React.FC = () => {
 
     setLoading(true);
     try {
-      const response = await authService.requestOTP(parseInt(phoneNumber));
+      const response = await authService.requestOTP(parseInt(phoneNumber), true);
       if (response.success) {
         setSuccess(response.data.message || 'OTP sent successfully to your mobile number');
         setCurrentStep(2);
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to send OTP. Please try again.');
+      // Handle 404 - User not found
+      if (err?.statusCode === 404) {
+        setError(err?.details || 'No account exists with this mobile number.');
+      } else {
+        setError(err?.message || 'No account exists with this mobile number.');
+      }
     } finally {
       setLoading(false);
     }

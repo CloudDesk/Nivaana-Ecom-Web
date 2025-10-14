@@ -29,7 +29,7 @@ const TermsAndConditions: React.FC = () => {
                   <strong>Business Name:</strong> VIP98 VENTURES LLP<br />
                   <strong>Address:</strong> 516D, Lakshmi Sundaram Nagar, Narasingapuram Road, Pandiyanallore Post, Sholinghur - 631102, Tamil Nadu<br />
                   <strong>Phone:</strong> +91 8925662553<br />
-                  <strong>Website:</strong> https://nivaana-ecom-web.web.app
+                  <strong>Website:</strong> https://nivaana.in
                 </p>
               </section>
 
