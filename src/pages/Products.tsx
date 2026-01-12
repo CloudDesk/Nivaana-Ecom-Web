@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import ProductCard from '../components/ProductCard';
-import { productService } from '../services/productService';
-import type { Product } from '../types';
+import React, { useState, useEffect } from "react";
+import ProductCard from "../components/ProductCard";
+import type { Product } from "../types";
+import { platformProductService } from "../services/productPlatformService";
 
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -14,15 +14,15 @@ const Products: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await productService.getProducts();
+        const response = await platformProductService.getProducts();
         if (response.success) {
           setProducts(response.data);
         } else {
-          setError('Failed to fetch products');
+          setError("Failed to fetch products");
         }
       } catch (err) {
-        setError('Failed to fetch products');
-        console.error('Error fetching products:', err);
+        setError("Failed to fetch products");
+        console.error("Error fetching products:", err);
       } finally {
         setLoading(false);
       }
@@ -40,7 +40,8 @@ const Products: React.FC = () => {
             Our Products
           </h1>
           <p className="text-lg text-secondary-medium-gray">
-            Explore our premium incense sticks, essential oils, and spiritual home decor
+            Explore our premium incense sticks, essential oils, and spiritual
+            home decor
           </p>
         </div>
       </div>
@@ -60,7 +61,11 @@ const Products: React.FC = () => {
             </button>
             <button className="p-2 text-secondary-medium-gray hover:bg-secondary-light-gray rounded-lg">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                  clipRule="evenodd"
+                />
               </svg>
             </button>
           </div>
@@ -74,15 +79,23 @@ const Products: React.FC = () => {
           </div>
         ) : error ? (
           <div className="text-center py-12">
-            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-16 h-16 text-red-500 mx-auto mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             <h3 className="text-lg font-semibold text-secondary-dark-gray mb-2">
               Error Loading Products
             </h3>
-            <p className="text-secondary-medium-gray mb-4">
-              {error}
-            </p>
+            <p className="text-secondary-medium-gray mb-4">{error}</p>
             <button
               onClick={() => window.location.reload()}
               className="btn-primary"
@@ -98,8 +111,18 @@ const Products: React.FC = () => {
           </div>
         ) : (
           <div className="text-center py-12">
-            <svg className="w-16 h-16 text-secondary-light-gray mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <svg
+              className="w-16 h-16 text-secondary-light-gray mx-auto mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
             <h3 className="text-lg font-semibold text-secondary-dark-gray mb-2">
               No products available

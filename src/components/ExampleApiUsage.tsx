@@ -1,8 +1,8 @@
 // Example usage of the API service in a component
 
-import React, { useState, useEffect } from 'react';
-import { productService } from '../services/productService';
-import type { Product } from '../types';
+import React, { useState, useEffect } from "react";
+import { productService } from "../services/productService";
+import type { Product } from "../types";
 
 const ExampleComponent: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -14,18 +14,18 @@ const ExampleComponent: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         // Using the common API service method
         const response = await productService.getProducts();
-        
+        console.log(response, "response");
         if (response.success) {
           setProducts(response.data);
         } else {
-          setError('Failed to fetch products');
+          setError("Failed to fetch products");
         }
       } catch (err) {
-        setError('Failed to fetch products');
-        console.error('Error:', err);
+        setError("Failed to fetch products");
+        console.error("Error:", err);
       } finally {
         setLoading(false);
       }
@@ -40,7 +40,7 @@ const ExampleComponent: React.FC = () => {
   return (
     <div>
       <h2>Products ({products.length})</h2>
-      {products.map(product => (
+      {products.map((product) => (
         <div key={product.id}>
           <h3>{product.name}</h3>
           <p>Price: ₹{product.price}</p>
