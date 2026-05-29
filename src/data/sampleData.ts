@@ -1,4 +1,6 @@
 import type { Product, BannerItem } from '../types';
+import heroVideo from '../assets/i_need_a_video_for_the_hero_co.mp4';
+import incenseVideo from '../assets/I_need_a_video_with_insence_st.mp4';
 
 export const sampleProducts: Product[] = [
   {
@@ -176,12 +178,30 @@ export const bannerItems: BannerItem[] = [
     ctaLink: "/products"
   },
   {
+    id: 5,
+    title: "Breathe in Bliss",
+    subtitle: "Bring calm, fragrance, and mindful rituals into your everyday space",
+    image: heroVideo,
+    mediaType: "video",
+    ctaText: "Shop Wellness",
+    ctaLink: "/products"
+  },
+  {
     id: 2,
     title: "Premium Incense Sticks",
     subtitle: "Handcrafted with Natural Ingredients for Spiritual Wellness",
     image:"https://as1.ftcdn.net/jpg/12/73/72/52/1000_F_1273725270_D9N3QZUqGJT8xHXI7aPnqDZEFVtv71WT.jpg",
     // image: "https://www.srisritattva.com/cdn/shop/articles/Incense_Sticks_and_Their_Role_in_Aromatherapy.png?v=1743747273",
     ctaText: "Shop Incense",
+    ctaLink: "/products"
+  },
+  {
+    id: 6,
+    title: "Incense for Every Ritual",
+    subtitle: "Slow-burning aromas crafted for prayer, meditation, and peaceful evenings",
+    image: incenseVideo,
+    mediaType: "video",
+    ctaText: "Explore Incense",
     ctaLink: "/products"
   },
   {

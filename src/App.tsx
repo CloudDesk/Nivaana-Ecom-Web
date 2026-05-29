@@ -12,6 +12,9 @@ import CancellationPolicy from './pages/CancellationPolicy';
 import ReturnPolicy from './pages/ReturnPolicy';
 import ReplacementExchange from './pages/ReplacementExchange';
 import DeleteMyAccount from './pages/DeleteMyAccount';
+import Login from './pages/Login';
+import OtpLogin from './pages/OtpLogin';
+import Cart from './pages/Cart';
 
 function App() {
   return (
@@ -31,6 +34,9 @@ function App() {
             <Route path="/returns" element={<ReturnPolicy />} />
             <Route path="/replacement-exchange" element={<ReplacementExchange />} />
             <Route path="/delete-my-account" element={<DeleteMyAccount />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/login/otp" element={<OtpLogin />} />
+            <Route path="/cart" element={<Cart />} />
           </Routes>
         </main>
         <Footer />

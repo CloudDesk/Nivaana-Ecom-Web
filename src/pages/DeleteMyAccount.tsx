@@ -1,8 +1,24 @@
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
+import { ApiRequestError } from '../services/apiService';
 import type { User } from '../types';
 
 type Step = 1 | 2 | 3;
+
+const getDeleteAccountErrorMessage = (
+  error: unknown,
+  fallbackMessage: string,
+) => {
+  if (error instanceof ApiRequestError) {
+    return error.details || error.message || fallbackMessage;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallbackMessage;
+};
 
 const DeleteMyAccount: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<Step>(1);
@@ -42,15 +58,20 @@ const DeleteMyAccount: React.FC = () => {
     try {
       const response = await authService.requestOTP(parseInt(phoneNumber), true);
       if (response.success) {
-        setSuccess(response.data.message || 'OTP sent successfully to your mobile number');
+        setSuccess('OTP sent successfully to your mobile number');
         setCurrentStep(2);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Handle 404 - User not found
-      if (err?.statusCode === 404) {
-        setError(err?.details || 'No account exists with this mobile number.');
+      if (err instanceof ApiRequestError && err.statusCode === 404) {
+        setError(err.details || 'No account exists with this mobile number.');
       } else {
-        setError(err?.message || 'No account exists with this mobile number.');
+        setError(
+          getDeleteAccountErrorMessage(
+            err,
+            'No account exists with this mobile number.',
+          ),
+        );
       }
     } finally {
       setLoading(false);
@@ -80,8 +101,8 @@ const DeleteMyAccount: React.FC = () => {
           setEmail(response.data.user.useremail);
         }
       }
-    } catch (err: any) {
-      setError(err?.message || 'Invalid OTP. Please try again.');
+    } catch (err: unknown) {
+      setError(getDeleteAccountErrorMessage(err, 'Invalid OTP. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -118,8 +139,13 @@ const DeleteMyAccount: React.FC = () => {
         setSuccess('Your account has been successfully deleted. We\'re sorry to see you go!');
         setIsDeleted(true);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete account. Please try again.');
+    } catch (err: unknown) {
+      setError(
+        getDeleteAccountErrorMessage(
+          err,
+          'Failed to delete account. Please try again.',
+        ),
+      );
     } finally {
       setLoading(false);
     }

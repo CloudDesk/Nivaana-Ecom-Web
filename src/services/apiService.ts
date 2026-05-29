@@ -1,5 +1,7 @@
+import { authStorage } from './authStorage';
+
 // API Response interface
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data: T;
   pagination?: {
@@ -11,7 +13,7 @@ export interface ApiResponse<T = any> {
     hasPrev: boolean;
   };
   meta?: {
-    filters: any[];
+    filters: unknown[];
     total: number;
     filtered: boolean;
   };
@@ -28,6 +30,42 @@ export interface ApiError {
 // HTTP Methods
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
+export interface ApiRequestOptions {
+  skipAuth?: boolean;
+  timeoutMs?: number;
+}
+
+interface ApiErrorPayload {
+  message?: string;
+  error?: string;
+  details?: string;
+}
+
+interface RefreshTokenResponse {
+  data?: {
+    token?: string;
+    refreshToken?: string;
+  };
+}
+
+export class ApiRequestError extends Error {
+  statusCode?: number;
+  details?: string;
+
+  constructor(message: string, statusCode?: number, details?: string) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.statusCode = statusCode;
+    this.details = details;
+  }
+}
+
+let unauthorizedCallback: (() => void) | null = null;
+
+export const setUnauthorizedCallback = (callback: (() => void) | null) => {
+  unauthorizedCallback = callback;
+};
+
 // API Service configuration
 class ApiService {
   private baseURL: string;
@@ -43,43 +81,84 @@ class ApiService {
    * @param payload - Request payload (optional, for POST/PUT/PATCH requests)
    * @returns Promise with API response data
    */
-  async request<T = any>(
+  async request<T = unknown>(
     method: HttpMethod,
     url: string,
-    payload?: any
+    payload?: unknown,
+    options: ApiRequestOptions = {},
+    hasRetried = false
   ): Promise<ApiResponse<T>> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
       // Construct full URL
       const fullUrl = `${this.baseURL}${url.startsWith('/') ? url : `/${url}`}`;
+      const hasJsonBody =
+        payload !== undefined && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+      };
+
+      if (hasJsonBody) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      const accessToken = authStorage.getAccessToken();
+      if (accessToken && !options.skipAuth) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const controller = options.timeoutMs ? new AbortController() : undefined;
+      if (controller && options.timeoutMs) {
+        timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
+      }
 
       // Prepare request configuration
       const config: RequestInit = {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers,
+        signal: controller?.signal,
       };
 
       // Add payload for non-GET requests
-      if (payload && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      if (hasJsonBody) {
         config.body = JSON.stringify(payload);
       }
 
       // Make the request
       const response = await fetch(fullUrl, config);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       // Check if response is ok
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = new Error(
+        const errorData = await response
+          .json()
+          .catch(() => ({})) as ApiErrorPayload;
+
+        if (
+          response.status === 401 &&
+          !hasRetried &&
+          !options.skipAuth &&
+          !url.includes('/auth/refresh')
+        ) {
+          const refreshed = await this.refreshTokens();
+          if (refreshed) {
+            return this.request<T>(method, url, payload, options, true);
+          }
+
+          authStorage.clearSession();
+          unauthorizedCallback?.();
+        }
+
+        throw new ApiRequestError(
           errorData.message || 
           errorData.error || 
-          `HTTP Error: ${response.status} ${response.statusText}`
-        ) as Error & { statusCode?: number; details?: string };
-        error.statusCode = response.status;
-        error.details = errorData.details;
-        throw error;
+          `HTTP Error: ${response.status} ${response.statusText}`,
+          response.status,
+          errorData.details
+        );
       }
 
       // Parse response
@@ -92,15 +171,57 @@ class ApiService {
 
       return data;
     } catch (error) {
-      console.error('API Request Error:', error);
-      
-      // Return a standardized error response
-      const errorResponse: ApiResponse<T> = {
-        success: false,
-        data: null as T
-      } as any;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
-      throw errorResponse;
+      console.error('API Request Error:', error);
+
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new ApiRequestError('Network error. Please check your connection.');
+      }
+
+      if (error instanceof TypeError) {
+        throw new ApiRequestError('Network error. Please check your connection.');
+      }
+
+      throw error;
+    }
+  }
+
+  private async refreshTokens(): Promise<boolean> {
+    const refreshToken = authStorage.getRefreshToken();
+    if (!refreshToken) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${this.baseURL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const result = await response.json() as RefreshTokenResponse;
+      const newAccessToken = result?.data?.token;
+      const newRefreshToken = result?.data?.refreshToken;
+
+      if (!newAccessToken || !newRefreshToken) {
+        return false;
+      }
+
+      authStorage.setTokens(newAccessToken, newRefreshToken);
+      return true;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      return false;
     }
   }
 
@@ -109,8 +230,8 @@ class ApiService {
    * @param url - API endpoint URL
    * @returns Promise with API response data
    */
-  async get<T = any>(url: string): Promise<ApiResponse<T>> {
-    return this.request<T>('GET', url);
+  async get<T = unknown>(url: string, options?: ApiRequestOptions): Promise<ApiResponse<T>> {
+    return this.request<T>('GET', url, undefined, options);
   }
 
   /**
@@ -119,8 +240,8 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async post<T = any>(url: string, payload?: any): Promise<ApiResponse<T>> {
-    return this.request<T>('POST', url, payload);
+  async post<T = unknown>(url: string, payload?: unknown, options?: ApiRequestOptions): Promise<ApiResponse<T>> {
+    return this.request<T>('POST', url, payload, options);
   }
 
   /**
@@ -129,8 +250,8 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async put<T = any>(url: string, payload?: any): Promise<ApiResponse<T>> {
-    return this.request<T>('PUT', url, payload);
+  async put<T = unknown>(url: string, payload?: unknown, options?: ApiRequestOptions): Promise<ApiResponse<T>> {
+    return this.request<T>('PUT', url, payload, options);
   }
 
   /**
@@ -139,8 +260,8 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async patch<T = any>(url: string, payload?: any): Promise<ApiResponse<T>> {
-    return this.request<T>('PATCH', url, payload);
+  async patch<T = unknown>(url: string, payload?: unknown, options?: ApiRequestOptions): Promise<ApiResponse<T>> {
+    return this.request<T>('PATCH', url, payload, options);
   }
 
   /**
@@ -148,8 +269,8 @@ class ApiService {
    * @param url - API endpoint URL
    * @returns Promise with API response data
    */
-  async delete<T = any>(url: string): Promise<ApiResponse<T>> {
-    return this.request<T>('DELETE', url);
+  async delete<T = unknown>(url: string, options?: ApiRequestOptions): Promise<ApiResponse<T>> {
+    return this.request<T>('DELETE', url, undefined, options);
   }
 }
 

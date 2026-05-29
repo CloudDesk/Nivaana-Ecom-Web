@@ -22,6 +22,10 @@ export class PlatformProductService {
         return apiService.get<Product[]>(url);
     }
 
+    async getProductForPlatform(productId: number, platform = 'nivapp'): Promise<ApiResponse<Product>> {
+        return apiService.get<Product>(`/products/${productId}/platform/${platform}`);
+    }
+
 
 
 
@@ -32,6 +36,10 @@ export class PlatformProductService {
      */
     async getFeaturedProducts(): Promise<ApiResponse<Product[]>> {
         return apiService.get<Product[]>('/products/platform/nivapp?limit=5');
+    }
+
+    async getDealOfTheDayProducts(): Promise<ApiResponse<Product[]>> {
+        return apiService.get<Product[]>('/products/platform/nivapp?isdealoftheday=true&limit=10');
     }
 
 }

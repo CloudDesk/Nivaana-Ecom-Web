@@ -31,6 +31,7 @@ export interface BannerItem {
   title: string;
   subtitle: string;
   image: string;
+  mediaType?: 'image' | 'video';
   ctaText: string;
   ctaLink: string;
 }
@@ -45,6 +46,44 @@ export interface User {
   gender: string;
   gstnumber: string;
   isbusinessuser: boolean;
+  isguest?: boolean;
+  createddate?: number;
+  modifieddate?: number;
+  fcmid?: string | null;
+}
+
+export interface AppUser {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  email?: string;
+  gender?: string;
+  isBusinessUser: boolean;
+  gstNumber?: string;
+}
+
+export interface CartRecord {
+  id: number;
+  productid: number;
+  userid: number;
+  quantity: number;
+  iscart: boolean;
+  iswishlist: boolean;
+  createddate: number;
+  modifieddate: number;
+}
+
+export interface CartRequest {
+  productid: number;
+  userid: number;
+  quantity: number;
+  iscart: boolean;
+  iswishlist: boolean;
+}
+
+export interface CartItem extends Product {
+  quantity: number;
+  cartItemId?: number;
 }
 
 // OTP Request/Response interfaces
@@ -59,11 +98,18 @@ export interface OTPVerifyRequest {
 }
 
 export interface OTPRequestResponse {
-  message: string;
+  mobileNumber: number;
+  otpSent: boolean;
+  isNewUser: boolean;
+  expiresIn?: number;
+  canResendAfter?: number;
 }
 
 export interface OTPVerifyResponse {
   token: string;
+  refreshToken: string;
+  expiresIn?: number;
+  isNewUser?: boolean;
   user: User;
 }
 

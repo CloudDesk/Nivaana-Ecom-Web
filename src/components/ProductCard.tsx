@@ -1,11 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Product } from '../types';
+import { useCart } from '../contexts/cartContextCore';
 
 interface ProductCardProps {
   product: Product;
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
+  const { addToCart, cartItems, isInCart, updateQuantity } = useCart();
+  const [isAdding, setIsAdding] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const productInCart = isInCart(product.id);
+  const cartItem = cartItems.find((item) => item.id === product.id);
+  const cartQuantity = cartItem?.quantity || 0;
+
   const renderStars = (rating: number | null) => {
     if (!rating) {
       return (
@@ -98,6 +109,51 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
     return product.price;
   };
 
+  const handleAddToCart = async () => {
+    setMessage('');
+    setError('');
+
+    if (productInCart) {
+      return;
+    }
+
+    setIsAdding(true);
+
+    try {
+      await addToCart(product, 1);
+      setMessage('Added to cart');
+    } catch (cartError) {
+      setError(
+        cartError instanceof Error
+          ? cartError.message
+          : 'Failed to add item to cart.',
+      );
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleQuantityChange = async (nextQuantity: number) => {
+    setMessage('');
+    setError('');
+    setIsUpdating(true);
+
+    try {
+      await updateQuantity(product.id, nextQuantity);
+      if (nextQuantity <= 0) {
+        setMessage('Removed from cart');
+      }
+    } catch (cartError) {
+      setError(
+        cartError instanceof Error
+          ? cartError.message
+          : 'Failed to update cart item.',
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div className="card group hover:scale-105 transform transition-all duration-300">
       {/* Product Image */}
@@ -170,17 +226,64 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               </span>
             )}
           </div>
-          <button 
-            className={`btn-primary text-sm px-4 py-2 ${
-              product.productstatus === 'out_of_stock' 
-                ? 'opacity-50 cursor-not-allowed' 
-                : ''
-            }`}
-            disabled={product.productstatus === 'out_of_stock'}
-          >
-            {product.productstatus === 'out_of_stock' ? 'Out of Stock' : 'Add to Cart'}
-          </button>
+          {productInCart ? (
+            <div className="inline-flex items-center border border-primary-gold rounded-lg overflow-hidden bg-white">
+              <button
+                type="button"
+                onClick={() => handleQuantityChange(cartQuantity - 1)}
+                disabled={isUpdating}
+                className="w-9 h-10 text-primary-blue hover:bg-primary-gold/20 disabled:opacity-50"
+                aria-label={`Decrease ${product.name} quantity`}
+              >
+                -
+              </button>
+              <span className="w-10 text-center font-semibold text-primary-blue">
+                {cartQuantity}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleQuantityChange(cartQuantity + 1)}
+                disabled={isUpdating}
+                className="w-9 h-10 text-primary-blue hover:bg-primary-gold/20 disabled:opacity-50"
+                aria-label={`Increase ${product.name} quantity`}
+              >
+                +
+              </button>
+            </div>
+          ) : (
+            <button 
+              type="button"
+              onClick={handleAddToCart}
+              className={`btn-primary text-sm px-4 py-2 ${
+                product.productstatus === 'out_of_stock' || isAdding
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : ''
+              }`}
+              disabled={product.productstatus === 'out_of_stock' || isAdding}
+            >
+              {product.productstatus === 'out_of_stock'
+                ? 'Out of Stock'
+                : isAdding
+                  ? 'Adding...'
+                  : 'Add to Cart'}
+            </button>
+          )}
         </div>
+
+        {(message || error || productInCart) && (
+          <div className="text-sm">
+            {error ? (
+              <p className="text-red-600">{error}</p>
+            ) : (
+              <p className="text-green-700">
+                {message || `In cart: ${cartQuantity}`}{' '}
+                <Link to="/cart" className="font-semibold underline">
+                  View cart
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Product Code */}
         <div className="text-xs text-secondary-medium-gray">

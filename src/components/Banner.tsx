@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import type { BannerItem } from '../types';
 
@@ -8,15 +8,41 @@ interface BannerProps {
 
 const Banner: React.FC<BannerProps> = ({ items }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [imageLoaded, setImageLoaded] = useState<boolean[]>(new Array(items.length).fill(false));
+  const [mediaLoaded, setMediaLoaded] = useState<boolean[]>(new Array(items.length).fill(false));
+  const videoRefs = useRef<Array<HTMLVideoElement | null>>([]);
+
+  const goToNext = useCallback(() => {
+    setCurrentIndex((prevIndex) => (prevIndex + 1) % items.length);
+  }, [items.length]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % items.length);
+    const currentItem = items[currentIndex];
+    if (currentItem?.mediaType === 'video') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      goToNext();
     }, 5000);
 
-    return () => clearInterval(timer);
-  }, [items.length]);
+    return () => window.clearTimeout(timer);
+  }, [currentIndex, goToNext, items]);
+
+  useEffect(() => {
+    videoRefs.current.forEach((video, index) => {
+      if (!video) {
+        return;
+      }
+
+      if (index === currentIndex) {
+        video.currentTime = 0;
+        void video.play().catch(() => undefined);
+      } else {
+        video.pause();
+        video.currentTime = 0;
+      }
+    });
+  }, [currentIndex]);
 
   const goToSlide = (index: number) => {
     setCurrentIndex(index);
@@ -26,12 +52,8 @@ const Banner: React.FC<BannerProps> = ({ items }) => {
     setCurrentIndex((prevIndex) => (prevIndex - 1 + items.length) % items.length);
   };
 
-  const goToNext = () => {
-    setCurrentIndex((prevIndex) => (prevIndex + 1) % items.length);
-  };
-
-  const handleImageLoad = (index: number) => {
-    setImageLoaded(prev => {
+  const handleMediaLoad = (index: number) => {
+    setMediaLoaded(prev => {
       const newLoaded = [...prev];
       newLoaded[index] = true;
       return newLoaded;
@@ -49,36 +71,53 @@ const Banner: React.FC<BannerProps> = ({ items }) => {
               index === currentIndex ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            {/* Background Image */}
-            <div
-              className="w-full h-full bg-cover bg-center bg-no-repeat"
-              style={{ 
-                backgroundImage: `url(${item.image})`,
-                backgroundPosition: 'center center',
-                backgroundSize: 'cover',
-                backgroundRepeat: 'no-repeat',
-                backgroundAttachment: 'scroll'
-              }}
-            >
-              {/* Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-black/30 to-black/50"></div>
-            </div>
+            {item.mediaType === 'video' ? (
+              <video
+                ref={(element) => {
+                  videoRefs.current[index] = element;
+                }}
+                className="w-full h-full object-cover"
+                src={item.image}
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={() => handleMediaLoad(index)}
+                onError={() => handleMediaLoad(index)}
+                onEnded={goToNext}
+              />
+            ) : (
+              <div
+                className="w-full h-full bg-cover bg-center bg-no-repeat"
+                style={{ 
+                  backgroundImage: `url(${item.image})`,
+                  backgroundPosition: 'center center',
+                  backgroundSize: 'cover',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundAttachment: 'scroll'
+                }}
+              />
+            )}
+
+            {/* Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-black/30 to-black/50"></div>
             
             {/* Loading placeholder */}
-            {!imageLoaded[index] && (
+            {!mediaLoaded[index] && (
               <div className="absolute inset-0 bg-gray-800 animate-pulse flex items-center justify-center">
                 <div className="text-white/50">Loading...</div>
               </div>
             )}
             
             {/* Hidden image for preloading */}
-            <img
-              src={item.image}
-              alt=""
-              className="hidden"
-              onLoad={() => handleImageLoad(index)}
-              onError={() => handleImageLoad(index)}
-            />
+            {item.mediaType !== 'video' && (
+              <img
+                src={item.image}
+                alt=""
+                className="hidden"
+                onLoad={() => handleMediaLoad(index)}
+                onError={() => handleMediaLoad(index)}
+              />
+            )}
           </div>
         ))}
       </div>

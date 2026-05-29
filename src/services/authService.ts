@@ -12,6 +12,15 @@ import type {
  * Handles OTP authentication and account deletion
  */
 class AuthService {
+  isValidMobileNumber(mobileNumber: string): boolean {
+    return /^[6-9]\d{9}$/.test(mobileNumber.replace(/\D/g, ''));
+  }
+
+  parseMobileNumber(mobileNumber: string): number | null {
+    const cleaned = mobileNumber.replace(/\D/g, '');
+    return this.isValidMobileNumber(cleaned) ? Number(cleaned) : null;
+  }
+
   /**
    * Request OTP for mobile authentication
    * @param usermobilenumber - User's mobile number
@@ -23,7 +32,10 @@ class AuthService {
       usermobilenumber,
       verifyOnly
     };
-    return apiService.post<OTPRequestResponse>('/mobile-auth/request-otp', payload);
+    return apiService.post<OTPRequestResponse>('/mobile-auth/request-otp', payload, {
+      skipAuth: true,
+      timeoutMs: 30000,
+    });
   }
 
   /**
@@ -34,7 +46,10 @@ class AuthService {
    */
   async verifyOTP(usermobilenumber: number, otp: number): Promise<ApiResponse<OTPVerifyResponse>> {
     const payload: OTPVerifyRequest = { usermobilenumber, otp };
-    return apiService.post<OTPVerifyResponse>('/mobile-auth/verify-otp', payload);
+    return apiService.post<OTPVerifyResponse>('/mobile-auth/verify-otp', payload, {
+      skipAuth: true,
+      timeoutMs: 30000,
+    });
   }
 
   /**
@@ -43,7 +58,7 @@ class AuthService {
    * @param useremail - User email (optional, required if user doesn't have email)
    * @returns Promise with deletion confirmation
    */
-  async deleteAccount(userid: number, useremail?: string): Promise<ApiResponse<any>> {
+  async deleteAccount(userid: number, useremail?: string): Promise<ApiResponse<unknown>> {
     const payload: { userid: number; useremail?: string } = { userid };
     if (useremail) {
       payload.useremail = useremail;

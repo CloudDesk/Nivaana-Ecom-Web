@@ -1,43 +1,72 @@
 import React, { useState, useEffect } from "react";
 import Banner from "../components/Banner";
 import ProductCard from "../components/ProductCard";
+import DealOfTheDay from "../components/DealOfTheDay";
 import { bannerItems } from "../data/sampleData";
 import type { Product } from "../types";
 import { platformProductService } from "../services/productPlatformService";
 
 const Home: React.FC = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [dealProducts, setDealProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dealLoading, setDealLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dealError, setDealError] = useState<string | null>(null);
 
   // Fetch featured products on component mount
   useEffect(() => {
-    const fetchFeaturedProducts = async () => {
+    const fetchHomeProducts = async () => {
       try {
         setLoading(true);
+        setDealLoading(true);
         setError(null);
-        const response = await platformProductService.getFeaturedProducts();
-        if (response.success) {
+        setDealError(null);
+
+        const [featuredResponse, dealResponse] = await Promise.all([
+          platformProductService.getFeaturedProducts(),
+          platformProductService.getDealOfTheDayProducts(),
+        ]);
+
+        if (featuredResponse.success) {
           // Show only first 4 products on home page
-          setFeaturedProducts(response.data.slice(0, 4));
+          setFeaturedProducts(featuredResponse.data.slice(0, 4));
         } else {
           setError("Failed to fetch featured products");
         }
+
+        if (dealResponse.success) {
+          const uniqueDeals = dealResponse.data.filter(
+            (product, index, products) =>
+              index === products.findIndex((item) => item.id === product.id),
+          );
+          setDealProducts(uniqueDeals);
+        } else {
+          setDealError("Failed to fetch deal of the day");
+        }
       } catch (err) {
         setError("Failed to fetch featured products");
+        setDealError("Failed to fetch deal of the day");
         console.error("Error fetching featured products:", err);
       } finally {
         setLoading(false);
+        setDealLoading(false);
       }
     };
 
-    fetchFeaturedProducts();
+    fetchHomeProducts();
   }, []);
 
   return (
     <div className="min-h-screen">
       {/* Hero Banner */}
       <Banner items={bannerItems} />
+
+      <DealOfTheDay
+        products={dealProducts}
+        loading={dealLoading}
+        error={dealError}
+      />
 
       {/* Featured Products Section */}
       <section className="py-16 bg-secondary-extra-light-gray">
