@@ -36,6 +36,11 @@ export interface BannerItem {
   ctaLink: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+}
+
 // User interface
 export interface User {
   id: number;

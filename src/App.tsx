@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import StartupLoginModal from './components/StartupLoginModal';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import AboutUs from './pages/AboutUs';
@@ -15,6 +16,7 @@ import DeleteMyAccount from './pages/DeleteMyAccount';
 import Login from './pages/Login';
 import OtpLogin from './pages/OtpLogin';
 import Cart from './pages/Cart';
+import Wishlist from './pages/Wishlist';
 
 function App() {
   return (
@@ -22,6 +24,7 @@ function App() {
       <ScrollToTop />
       <div className="min-h-screen flex flex-col">
         <Navbar />
+        <StartupLoginModal />
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -37,6 +40,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/login/otp" element={<OtpLogin />} />
             <Route path="/cart" element={<Cart />} />
+            <Route path="/wishlist" element={<Wishlist />} />
           </Routes>
         </main>
         <Footer />

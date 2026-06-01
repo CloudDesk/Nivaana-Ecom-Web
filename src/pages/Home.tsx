@@ -47,7 +47,7 @@ const Home: React.FC = () => {
       } catch (err) {
         setError("Failed to fetch featured products");
         setDealError("Failed to fetch deal of the day");
-        console.error("Error fetching featured products:", err);
+        console.error("Error fetching home content:", err);
       } finally {
         setLoading(false);
         setDealLoading(false);

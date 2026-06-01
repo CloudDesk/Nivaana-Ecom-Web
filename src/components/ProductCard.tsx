@@ -2,20 +2,31 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Product } from '../types';
 import { useCart } from '../contexts/cartContextCore';
+import { useWishlist } from '../contexts/wishlistContextCore';
 
 interface ProductCardProps {
   product: Product;
+  compact?: boolean;
+  layout?: 'grid' | 'list';
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  compact = false,
+  layout = 'grid',
+}) => {
   const { addToCart, cartItems, isInCart, updateQuantity } = useCart();
+  const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isWishlistUpdating, setIsWishlistUpdating] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const productInCart = isInCart(product.id);
+  const productInWishlist = isInWishlist(product.id);
   const cartItem = cartItems.find((item) => item.id === product.id);
   const cartQuantity = cartItem?.quantity || 0;
+  const rupeeSymbol = '\u20B9';
 
   const renderStars = (rating: number | null) => {
     if (!rating) {
@@ -87,6 +98,17 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
     return product.shortdescription || product.fulldescription || 'No description available';
   };
 
+  const formatLabel = (value: string) => {
+    return value
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const formattedCategory = formatLabel(product.category);
+  const formattedSubcategory = product.subcategory
+    ? formatLabel(product.subcategory)
+    : "";
+
   // Get stock status color
   const getStockStatusColor = () => {
     switch (product.productstatus) {
@@ -154,18 +176,239 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
     }
   };
 
+  const handleWishlistToggle = async () => {
+    if (isWishlistUpdating) {
+      return;
+    }
+
+    setMessage('');
+    setError('');
+    setIsWishlistUpdating(true);
+
+    try {
+      if (productInWishlist) {
+        await removeFromWishlist(product.id);
+        setMessage('Removed from wishlist');
+      } else {
+        await addToWishlist(product);
+        setMessage('Added to wishlist');
+      }
+    } catch (wishlistError) {
+      setError(
+        wishlistError instanceof Error
+          ? wishlistError.message
+          : 'Failed to update wishlist.',
+      );
+    } finally {
+      setIsWishlistUpdating(false);
+    }
+  };
+
+  const cardClassName = compact
+    ? 'bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 p-4 group hover:scale-[1.02] transform'
+    : 'card group hover:scale-105 transform transition-all duration-300';
+
+  const imageClassName = compact
+    ? 'w-full h-40 object-cover group-hover:scale-110 transition-transform duration-300'
+    : 'w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300';
+
+  const titleClassName = compact
+    ? 'text-base font-semibold text-secondary-dark-gray group-hover:text-primary-blue transition-colors duration-200 line-clamp-2'
+    : 'text-lg font-semibold text-secondary-dark-gray group-hover:text-primary-blue transition-colors duration-200';
+
+  const priceClassName = compact
+    ? 'text-xl font-bold text-primary-gold'
+    : 'text-2xl font-bold text-primary-gold';
+
+  if (layout === 'list') {
+    return (
+      <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 p-4">
+        <div className="flex flex-col md:flex-row gap-5">
+          <div className="relative md:w-56 lg:w-60 shrink-0 overflow-hidden rounded-lg bg-secondary-extra-light-gray">
+            <img
+              src={getProductImage()}
+              alt={product.name}
+              className="h-56 w-full object-cover md:h-full"
+            />
+            {product.isdealoftheday && (
+              <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+                Deal of the Day
+              </div>
+            )}
+            {product.discount > 0 && (
+              <div className="absolute bottom-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+                {rupeeSymbol}{product.discount} OFF
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleWishlistToggle}
+              disabled={isWishlistUpdating}
+              className={`absolute bottom-2 left-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-md transition-colors duration-200 ${
+                productInWishlist
+                  ? 'text-red-500'
+                  : 'text-secondary-medium-gray hover:text-red-500'
+              } disabled:opacity-60`}
+              aria-label={
+                productInWishlist ? 'Remove from wishlist' : 'Add to wishlist'
+              }
+              title={productInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
+            >
+              <svg
+                className="h-5 w-5"
+                fill={productInWishlist ? 'currentColor' : 'none'}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733C11.285 4.876 9.623 3.75 7.688 3.75 5.098 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex flex-1 flex-col justify-between gap-4">
+            <div className="space-y-3">
+              <h3 className="text-xl font-semibold text-secondary-dark-gray">
+                {product.name}
+              </h3>
+              <p className="text-secondary-medium-gray text-sm line-clamp-2">
+                {getDescription()}
+              </p>
+
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1">
+                  {renderStars(product.averagerating)}
+                </div>
+                <span className="text-sm text-secondary-medium-gray">
+                  {product.averagerating
+                    ? `${product.averagerating.toFixed(1)} rating`
+                    : 'No ratings'}
+                </span>
+              </div>
+
+              <p className="text-sm font-semibold text-secondary-medium-gray">
+                {formattedCategory}
+              </p>
+              {formattedSubcategory && (
+                <p className="text-sm text-secondary-medium-gray">
+                  {formattedSubcategory}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStockStatusColor()}`}>
+                  {product.productstatus.replace('_', ' ').toUpperCase()}
+                </span>
+                <span className="text-sm text-secondary-medium-gray">
+                  {product.availablequantity} available
+                </span>
+                <span className="text-xs text-secondary-medium-gray">
+                  Product Code: {product.puc}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex items-center space-x-2">
+                {product.discount > 0 ? (
+                  <>
+                    <span className="text-2xl font-bold text-primary-gold">
+                      {rupeeSymbol}{getDiscountedPrice().toFixed(0)}
+                    </span>
+                    <span className="text-lg text-secondary-medium-gray line-through">
+                      {rupeeSymbol}{product.price}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-2xl font-bold text-primary-gold">
+                    {rupeeSymbol}{product.price}
+                  </span>
+                )}
+              </div>
+
+              {productInCart ? (
+                <div className="inline-flex w-fit items-center border border-primary-gold rounded-lg overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(cartQuantity - 1)}
+                    disabled={isUpdating}
+                    className="w-9 h-10 text-primary-blue hover:bg-primary-gold/20 disabled:opacity-50"
+                    aria-label={`Decrease ${product.name} quantity`}
+                  >
+                    -
+                  </button>
+                  <span className="w-10 text-center font-semibold text-primary-blue">
+                    {cartQuantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(cartQuantity + 1)}
+                    disabled={isUpdating}
+                    className="w-9 h-10 text-primary-blue hover:bg-primary-gold/20 disabled:opacity-50"
+                    aria-label={`Increase ${product.name} quantity`}
+                  >
+                    +
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  className={`btn-primary text-sm px-4 py-2 ${
+                    product.productstatus === 'out_of_stock' || isAdding
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}
+                  disabled={product.productstatus === 'out_of_stock' || isAdding}
+                >
+                  {product.productstatus === 'out_of_stock'
+                    ? 'Out of Stock'
+                    : isAdding
+                      ? 'Adding...'
+                      : 'Add to Cart'}
+                </button>
+              )}
+            </div>
+
+            {(message || error || productInCart) && (
+              <div className="text-sm">
+                {error ? (
+                  <p className="text-red-600">{error}</p>
+                ) : (
+                  <p className="text-green-700">
+                    {message || `In cart: ${cartQuantity}`}
+                    {productInCart && (
+                      <>
+                        {' '}
+                        <Link to="/cart" className="font-semibold underline">
+                          View cart
+                        </Link>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="card group hover:scale-105 transform transition-all duration-300">
+    <div className={cardClassName}>
       {/* Product Image */}
-      <div className="relative overflow-hidden rounded-lg mb-4">
+      <div className={`relative overflow-hidden rounded-lg ${compact ? 'mb-3' : 'mb-4'}`}>
         <img
           src={getProductImage()}
           alt={product.name}
-          className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
+          className={imageClassName}
         />
-        <div className="absolute top-2 right-2 bg-primary-gold text-primary-blue px-2 py-1 rounded-full text-xs font-semibold">
-          {product.category}
-        </div>
         {product.isdealoftheday && (
           <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
             Deal of the Day
@@ -173,21 +416,42 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         )}
         {product.discount > 0 && (
           <div className="absolute bottom-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-            ₹{product.discount} OFF
+            {rupeeSymbol}{product.discount} OFF
           </div>
         )}
+        <button
+          type="button"
+          onClick={handleWishlistToggle}
+          disabled={isWishlistUpdating}
+          className={`absolute bottom-2 left-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-md transition-colors duration-200 ${
+            productInWishlist
+              ? 'text-red-500'
+              : 'text-secondary-medium-gray hover:text-red-500'
+          } disabled:opacity-60`}
+          aria-label={
+            productInWishlist ? 'Remove from wishlist' : 'Add to wishlist'
+          }
+          title={productInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
+        >
+          <svg
+            className="h-5 w-5"
+            fill={productInWishlist ? 'currentColor' : 'none'}
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733C11.285 4.876 9.623 3.75 7.688 3.75 5.098 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
+            />
+          </svg>
+        </button>
       </div>
 
       {/* Product Info */}
-      <div className="space-y-3">
-        <h3 className="text-lg font-semibold text-secondary-dark-gray group-hover:text-primary-blue transition-colors duration-200">
-          {product.name}
-        </h3>
-        
-        <p className="text-secondary-medium-gray text-sm line-clamp-2">
-          {getDescription()}
-        </p>
-
+      <div className={compact ? 'space-y-2' : 'space-y-3'}>
         {/* Rating */}
         <div className="flex items-center space-x-2">
           <div className="flex items-center space-x-1">
@@ -197,6 +461,23 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             {product.averagerating ? `${product.averagerating.toFixed(1)} rating` : 'No ratings'}
           </span>
         </div>
+
+        <p className="text-sm font-semibold text-secondary-medium-gray">
+          {formattedCategory}
+        </p>
+        {formattedSubcategory && (
+          <p className="text-sm text-secondary-medium-gray">
+            {formattedSubcategory}
+          </p>
+        )}
+
+        <h3 className={titleClassName}>
+          {product.name}
+        </h3>
+        
+        <p className={`text-secondary-medium-gray text-sm ${compact ? 'line-clamp-1' : 'line-clamp-2'}`}>
+          {getDescription()}
+        </p>
 
         {/* Stock Status */}
         <div className="flex items-center justify-between">
@@ -213,16 +494,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <div className="flex items-center space-x-2">
             {product.discount > 0 ? (
               <>
-                <span className="text-2xl font-bold text-primary-gold">
-                  ₹{getDiscountedPrice().toFixed(0)}
+                <span className={priceClassName}>
+                  {rupeeSymbol}{getDiscountedPrice().toFixed(0)}
                 </span>
                 <span className="text-lg text-secondary-medium-gray line-through">
-                  ₹{product.price}
+                  {rupeeSymbol}{product.price}
                 </span>
               </>
             ) : (
-              <span className="text-2xl font-bold text-primary-gold">
-                ₹{product.price}
+              <span className={priceClassName}>
+                {rupeeSymbol}{product.price}
               </span>
             )}
           </div>
@@ -254,7 +535,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             <button 
               type="button"
               onClick={handleAddToCart}
-              className={`btn-primary text-sm px-4 py-2 ${
+              className={`btn-primary ${compact ? 'text-xs px-3 py-2' : 'text-sm px-4 py-2'} ${
                 product.productstatus === 'out_of_stock' || isAdding
                   ? 'opacity-50 cursor-not-allowed' 
                   : ''
@@ -276,10 +557,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               <p className="text-red-600">{error}</p>
             ) : (
               <p className="text-green-700">
-                {message || `In cart: ${cartQuantity}`}{' '}
-                <Link to="/cart" className="font-semibold underline">
-                  View cart
-                </Link>
+                {message || `In cart: ${cartQuantity}`}
+                {productInCart && (
+                  <>
+                    {' '}
+                    <Link to="/cart" className="font-semibold underline">
+                      View cart
+                    </Link>
+                  </>
+                )}
               </p>
             )}
           </div>

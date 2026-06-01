@@ -1,6 +1,10 @@
 import type { Product, BannerItem } from '../types';
+import candleTrayImage from '../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png';
+import candleIncenseImage from '../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png';
 import heroVideo from '../assets/i_need_a_video_for_the_hero_co.mp4';
 import incenseVideo from '../assets/I_need_a_video_with_insence_st.mp4';
+import ritualVideo from '../assets/I_need_togenrate_a_video_for_t.mp4';
+import lifestyleVideo from '../assets/Need_to_genarate_a_video_in_la.mp4';
 
 export const sampleProducts: Product[] = [
   {
@@ -24,9 +28,9 @@ export const sampleProducts: Product[] = [
     isdealoftheday: false,
     category: "incense",
     subcategory: "premium_incense_sticks",
-    large: ["/src/assets/image2.png"],
-    medium: ["/src/assets/image2.png"],
-    small: ["/src/assets/image2.png"],
+    large: [candleIncenseImage],
+    medium: [candleIncenseImage],
+    small: [candleIncenseImage],
     brand: "Nivaana",
     pack: "pack_of_12"
   },
@@ -51,9 +55,9 @@ export const sampleProducts: Product[] = [
     isdealoftheday: true,
     category: "wellness",
     subcategory: "essential_oils",
-    large: ["/src/assets/image3.jpg"],
-    medium: ["/src/assets/image3.jpg"],
-    small: ["/src/assets/image3.jpg"],
+    large: [candleTrayImage],
+    medium: [candleTrayImage],
+    small: [candleTrayImage],
     brand: "Nivaana",
     pack: "15ml"
   },
@@ -78,9 +82,9 @@ export const sampleProducts: Product[] = [
     isdealoftheday: false,
     category: "incense",
     subcategory: "incense_cones",
-    large: ["/src/assets/image2.png"],
-    medium: ["/src/assets/image2.png"],
-    small: ["/src/assets/image2.png"],
+    large: [candleIncenseImage],
+    medium: [candleIncenseImage],
+    small: [candleIncenseImage],
     brand: "Nivaana",
     pack: "pack_of_20"
   },
@@ -105,9 +109,9 @@ export const sampleProducts: Product[] = [
     isdealoftheday: false,
     category: "wellness",
     subcategory: "essential_oils",
-    large: ["/src/assets/image3.jpg"],
-    medium: ["/src/assets/image3.jpg"],
-    small: ["/src/assets/image3.jpg"],
+    large: [candleTrayImage],
+    medium: [candleTrayImage],
+    small: [candleTrayImage],
     brand: "Nivaana",
     pack: "15ml"
   },
@@ -132,9 +136,9 @@ export const sampleProducts: Product[] = [
     isdealoftheday: true,
     category: "decor",
     subcategory: "spiritual_decor",
-    large: ["/src/assets/image4.jpg"],
-    medium: ["/src/assets/image4.jpg"],
-    small: ["/src/assets/image4.jpg"],
+    large: [candleTrayImage],
+    medium: [candleTrayImage],
+    small: [candleTrayImage],
     brand: "Nivaana",
     pack: "single"
   },
@@ -159,9 +163,9 @@ export const sampleProducts: Product[] = [
     isdealoftheday: false,
     category: "incense",
     subcategory: "premium_incense_sticks",
-    large: ["/src/assets/image2.png"],
-    medium: ["/src/assets/image2.png"],
-    small: ["/src/assets/image2.png"],
+    large: [candleIncenseImage],
+    medium: [candleIncenseImage],
+    small: [candleIncenseImage],
     brand: "Nivaana",
     pack: "pack_of_12"
   }
@@ -172,8 +176,7 @@ export const bannerItems: BannerItem[] = [
     id: 1,
     title: "Welcome to Nivaana",
     subtitle: "Premium Incense & Essential Oils for Your Sacred Space",
-    image:"https://t3.ftcdn.net/jpg/06/17/17/64/240_F_617176400_WS3NLWVZzuHhXmTcjXYn6sjZ9yIVx98Q.jpg",
-    // image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
+    image: candleIncenseImage,
     ctaText: "Explore Collection",
     ctaLink: "/products"
   },
@@ -187,15 +190,6 @@ export const bannerItems: BannerItem[] = [
     ctaLink: "/products"
   },
   {
-    id: 2,
-    title: "Premium Incense Sticks",
-    subtitle: "Handcrafted with Natural Ingredients for Spiritual Wellness",
-    image:"https://as1.ftcdn.net/jpg/12/73/72/52/1000_F_1273725270_D9N3QZUqGJT8xHXI7aPnqDZEFVtv71WT.jpg",
-    // image: "https://www.srisritattva.com/cdn/shop/articles/Incense_Sticks_and_Their_Role_in_Aromatherapy.png?v=1743747273",
-    ctaText: "Shop Incense",
-    ctaLink: "/products"
-  },
-  {
     id: 6,
     title: "Incense for Every Ritual",
     subtitle: "Slow-burning aromas crafted for prayer, meditation, and peaceful evenings",
@@ -205,18 +199,28 @@ export const bannerItems: BannerItem[] = [
     ctaLink: "/products"
   },
   {
-    id: 3,
-    title: "Essential Oils",
-    subtitle: "Pure Aromatherapy Oils for Mind, Body & Soul",
-    image: "https://bouqs.com/blog/wp-content/uploads/2022/09/lavender-flower-essential-oils.jpg",
-    ctaText: "Discover Oils",
+    id: 7,
+    title: "Rituals Made Serene",
+    subtitle: "Create a peaceful atmosphere with Nivaana fragrances and mindful essentials",
+    image: ritualVideo,
+    mediaType: "video",
+    ctaText: "Shop Ritual Essentials",
+    ctaLink: "/products"
+  },
+  {
+    id: 8,
+    title: "Fragrance for Living Spaces",
+    subtitle: "Layer your home with calming aromas and soft ritual moments",
+    image: lifestyleVideo,
+    mediaType: "video",
+    ctaText: "Explore Collection",
     ctaLink: "/products"
   },
   {
     id: 4,
     title: "Home Decor",
     subtitle: "Transform Your Space with Spiritual & Decorative Elements",
-    image: "https://images-cdn.ubuy.co.in/657bcd17f03ef076b94a0f15-ainydie-luxury-metal-ginkgo-tree-leaf.jpg",
+    image: candleTrayImage,
     ctaText: "View Decor",
     ctaLink: "/products"
   }

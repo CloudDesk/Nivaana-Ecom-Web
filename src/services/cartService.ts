@@ -1,6 +1,12 @@
 import { apiService } from './apiService';
 import { platformProductService } from './productPlatformService';
-import type { ApiResponse, CartItem, CartRecord, CartRequest } from '../types';
+import type {
+  ApiResponse,
+  CartItem,
+  CartRecord,
+  CartRequest,
+  Product,
+} from '../types';
 
 class CartService {
   private baseUrl = '/carts';
@@ -29,12 +35,36 @@ class CartService {
   }
 
   async addToCart(productId: number, userId: number, quantity = 1) {
+    const cartResponse = await this.getUserCartItems(userId);
+    const existingItem = cartResponse.data.find(
+      (item) => item.productid === productId,
+    );
+
     return this.upsertCartItem({
       productid: productId,
       userid: userId,
       quantity,
       iscart: true,
-      iswishlist: false,
+      iswishlist: existingItem?.iswishlist ?? false,
+    });
+  }
+
+  async getUserWishlistItems(userId: number): Promise<ApiResponse<CartRecord[]>> {
+    return apiService.get<CartRecord[]>(`${this.baseUrl}/wishlist/${userId}`);
+  }
+
+  async addToWishlist(productId: number, userId: number) {
+    const cartResponse = await this.getUserCartItems(userId);
+    const existingItem = cartResponse.data.find(
+      (item) => item.productid === productId,
+    );
+
+    return this.upsertCartItem({
+      productid: productId,
+      userid: userId,
+      quantity: existingItem?.quantity || 1,
+      iscart: existingItem?.iscart ?? false,
+      iswishlist: true,
     });
   }
 
@@ -68,7 +98,40 @@ class CartService {
     );
 
     if (cartItem) {
+      if (cartItem.iswishlist) {
+        await this.updateCartItem(cartItem.id, {
+          productid: productId,
+          userid: userId,
+          quantity: 1,
+          iscart: false,
+          iswishlist: true,
+        });
+        return;
+      }
+
       await this.deleteCartItem(cartItem.id);
+    }
+  }
+
+  async removeFromWishlist(userId: number, productId: number) {
+    const wishlistResponse = await this.getUserWishlistItems(userId);
+    const wishlistItem = wishlistResponse.data.find(
+      (item) => item.productid === productId && item.iswishlist,
+    );
+
+    if (wishlistItem) {
+      if (wishlistItem.iscart) {
+        await this.updateCartItem(wishlistItem.id, {
+          productid: productId,
+          userid: userId,
+          quantity: wishlistItem.quantity,
+          iscart: true,
+          iswishlist: false,
+        });
+        return;
+      }
+
+      await this.deleteCartItem(wishlistItem.id);
     }
   }
 
@@ -87,6 +150,21 @@ class CartService {
           quantity: cartRecord.quantity,
           cartItemId: cartRecord.id,
         };
+      }),
+    );
+  }
+
+  async getUserWishlistItemsWithProducts(userId: number): Promise<Product[]> {
+    const wishlistResponse = await this.getUserWishlistItems(userId);
+    const wishlistRecords = wishlistResponse.data.filter((item) => item.iswishlist);
+
+    return Promise.all(
+      wishlistRecords.map(async (wishlistRecord) => {
+        const productResponse = await platformProductService.getProductForPlatform(
+          wishlistRecord.productid,
+        );
+
+        return productResponse.data;
       }),
     );
   }

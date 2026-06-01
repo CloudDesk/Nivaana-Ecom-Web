@@ -1,6 +1,13 @@
 import { apiService } from './apiService';
 import type { Product, ApiResponse } from '../types';
 
+interface ProductFilters {
+    category?: string;
+    subcategory?: string;
+    isdealoftheday?: boolean;
+    search?: string;
+}
+
 export class PlatformProductService {
     /**
      * Get all products
@@ -8,12 +15,18 @@ export class PlatformProductService {
      * @param limit - Items per page (optional)
      * @returns Promise with products data
      */
-    async getProducts(page?: number, limit?: number): Promise<ApiResponse<Product[]>> {
+    async getProducts(page?: number, limit?: number, filters: ProductFilters = {}): Promise<ApiResponse<Product[]>> {
         let url = '/products/platform/nivapp';
         const params = new URLSearchParams();
 
         if (page) params.append('page', page.toString());
         if (limit) params.append('limit', limit.toString());
+        if (filters.category) params.append('category', filters.category);
+        if (filters.subcategory) params.append('subcategory', filters.subcategory);
+        if (filters.search) params.append('search', filters.search);
+        if (filters.isdealoftheday !== undefined) {
+            params.append('isdealoftheday', filters.isdealoftheday.toString());
+        }
 
         if (params.toString()) {
             url += `?${params.toString()}`;

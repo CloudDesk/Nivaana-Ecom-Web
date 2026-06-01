@@ -46,13 +46,13 @@ const DealOfTheDay: React.FC<DealOfTheDayProps> = ({
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {[1, 2, 3, 4].map((item) => (
               <div
                 key={item}
-                className="bg-secondary-extra-light-gray rounded-lg p-6 animate-pulse"
+                className="bg-secondary-extra-light-gray rounded-lg p-4 animate-pulse"
               >
-                <div className="h-48 bg-secondary-light-gray rounded-lg mb-4"></div>
+                <div className="h-40 bg-secondary-light-gray rounded-lg mb-3"></div>
                 <div className="h-5 bg-secondary-light-gray rounded w-3/4 mb-3"></div>
                 <div className="h-4 bg-secondary-light-gray rounded w-full mb-2"></div>
                 <div className="h-4 bg-secondary-light-gray rounded w-2/3 mb-5"></div>
@@ -65,9 +65,9 @@ const DealOfTheDay: React.FC<DealOfTheDayProps> = ({
             <p className="text-red-600">{error}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {visibleProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard key={product.id} product={product} compact />
             ))}
           </div>
         )}
