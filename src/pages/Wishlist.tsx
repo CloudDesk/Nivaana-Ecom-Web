@@ -26,17 +26,16 @@ const getDiscountedPrice = (product: Product) =>
 const getAvailableQuantity = (product: Product) =>
   product.availablequantity || product.ecompublishedquantity || 0;
 
-const getSectionTitle = (product: Product) => {
-  const category = product.category
-    ? product.category.replaceAll('-', ' ')
-    : 'Other';
-  const subcategory = product.subcategory
-    ? product.subcategory.replaceAll('-', ' ')
-    : 'General';
+const formatLabel = (value: string | null | undefined, fallback: string) =>
+  (value || fallback)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-  return `${category} - ${subcategory}`.replace(/\b\w/g, (letter) =>
-    letter.toUpperCase(),
-  );
+const getSectionTitle = (product: Product) => {
+  const category = formatLabel(product.category, 'Other');
+  const subcategory = formatLabel(product.subcategory, 'General');
+
+  return `${category} - ${subcategory}`;
 };
 
 const Wishlist: React.FC = () => {

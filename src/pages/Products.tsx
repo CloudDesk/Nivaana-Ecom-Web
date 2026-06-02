@@ -99,6 +99,22 @@ const Products: React.FC = () => {
   };
 
   useEffect(() => {
+    const mobileViewport = window.matchMedia("(max-width: 639px)");
+    const syncMobileViewMode = () => {
+      if (mobileViewport.matches) {
+        setViewMode("grid");
+      }
+    };
+
+    syncMobileViewMode();
+    mobileViewport.addEventListener("change", syncMobileViewMode);
+
+    return () => {
+      mobileViewport.removeEventListener("change", syncMobileViewMode);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!sortOpen) {
       return;
     }
@@ -208,8 +224,8 @@ const Products: React.FC = () => {
 
       <div className="w-full px-4 sm:px-5 lg:px-6 py-5">
         {/* Results Header */}
-        <div className="sticky top-20 z-40 -mx-4 mb-6 flex flex-col border-b border-secondary-light-gray/70 bg-secondary-extra-light-gray px-4 py-3 sm:-mx-5 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:-mx-6 lg:px-6">
-          <p className="text-secondary-medium-gray mb-2 sm:mb-0">
+        <div className="sticky top-16 z-40 -mx-4 mb-6 flex items-center justify-between gap-3 border-b border-secondary-light-gray/70 bg-secondary-extra-light-gray px-4 py-3 sm:top-20 sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6">
+          <p className="min-w-0 text-sm text-secondary-medium-gray sm:text-base">
             Showing {filteredProducts.length}
             {filteredProducts.length !== products.length
               ? ` of ${products.length}`
@@ -217,7 +233,7 @@ const Products: React.FC = () => {
             products
             {searchTerm ? ` for "${searchTerm}"` : ""}
           </p>
-          <div className="flex items-center space-x-2">
+          <div className="flex shrink-0 items-center space-x-2">
             <div className="relative" ref={sortMenuRef}>
               <button
                 type="button"
@@ -251,7 +267,7 @@ const Products: React.FC = () => {
               </button>
 
               {sortOpen && (
-                <div className="absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-secondary-light-gray bg-white p-2 shadow-xl">
+                <div className="absolute right-0 top-full z-30 mt-2 w-[min(16rem,calc(100vw-2rem))] rounded-lg border border-secondary-light-gray bg-white p-2 shadow-xl">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="px-2 pt-1 text-sm font-semibold text-secondary-dark-gray">
                       Filter Products
@@ -286,11 +302,11 @@ const Products: React.FC = () => {
               )}
             </div>
 
-            <span className="text-sm text-secondary-medium-gray">View:</span>
+            <span className="hidden text-sm text-secondary-medium-gray sm:inline">View:</span>
             <button
               type="button"
               onClick={() => setViewMode("grid")}
-              className={`p-2 rounded-lg transition-colors duration-200 ${
+              className={`hidden rounded-lg p-2 transition-colors duration-200 sm:block ${
                 viewMode === "grid"
                   ? "bg-primary-gold text-primary-blue"
                   : "text-secondary-medium-gray hover:bg-secondary-light-gray"
@@ -306,7 +322,7 @@ const Products: React.FC = () => {
             <button
               type="button"
               onClick={() => setViewMode("list")}
-              className={`p-2 rounded-lg transition-colors duration-200 ${
+              className={`hidden rounded-lg p-2 transition-colors duration-200 sm:block ${
                 viewMode === "list"
                   ? "bg-primary-gold text-primary-blue"
                   : "text-secondary-medium-gray hover:bg-secondary-light-gray"
@@ -362,7 +378,7 @@ const Products: React.FC = () => {
           <div
             className={
               viewMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+                ? "grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4"
                 : "grid grid-cols-1 xl:grid-cols-2 gap-5"
             }
           >

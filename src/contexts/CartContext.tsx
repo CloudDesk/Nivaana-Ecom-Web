@@ -199,7 +199,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   const getCartCount = useCallback(
     () =>
       cartItems.reduce((total, item) => {
-        return total + item.quantity;
+        return total + Number(item.quantity || 0);
       }, 0),
     [cartItems],
   );
@@ -207,7 +207,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   const getCartTotal = useCallback(
     () =>
       cartItems.reduce((total, item) => {
-        return total + getDiscountedPrice(item) * item.quantity;
+        return total + getDiscountedPrice(item) * Number(item.quantity || 0);
       }, 0),
     [cartItems],
   );
