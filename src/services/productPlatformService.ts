@@ -22,16 +22,16 @@ export class PlatformProductService {
         return apiService.get<Product[]>(url);
     }
 
-
-
-
+    async getProduct(productId: number): Promise<ApiResponse<Product>> {
+        return apiService.get<Product>(`/products/${productId}/platform/nivapp`);
+    }
 
     /**
      * Get featured products (deal of the day)
      * @returns Promise with products data
      */
     async getFeaturedProducts(): Promise<ApiResponse<Product[]>> {
-        return apiService.get<Product[]>('/products/platform/nivapp?limit=5');
+        return apiService.get<Product[]>('/products/platform/nivapp?limit=12');
     }
 
 }

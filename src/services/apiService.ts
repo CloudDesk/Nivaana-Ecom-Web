@@ -1,5 +1,8 @@
+import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
+import { sessionService } from "./sessionService";
+
 // API Response interface
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data: T;
   pagination?: {
@@ -11,7 +14,7 @@ export interface ApiResponse<T = any> {
     hasPrev: boolean;
   };
   meta?: {
-    filters: any[];
+    filters: unknown[];
     total: number;
     filtered: boolean;
   };
@@ -31,9 +34,18 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 // API Service configuration
 class ApiService {
   private baseURL: string;
+  private client: AxiosInstance;
 
   constructor() {
     this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5600/v1';
+    this.client = axios.create({
+      baseURL: this.baseURL,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      timeout: 20000,
+    });
   }
 
   /**
@@ -43,47 +55,22 @@ class ApiService {
    * @param payload - Request payload (optional, for POST/PUT/PATCH requests)
    * @returns Promise with API response data
    */
-  async request<T = any>(
+  async request<T = unknown>(
     method: HttpMethod,
     url: string,
-    payload?: any
+    payload?: unknown
   ): Promise<ApiResponse<T>> {
     try {
-      // Construct full URL
-      const fullUrl = `${this.baseURL}${url.startsWith('/') ? url : `/${url}`}`;
-
-      // Prepare request configuration
-      const config: RequestInit = {
+      const token = sessionService.getToken();
+      const config: AxiosRequestConfig = {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        url,
+        data: payload,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       };
 
-      // Add payload for non-GET requests
-      if (payload && ['POST', 'PUT', 'PATCH'].includes(method)) {
-        config.body = JSON.stringify(payload);
-      }
-
-      // Make the request
-      const response = await fetch(fullUrl, config);
-
-      // Check if response is ok
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = new Error(
-          errorData.message || 
-          errorData.error || 
-          `HTTP Error: ${response.status} ${response.statusText}`
-        ) as Error & { statusCode?: number; details?: string };
-        error.statusCode = response.status;
-        error.details = errorData.details;
-        throw error;
-      }
-
-      // Parse response
-      const data: ApiResponse<T> = await response.json();
+      const response = await this.client.request<ApiResponse<T>>(config);
+      const data = response.data;
 
       // Check if API response indicates success
       if (!data.success) {
@@ -94,13 +81,7 @@ class ApiService {
     } catch (error) {
       console.error('API Request Error:', error);
       
-      // Return a standardized error response
-      const errorResponse: ApiResponse<T> = {
-        success: false,
-        data: null as T
-      } as any;
-
-      throw errorResponse;
+      throw error;
     }
   }
 
@@ -109,7 +90,7 @@ class ApiService {
    * @param url - API endpoint URL
    * @returns Promise with API response data
    */
-  async get<T = any>(url: string): Promise<ApiResponse<T>> {
+  async get<T = unknown>(url: string): Promise<ApiResponse<T>> {
     return this.request<T>('GET', url);
   }
 
@@ -119,7 +100,7 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async post<T = any>(url: string, payload?: any): Promise<ApiResponse<T>> {
+  async post<T = unknown>(url: string, payload?: unknown): Promise<ApiResponse<T>> {
     return this.request<T>('POST', url, payload);
   }
 
@@ -129,7 +110,7 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async put<T = any>(url: string, payload?: any): Promise<ApiResponse<T>> {
+  async put<T = unknown>(url: string, payload?: unknown): Promise<ApiResponse<T>> {
     return this.request<T>('PUT', url, payload);
   }
 
@@ -139,7 +120,7 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async patch<T = any>(url: string, payload?: any): Promise<ApiResponse<T>> {
+  async patch<T = unknown>(url: string, payload?: unknown): Promise<ApiResponse<T>> {
     return this.request<T>('PATCH', url, payload);
   }
 
@@ -148,7 +129,7 @@ class ApiService {
    * @param url - API endpoint URL
    * @returns Promise with API response data
    */
-  async delete<T = any>(url: string): Promise<ApiResponse<T>> {
+  async delete<T = unknown>(url: string): Promise<ApiResponse<T>> {
     return this.request<T>('DELETE', url);
   }
 }

@@ -4,7 +4,7 @@ import logo from '../assets/Logo.png';
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-primary-blue text-primary-gold">
+    <footer id="contact" className="bg-primary-blue text-primary-gold">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Company Info */}

@@ -38,12 +38,12 @@ export interface BannerItem {
 // User interface
 export interface User {
   id: number;
-  useremail: string;
+  useremail: string | null;
   usermobilenumber: number;
-  firstname: string;
-  lastname: string;
-  gender: string;
-  gstnumber: string;
+  firstname: string | null;
+  lastname: string | null;
+  gender: string | null;
+  gstnumber: string | null;
   isbusinessuser: boolean;
 }
 
@@ -64,7 +64,22 @@ export interface OTPRequestResponse {
 
 export interface OTPVerifyResponse {
   token: string;
+  access_token?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  refresh_token?: string;
   user: User;
+}
+
+export interface CartItem {
+  id: number;
+  productid: number;
+  userid: number;
+  quantity: number;
+  iscart: boolean;
+  iswishlist: boolean;
+  createddate?: number;
+  modifieddate?: number;
 }
 
 // API Response interfaces

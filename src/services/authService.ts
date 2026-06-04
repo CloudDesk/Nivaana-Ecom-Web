@@ -6,6 +6,7 @@ import type {
   OTPRequestResponse, 
   OTPVerifyResponse 
 } from '../types';
+import { sessionService } from './sessionService';
 
 /**
  * Authentication Service
@@ -34,7 +35,19 @@ class AuthService {
    */
   async verifyOTP(usermobilenumber: number, otp: number): Promise<ApiResponse<OTPVerifyResponse>> {
     const payload: OTPVerifyRequest = { usermobilenumber, otp };
-    return apiService.post<OTPVerifyResponse>('/mobile-auth/verify-otp', payload);
+    const response = await apiService.post<OTPVerifyResponse>('/mobile-auth/verify-otp', payload);
+    const token = response.data.token || response.data.accessToken || response.data.access_token;
+    const refreshToken = response.data.refreshToken || response.data.refresh_token;
+
+    if (token && response.data.user) {
+      sessionService.saveSession({
+        token,
+        refreshToken,
+        user: response.data.user,
+      });
+    }
+
+    return response;
   }
 
   /**
@@ -43,7 +56,7 @@ class AuthService {
    * @param useremail - User email (optional, required if user doesn't have email)
    * @returns Promise with deletion confirmation
    */
-  async deleteAccount(userid: number, useremail?: string): Promise<ApiResponse<any>> {
+  async deleteAccount(userid: number, useremail?: string): Promise<ApiResponse<{ message?: string }>> {
     const payload: { userid: number; useremail?: string } = { userid };
     if (useremail) {
       payload.useremail = useremail;

@@ -3,6 +3,14 @@ import { authService } from '../services/authService';
 import type { User } from '../types';
 
 type Step = 1 | 2 | 3;
+type ApiErrorLike = {
+  statusCode?: number;
+  details?: string;
+  message?: string;
+};
+
+const getApiError = (err: unknown): ApiErrorLike =>
+  err && typeof err === 'object' ? (err as ApiErrorLike) : {};
 
 const DeleteMyAccount: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<Step>(1);
@@ -45,12 +53,13 @@ const DeleteMyAccount: React.FC = () => {
         setSuccess(response.data.message || 'OTP sent successfully to your mobile number');
         setCurrentStep(2);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const apiError = getApiError(err);
       // Handle 404 - User not found
-      if (err?.statusCode === 404) {
-        setError(err?.details || 'No account exists with this mobile number.');
+      if (apiError.statusCode === 404) {
+        setError(apiError.details || 'No account exists with this mobile number.');
       } else {
-        setError(err?.message || 'No account exists with this mobile number.');
+        setError(apiError.message || 'No account exists with this mobile number.');
       }
     } finally {
       setLoading(false);
@@ -80,8 +89,9 @@ const DeleteMyAccount: React.FC = () => {
           setEmail(response.data.user.useremail);
         }
       }
-    } catch (err: any) {
-      setError(err?.message || 'Invalid OTP. Please try again.');
+    } catch (err: unknown) {
+      const apiError = getApiError(err);
+      setError(apiError.message || 'Invalid OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -118,8 +128,9 @@ const DeleteMyAccount: React.FC = () => {
         setSuccess('Your account has been successfully deleted. We\'re sorry to see you go!');
         setIsDeleted(true);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete account. Please try again.');
+    } catch (err: unknown) {
+      const apiError = getApiError(err);
+      setError(apiError.message || 'Failed to delete account. Please try again.');
     } finally {
       setLoading(false);
     }
