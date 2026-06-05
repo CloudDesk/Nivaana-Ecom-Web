@@ -204,9 +204,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </p>
         )}
 
-        {(outOfStock || stockMessage) && (
+        {stockMessage && !outOfStock && (
           <p className={cn("mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 font-semibold text-red-600", compact ? "text-[11px]" : "text-xs")}>
-            {stockMessage || "Currently out of stock. Add to wishlist and check back later."}
+            {stockMessage}
           </p>
         )}
 
