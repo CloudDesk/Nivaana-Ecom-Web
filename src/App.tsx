@@ -21,6 +21,7 @@ import Checkout from './pages/Checkout';
 import SavedAddresses from './pages/SavedAddresses';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
+import Promotions from './pages/Promotions';
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
             <Route path="/account" element={<Account />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/payments" element={<Payments />} />
+            <Route path="/promotions" element={<Promotions />} />
             <Route path="/addresses" element={<SavedAddresses />} />
             <Route path="/cart" element={<Cart />} />
             <Route path="/checkout" element={<Checkout />} />

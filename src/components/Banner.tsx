@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { BannerItem } from '../types';
 
 interface BannerProps {
@@ -37,6 +38,9 @@ const Banner: React.FC<BannerProps> = ({ items }) => {
       return newLoaded;
     });
   };
+
+  const arrowClass =
+    "absolute top-1/2 z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 
   return (
     <div className="relative w-full h-96 md:h-[500px] lg:h-[600px] overflow-hidden">
@@ -104,21 +108,17 @@ const Banner: React.FC<BannerProps> = ({ items }) => {
       {/* Navigation Arrows */}
       <button
         onClick={goToPrevious}
-        className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white p-3 rounded-full transition-all duration-200 backdrop-blur-sm z-20"
+        className={`${arrowClass} left-2 sm:left-4`}
         aria-label="Previous slide"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
+        <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
       </button>
       <button
         onClick={goToNext}
-        className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white p-3 rounded-full transition-all duration-200 backdrop-blur-sm z-20"
+        className={`${arrowClass} right-2 sm:right-4`}
         aria-label="Next slide"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight className="h-5 w-5 stroke-[2.4]" />
       </button>
 
       {/* Dots Indicator */}

@@ -3,8 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowLeft,
-  ArrowRight,
+  ChevronLeft,
   ChevronRight,
   HeartHandshake,
   Sparkles,
@@ -87,6 +86,9 @@ const productImage = (product?: Product) =>
   usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || fallbackProduct;
 
 const wrapIndex = (index: number, length: number) => (index + length) % length;
+
+const carouselArrowClass =
+  "grid h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
@@ -273,17 +275,19 @@ const Home: React.FC = () => {
                 <div className="hidden gap-2 sm:flex">
                   <Button
                     variant="icon"
+                    className={carouselArrowClass}
                     aria-label="Previous hero slide"
                     onClick={() => setActiveSlide((activeSlide + heroSlides.length - 1) % heroSlides.length)}
                   >
-                    <ArrowLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
                   </Button>
                   <Button
                     variant="icon"
+                    className={carouselArrowClass}
                     aria-label="Next hero slide"
                     onClick={() => setActiveSlide((activeSlide + 1) % heroSlides.length)}
                   >
-                    <ArrowRight className="h-4 w-4" />
+                    <ChevronRight className="h-5 w-5 stroke-[2.4]" />
                   </Button>
                 </div>
               </div>
@@ -319,11 +323,11 @@ const Home: React.FC = () => {
 
           <div className="relative">
             <button
-              className="absolute -left-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)] md:grid"
+              className={cn("absolute -left-14 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
               onClick={() => scrollFragrances(-1)}
               aria-label="Previous fragrances"
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
             </button>
 
             <div
@@ -353,11 +357,11 @@ const Home: React.FC = () => {
             </div>
 
             <button
-              className="absolute -right-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)] md:grid"
+              className={cn("absolute -right-14 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
               onClick={() => scrollFragrances(1)}
               aria-label="Next fragrances"
             >
-              <ArrowRight className="h-5 w-5" />
+              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
             </button>
           </div>
         </div>
@@ -396,11 +400,11 @@ const Home: React.FC = () => {
 
           <div className="relative">
             <button
-              className="absolute -left-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)] lg:grid"
+              className={cn("absolute -left-14 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollNewArrivals(-1)}
               aria-label="Previous new arrivals"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
             </button>
 
             <div
@@ -453,11 +457,11 @@ const Home: React.FC = () => {
             </div>
 
             <button
-              className="absolute -right-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)] lg:grid"
+              className={cn("absolute -right-14 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollNewArrivals(1)}
               aria-label="Next new arrivals"
             >
-              <ArrowRight className="h-4 w-4" />
+              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
             </button>
           </div>
         </div>
@@ -604,11 +608,11 @@ function DealTripleSlider({
   return (
     <div className="relative -mx-4 overflow-hidden px-14 py-4 sm:-mx-8 sm:px-20 lg:px-24 lg:py-6">
       <button
-        className="absolute left-3 top-[46%] z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-sm transition duration-200 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)] sm:left-5"
+        className={cn("absolute left-3 top-[46%] z-20 -translate-y-1/2 sm:left-5", carouselArrowClass)}
         onClick={() => move(-1)}
         aria-label="Previous deal"
       >
-        <ArrowLeft className="h-5 w-5" />
+        <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
       </button>
 
       <motion.div
@@ -749,11 +753,11 @@ function DealTripleSlider({
       </motion.div>
 
       <button
-        className="absolute right-3 top-[46%] z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-sm transition duration-200 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)] sm:right-5"
+        className={cn("absolute right-3 top-[46%] z-20 -translate-y-1/2 sm:right-5", carouselArrowClass)}
         onClick={() => move(1)}
         aria-label="Next deal"
       >
-        <ArrowRight className="h-5 w-5" />
+        <ChevronRight className="h-5 w-5 stroke-[2.4]" />
       </button>
 
       <div className="mt-2 flex justify-center gap-2">

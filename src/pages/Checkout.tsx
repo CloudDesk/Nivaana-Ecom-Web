@@ -16,11 +16,23 @@ import { addressService, type Address, type AddressPayload } from "../services/a
 import { cartService } from "../services/cartService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import { platformProductService } from "../services/productPlatformService";
+import { promotionService, type AppliedPromotion } from "../services/promotionService";
 import { getUserDisplayName, sessionService } from "../services/sessionService";
 import { Button } from "../components/ui/button";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import type { Product } from "../types";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
+import {
+  buildPromotionCartData,
+  buildPromotionEvaluationCartItems,
+  cartPromotionSignature,
+  clearSelectedCartPromotion,
+  getPromotionCartTotals,
+  productUnitPrice,
+  readSelectedCartPromotion,
+  saveSelectedCartPromotion,
+  type SelectedCartPromotion,
+} from "../lib/cartPromotions";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
@@ -55,13 +67,15 @@ const formatCurrency = (value: number) => `Rs. ${Math.max(value, 0).toLocaleStri
 const productImage = (product?: Product) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
 
-const productUnitPrice = (product?: Product) =>
-  product ? Math.max(Number(product.price || 0) - Number(product.discount || 0), 0) : 0;
-
 const quantityFor = (quantity: unknown) => {
   const parsed = Number(quantity);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.promotion_id || 0);
+
+const appliedPromotionDiscount = (promotions: AppliedPromotion[]) =>
+  promotions.reduce((sum, promotion) => sum + Number(promotion.discount_amount || 0), 0);
 
 const INDIAN_STATES = [
   "Andhra Pradesh",
@@ -104,10 +118,14 @@ const Checkout: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
+  const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
+    readSelectedCartPromotion(user?.id)
+  );
 
   useEffect(() => {
     if (userId) {
       setAddressForm(emptyAddressForm(userId, userMobile));
+      setSelectedPromotion(readSelectedCartPromotion(userId));
     }
   }, [userId, userMobile]);
 
@@ -143,14 +161,98 @@ const Checkout: React.FC = () => {
     [cartItems, products]
   );
 
-  const mrpTotal = enrichedItems.reduce((sum, row) => sum + Number(row.product?.price || 0) * row.quantity, 0);
-  const subtotal = enrichedItems.reduce((sum, row) => sum + productUnitPrice(row.product) * row.quantity, 0);
-  const productDiscount = enrichedItems.reduce(
-    (sum, row) => sum + Number(row.product?.discount || 0) * row.quantity,
+  const promotionRows = useMemo(
+    () =>
+      enrichedItems
+        .filter(({ product, quantity }) => product && quantity > 0)
+        .map(({ item, product, quantity }) => ({
+          cartRecordId: item.id,
+          productid: item.productid,
+          product,
+          quantity,
+        })),
+    [enrichedItems]
+  );
+  const promotionCartData = useMemo(() => buildPromotionCartData(promotionRows), [promotionRows]);
+  const promotionEvaluationItems = useMemo(() => buildPromotionEvaluationCartItems(promotionRows), [promotionRows]);
+  const cartSignature = useMemo(() => cartPromotionSignature(promotionRows), [promotionRows]);
+  const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
+  const mrpTotal = cartTotals.mrpTotal;
+  const productDiscount = cartTotals.productDiscount;
+  const shipping = cartTotals.shipping;
+  const total = cartTotals.total;
+  const selectedPromotionId = selectedPromotion?.promotionId ?? null;
+
+  const activeEvaluationsQuery = useQuery({
+    queryKey: ["checkout-active-promotion-evaluations", userId, cartSignature],
+    queryFn: () => promotionService.getActiveEvaluations(userId!),
+    enabled: Boolean(userId && promotionRows.length > 0),
+    staleTime: 1000 * 15,
+  });
+
+  const backendEvaluation = activeEvaluationsQuery.data?.data?.evaluations?.[0] ?? null;
+  const backendAppliedPromotions = backendEvaluation?.applied_promotions ?? [];
+  const manualAppliedPromotion = backendAppliedPromotions.find(
+    (promotion) => !promotion.is_auto && appliedPromotionId(promotion) > 0
+  );
+
+  const promotionEvaluationQuery = useQuery({
+    queryKey: ["checkout-promotion-evaluation", userId, selectedPromotionId, cartSignature],
+    queryFn: async () => {
+      await promotionService.evaluateAutomatic({
+        userId: String(userId),
+        cartItems: promotionEvaluationItems,
+        currentTotal: total,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+
+      return promotionService.evaluate({
+        cartId: `cart-${userId}`,
+        userId: String(userId),
+        promotionId: selectedPromotionId!,
+        cartData: promotionCartData,
+        cartItems: promotionEvaluationItems,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+    },
+    enabled: Boolean(
+      userId &&
+        selectedPromotionId &&
+        promotionRows.length > 0 &&
+        !activeEvaluationsQuery.isLoading &&
+        !manualAppliedPromotion
+    ),
+    retry: false,
+  });
+
+  const promotionEvaluation = promotionEvaluationQuery.data?.data;
+  const backendPromotionDiscount = backendEvaluation
+    ? Number(
+        backendEvaluation.total_discount ??
+          Math.max(Number(backendEvaluation.original_total || total) - Number(backendEvaluation.discounted_total || total), 0)
+      ) || appliedPromotionDiscount(backendAppliedPromotions)
+    : 0;
+  const localPromotionDiscount =
+    selectedPromotion && !promotionEvaluationQuery.isError
+      ? Number(promotionEvaluation?.total_discount ?? selectedPromotion.totalDiscount ?? 0)
+      : 0;
+  const promotionDiscount = Math.min(backendPromotionDiscount || localPromotionDiscount, total);
+  const checkoutTotal = Math.max(
+    Number(backendEvaluation?.discounted_total ?? promotionEvaluation?.discounted_total ?? total - promotionDiscount),
     0
   );
-  const shipping = subtotal > 0 && subtotal < 999 ? 40 : 0;
-  const total = subtotal + shipping;
+  const activeEvaluationId = backendEvaluation?.evaluation_id || (promotionEvaluationQuery.isError ? undefined : promotionEvaluation?.evaluation_id || selectedPromotion?.evaluationId);
+  const promotionLabel = manualAppliedPromotion?.promotion_name || selectedPromotion?.promotionName || "Promotion";
+  const hasPromotionDiscount = promotionDiscount > 0 || Boolean(manualAppliedPromotion || selectedPromotion);
+  const isPromotionResolving = Boolean(
+    activeEvaluationsQuery.isLoading ||
+      activeEvaluationsQuery.isFetching ||
+      (selectedPromotion && (promotionEvaluationQuery.isLoading || promotionEvaluationQuery.isFetching))
+  );
   const selectedAddress = addresses.find((address) => address.id === selectedAddressId) ?? null;
   const checkoutStockIssues = enrichedItems
     .map(({ item, product, quantity }) => {
@@ -176,6 +278,80 @@ const Checkout: React.FC = () => {
   const checkoutBackendIssueMap = new Map(
     Object.entries(backendStockErrors).map(([productid, message]) => [Number(productid), message])
   );
+
+  useEffect(() => {
+    if (!userId || !backendEvaluation || !manualAppliedPromotion || !cartSignature) return;
+
+    const nextPromotion: SelectedCartPromotion = {
+      userId,
+      promotionId: appliedPromotionId(manualAppliedPromotion),
+      promotionName: manualAppliedPromotion.promotion_name || "Applied promotion",
+      evaluationId: backendEvaluation.evaluation_id,
+      cartSignature,
+      totalDiscount: promotionDiscount,
+      discountedTotal: checkoutTotal,
+      appliedPromotions: backendAppliedPromotions,
+      expiresAt: backendEvaluation.expires_at,
+      savedAt: Date.now(),
+    };
+
+    const alreadySynced =
+      selectedPromotion?.evaluationId === nextPromotion.evaluationId &&
+      selectedPromotion?.cartSignature === nextPromotion.cartSignature &&
+      selectedPromotion?.totalDiscount === nextPromotion.totalDiscount &&
+      selectedPromotion?.appliedPromotions.length === nextPromotion.appliedPromotions.length;
+
+    if (alreadySynced) return;
+
+    saveSelectedCartPromotion(nextPromotion);
+    setSelectedPromotion(nextPromotion);
+  }, [
+    backendAppliedPromotions,
+    backendEvaluation,
+    cartSignature,
+    checkoutTotal,
+    manualAppliedPromotion,
+    promotionDiscount,
+    selectedPromotion,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (!userId || !selectedPromotion || !promotionEvaluation) return;
+
+    const nextDiscount = Number(promotionEvaluation.total_discount || 0);
+    const nextTotal = Number(promotionEvaluation.discounted_total || checkoutTotal);
+    const hasChanged =
+      selectedPromotion.evaluationId !== promotionEvaluation.evaluation_id ||
+      selectedPromotion.cartSignature !== cartSignature ||
+      selectedPromotion.totalDiscount !== nextDiscount ||
+      selectedPromotion.discountedTotal !== nextTotal;
+
+    if (!hasChanged) return;
+
+    const nextPromotion: SelectedCartPromotion = {
+      ...selectedPromotion,
+      userId,
+      evaluationId: promotionEvaluation.evaluation_id,
+      cartSignature,
+      totalDiscount: nextDiscount,
+      discountedTotal: nextTotal,
+      appliedPromotions: promotionEvaluation.applied_promotions ?? [],
+      expiresAt: promotionEvaluation.expires_at,
+      savedAt: Date.now(),
+    };
+
+    saveSelectedCartPromotion(nextPromotion);
+    setSelectedPromotion(nextPromotion);
+  }, [cartSignature, checkoutTotal, promotionEvaluation, selectedPromotion, userId]);
+
+  useEffect(() => {
+    if (!userId || !selectedPromotion || !promotionEvaluationQuery.isError || manualAppliedPromotion) return;
+
+    clearSelectedCartPromotion(userId);
+    setSelectedPromotion(null);
+  }, [manualAppliedPromotion, promotionEvaluationQuery.isError, selectedPromotion, userId]);
+
   useEffect(() => {
     if (!selectedAddressId && addresses.length > 0) {
       const preferredAddress = addresses.find((address) => address.isdefaultaddress) ?? addresses[0];
@@ -263,6 +439,10 @@ const Checkout: React.FC = () => {
         throw new Error(`Cannot process payment. ${checkoutStockIssues.length} product(s) have stock issues.`);
       }
 
+      if (isPromotionResolving) {
+        throw new Error("Please wait while we confirm your promotion.");
+      }
+
       const unavailableItems = enrichedItems.filter(({ product }) => !product || Number(product.price || 0) <= 0);
       if (unavailableItems.length > 0) {
         throw new Error("Some cart items are missing product details. Please refresh the cart and try again.");
@@ -280,7 +460,7 @@ const Checkout: React.FC = () => {
         mode: "phonepe",
         order: orderItems,
         transaction: {
-          amount: Number(total.toFixed(2)),
+          amount: Number(checkoutTotal.toFixed(2)),
           mobilenumber: payerMobile,
           name: payerName.replace(/[^a-zA-Z ]/g, "").trim() || "Nivaana Customer",
           productid: orderItems.map((item) => item.productid),
@@ -289,6 +469,7 @@ const Checkout: React.FC = () => {
         },
         shippingCost: shipping,
         taxAmount: 0,
+        evaluation_ids: activeEvaluationId ? [activeEvaluationId] : undefined,
       });
     },
     onSuccess: (response) => {
@@ -580,9 +761,21 @@ const Checkout: React.FC = () => {
               <SummaryLine label="Items total" value={formatCurrency(mrpTotal)} />
               <SummaryLine label="Product discount" value={`-${formatCurrency(productDiscount)}`} />
               <SummaryLine label="Shipping" value={shipping === 0 ? "Free" : formatCurrency(shipping)} />
+              {hasPromotionDiscount && (
+                <SummaryLine
+                  label={promotionEvaluationQuery.isError && !manualAppliedPromotion ? "Promotion" : promotionLabel}
+                  value={
+                    promotionEvaluationQuery.isError && !manualAppliedPromotion
+                      ? "Removed"
+                      : isPromotionResolving
+                        ? "Checking..."
+                        : `-${formatCurrency(promotionDiscount)}`
+                  }
+                />
+              )}
               <div className="flex justify-between border-t border-[var(--color-border)] pt-4 text-base font-bold text-[var(--color-text)]">
                 <span>Total</span>
-                <span>{formatCurrency(total)}</span>
+                <span>{formatCurrency(checkoutTotal)}</span>
               </div>
             </div>
 
@@ -593,9 +786,10 @@ const Checkout: React.FC = () => {
                 paymentMutation.isPending ||
                 createAddressMutation.isPending ||
                 updateAddressMutation.isPending ||
+                isPromotionResolving ||
                 checkoutStockIssues.length > 0 ||
                 Object.keys(backendStockErrors).length > 0 ||
-                total <= 0
+                checkoutTotal <= 0
               }
               onClick={() => paymentMutation.mutate()}
             >
