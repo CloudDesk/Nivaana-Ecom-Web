@@ -1,0 +1,901 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  CheckCircle2,
+  CreditCard,
+  Home,
+  Loader2,
+  MapPin,
+  PackageCheck,
+  Pencil,
+  Trash2,
+  WalletCards,
+} from "lucide-react";
+import { addressService, type Address, type AddressPayload } from "../services/addressService";
+import { cartService } from "../services/cartService";
+import { paymentService, type PaymentOrderItem } from "../services/paymentService";
+import { platformProductService } from "../services/productPlatformService";
+import { getUserDisplayName, sessionService } from "../services/sessionService";
+import { Button } from "../components/ui/button";
+import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import type { Product } from "../types";
+import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
+
+const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
+
+const emptyAddressForm = (userId: number, mobileNumber: number): AddressPayload => ({
+  userid: userId,
+  name: "",
+  mobilenumber: mobileNumber || 0,
+  pincode: 0,
+  doornumber: "",
+  address: "",
+  landmark: "",
+  state: "",
+  city: "",
+  isdefaultaddress: true,
+});
+
+const addressToPayload = (address: Address): AddressPayload => ({
+  userid: address.userid,
+  name: address.name || "",
+  mobilenumber: Number(address.mobilenumber || 0),
+  pincode: Number(address.pincode || 0),
+  doornumber: address.doornumber || "",
+  address: address.address || "",
+  landmark: address.landmark || "",
+  state: address.state || "",
+  city: address.city || "",
+  isdefaultaddress: Boolean(address.isdefaultaddress),
+});
+
+const formatCurrency = (value: number) => `Rs. ${Math.max(value, 0).toLocaleString("en-IN")}`;
+
+const productImage = (product?: Product) =>
+  product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
+
+const productUnitPrice = (product?: Product) =>
+  product ? Math.max(Number(product.price || 0) - Number(product.discount || 0), 0) : 0;
+
+const quantityFor = (quantity: unknown) => {
+  const parsed = Number(quantity);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const INDIAN_STATES = [
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chhattisgarh",
+  "Delhi",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Odisha",
+  "Punjab",
+  "Rajasthan",
+  "Tamil Nadu",
+  "Telangana",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+];
+
+const Checkout: React.FC = () => {
+  const queryClient = useQueryClient();
+  const [session] = useState(() => sessionService.getSession());
+  const user = session?.user;
+  const userId = user?.id;
+  const userMobile = Number(user?.usermobilenumber ?? 0);
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
+  const [addressForm, setAddressForm] = useState<AddressPayload>(() =>
+    emptyAddressForm(user?.id ?? 0, Number(user?.usermobilenumber ?? 0))
+  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (userId) {
+      setAddressForm(emptyAddressForm(userId, userMobile));
+    }
+  }, [userId, userMobile]);
+
+  const cartQuery = useQuery({
+    queryKey: ["cart", userId],
+    queryFn: () => cartService.getCart(userId!),
+    enabled: Boolean(userId),
+  });
+
+  const productsQuery = useQuery({
+    queryKey: ["checkout-products"],
+    queryFn: () => platformProductService.getProducts(1, 100),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const addressesQuery = useQuery({
+    queryKey: ["addresses", userId],
+    queryFn: () => addressService.list(userId!),
+    enabled: Boolean(userId),
+  });
+
+  const addresses = addressesQuery.data?.data ?? [];
+  const cartItems = (cartQuery.data?.data ?? []).filter((item) => item.iscart);
+  const products = productsQuery.data?.data ?? [];
+
+  const enrichedItems = useMemo(
+    () =>
+      cartItems.map((item) => ({
+        item,
+        quantity: quantityFor(item.quantity),
+        product: products.find((product) => product.id === item.productid),
+      })),
+    [cartItems, products]
+  );
+
+  const mrpTotal = enrichedItems.reduce((sum, row) => sum + Number(row.product?.price || 0) * row.quantity, 0);
+  const subtotal = enrichedItems.reduce((sum, row) => sum + productUnitPrice(row.product) * row.quantity, 0);
+  const productDiscount = enrichedItems.reduce(
+    (sum, row) => sum + Number(row.product?.discount || 0) * row.quantity,
+    0
+  );
+  const shipping = subtotal > 0 && subtotal < 999 ? 40 : 0;
+  const total = subtotal + shipping;
+  const selectedAddress = addresses.find((address) => address.id === selectedAddressId) ?? null;
+  const checkoutStockIssues = enrichedItems
+    .map(({ item, product, quantity }) => {
+      if (isOutOfStock(product)) {
+        return {
+          productid: item.productid,
+          message: "This item is currently out of stock.",
+        };
+      }
+
+      const availableStock = getAvailableStock(product);
+      if (quantity > availableStock) {
+        return {
+          productid: item.productid,
+          message: stockLimitMessage(availableStock),
+        };
+      }
+
+      return null;
+    })
+    .filter((issue): issue is { productid: number; message: string } => Boolean(issue));
+  const checkoutStockIssueMap = new Map(checkoutStockIssues.map((issue) => [issue.productid, issue.message]));
+  const checkoutBackendIssueMap = new Map(
+    Object.entries(backendStockErrors).map(([productid, message]) => [Number(productid), message])
+  );
+  useEffect(() => {
+    if (!selectedAddressId && addresses.length > 0) {
+      const preferredAddress = addresses.find((address) => address.isdefaultaddress) ?? addresses[0];
+      setSelectedAddressId(preferredAddress.id);
+      setShowAddressForm(false);
+    }
+
+    if (addresses.length === 0 && !addressesQuery.isLoading) {
+      setShowAddressForm(true);
+    }
+  }, [addresses, addressesQuery.isLoading, selectedAddressId]);
+
+  const createAddressMutation = useMutation({
+    mutationFn: (payload: AddressPayload) => addressService.create(payload),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
+      setSelectedAddressId(response.data.id);
+      setShowAddressForm(false);
+      setEditingAddressId(null);
+      setStatusMessage("Address saved.");
+      setErrorMessage("");
+      if (userId) {
+        setAddressForm(emptyAddressForm(userId, userMobile));
+      }
+    },
+    onError: () => {
+      setErrorMessage("Could not save this address. Please check the details and try again.");
+      setStatusMessage("");
+    },
+  });
+
+  const updateAddressMutation = useMutation({
+    mutationFn: ({ addressId, payload }: { addressId: number; payload: AddressPayload }) =>
+      addressService.update(addressId, payload),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
+      setSelectedAddressId(response.data.id);
+      setShowAddressForm(false);
+      setEditingAddressId(null);
+      setStatusMessage("Address updated.");
+      setErrorMessage("");
+      if (userId) {
+        setAddressForm(emptyAddressForm(userId, userMobile));
+      }
+    },
+    onError: () => {
+      setErrorMessage("Could not update this address. Please try again.");
+      setStatusMessage("");
+    },
+  });
+
+  const deleteAddressMutation = useMutation({
+    mutationFn: (addressId: number) => addressService.remove(addressId),
+    onSuccess: (_, addressId) => {
+      queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
+      if (selectedAddressId === addressId) {
+        const nextAddress = addresses.find((address) => address.id !== addressId);
+        setSelectedAddressId(nextAddress?.id ?? null);
+        setShowAddressForm(!nextAddress);
+      }
+      if (editingAddressId === addressId) {
+        setEditingAddressId(null);
+        if (userId) {
+          setAddressForm(emptyAddressForm(userId, userMobile));
+        }
+      }
+      setStatusMessage("Address deleted.");
+      setErrorMessage("");
+    },
+    onError: () => {
+      setErrorMessage("Could not delete this address. Please try again.");
+      setStatusMessage("");
+    },
+  });
+
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      setBackendStockErrors({});
+
+      if (!user || !selectedAddress) {
+        throw new Error("Select a delivery address before payment.");
+      }
+
+      if (checkoutStockIssues.length > 0) {
+        throw new Error(`Cannot process payment. ${checkoutStockIssues.length} product(s) have stock issues.`);
+      }
+
+      const unavailableItems = enrichedItems.filter(({ product }) => !product || Number(product.price || 0) <= 0);
+      if (unavailableItems.length > 0) {
+        throw new Error("Some cart items are missing product details. Please refresh the cart and try again.");
+      }
+
+      const payerName = selectedAddress.name.trim() || getUserDisplayName(user) || "Nivaana Customer";
+      const payerMobile = String(selectedAddress.mobilenumber).replace(/\D/g, "");
+      const orderItems = buildOrderItems(enrichedItems, user.id, selectedAddress.id);
+
+      if (payerMobile.length !== 10 || payerMobile.startsWith("0")) {
+        throw new Error("Please use a valid 10-digit mobile number for payment.");
+      }
+
+      return paymentService.initiate({
+        mode: "phonepe",
+        order: orderItems,
+        transaction: {
+          amount: Number(total.toFixed(2)),
+          mobilenumber: payerMobile,
+          name: payerName.replace(/[^a-zA-Z ]/g, "").trim() || "Nivaana Customer",
+          productid: orderItems.map((item) => item.productid),
+          transactionfor: "product",
+          userId: user.id,
+        },
+        shippingCost: shipping,
+        taxAmount: 0,
+      });
+    },
+    onSuccess: (response) => {
+      const data = response.data;
+      const redirectUrl = data.redirectUrl || data.next_steps?.phonepe?.redirectUrl;
+
+      if (redirectUrl) {
+        if (data.merchantTransactionId) {
+          localStorage.setItem(PENDING_TRANSACTION_KEY, data.merchantTransactionId);
+        }
+        window.location.assign(redirectUrl);
+        return;
+      }
+
+      setStatusMessage(data.message || "Payment initiated.");
+      setErrorMessage("");
+    },
+    onError: (error) => {
+      const validationErrors = extractProductValidationErrors(error);
+      if (Object.keys(validationErrors).length > 0) {
+        setBackendStockErrors(validationErrors);
+      }
+      setErrorMessage(error instanceof Error ? error.message : "Could not start checkout. Please try again.");
+      setStatusMessage("");
+    },
+  });
+
+  const handleAddressSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrorMessage("");
+    setStatusMessage("");
+
+    if (!user) return;
+
+    if (!addressForm.name.trim() || !addressForm.address.trim() || !addressForm.city.trim() || !addressForm.state.trim()) {
+      setErrorMessage("Please fill the required address fields.");
+      return;
+    }
+
+    if (String(addressForm.mobilenumber).length !== 10 || String(addressForm.pincode).length !== 6) {
+      setErrorMessage("Please enter a valid 10-digit mobile number and 6-digit pincode.");
+      return;
+    }
+
+    const payload = { ...addressForm, userid: user.id };
+    if (editingAddressId) {
+      updateAddressMutation.mutate({ addressId: editingAddressId, payload });
+      return;
+    }
+
+    createAddressMutation.mutate(payload);
+  };
+
+  if (!session) {
+    return (
+      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
+        <section className="mx-auto max-w-3xl rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
+          <CreditCard className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
+          <h1 className="mt-4 text-2xl font-bold text-[var(--color-text)]">Login to checkout</h1>
+          <p className="mt-2 text-sm text-[var(--color-muted)]">Your cart will be ready after OTP login.</p>
+          <Link to="/login" className="mt-6 inline-flex">
+            <Button>Login with OTP</Button>
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (cartQuery.isLoading || productsQuery.isLoading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[var(--color-surface)] px-4">
+        <div className="flex items-center gap-3 rounded-[var(--radius-md)] bg-white p-5 text-sm font-semibold text-[var(--color-secondary)] shadow-[var(--shadow-card)]">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Loading checkout
+        </div>
+      </main>
+    );
+  }
+
+  if (cartItems.length === 0) {
+    return (
+      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
+        <section className="mx-auto max-w-3xl rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
+          <PackageCheck className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
+          <h1 className="mt-4 text-2xl font-bold text-[var(--color-text)]">Your cart is empty</h1>
+          <Link to="/products" className="mt-6 inline-flex">
+            <Button>Shop Products</Button>
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:py-10">
+      <section className="mx-auto max-w-6xl">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)]">Checkout</p>
+            <h1 className="mt-2 text-3xl font-bold text-[var(--color-text)]">Complete your order</h1>
+          </div>
+          <Link to="/cart" className="text-sm font-semibold text-[var(--color-secondary)]">
+            Back to cart
+          </Link>
+        </div>
+
+        {(statusMessage || errorMessage) && (
+          <div
+            className={`mt-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
+              errorMessage ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
+            }`}
+          >
+            {errorMessage || statusMessage}
+          </div>
+        )}
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="space-y-6">
+            <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
+                    <MapPin className="h-5 w-5" />
+                  </span>
+                  <h2 className="text-lg font-bold text-[var(--color-text)]">Delivery Address</h2>
+                </div>
+                {addresses.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    className="px-3"
+                    onClick={() => {
+                      if (showAddressForm) {
+                        setShowAddressForm(false);
+                        setEditingAddressId(null);
+                      } else {
+                        setAddressForm(emptyAddressForm(userId ?? 0, userMobile));
+                        setEditingAddressId(null);
+                        setShowAddressForm(true);
+                      }
+                    }}
+                  >
+                    {showAddressForm ? "Hide" : "Add"}
+                  </Button>
+                )}
+              </div>
+
+              {addressesQuery.isLoading ? (
+                <p className="mt-5 text-sm text-[var(--color-muted)]">Loading addresses...</p>
+              ) : addresses.length > 0 ? (
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {addresses.map((address) => (
+                    <div
+                      key={address.id}
+                      onClick={() => setSelectedAddressId(address.id)}
+                      className={`relative min-h-36 rounded-[var(--radius-sm)] border p-4 pr-24 text-left transition ${
+                        selectedAddressId === address.id
+                          ? "border-[var(--color-secondary)] bg-[var(--color-surface)]"
+                          : "border-[var(--color-border)] bg-white hover:border-[var(--color-secondary)]/50"
+                      }`}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedAddressId(address.id);
+                        }
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Edit address for ${address.name}`}
+                        className="absolute right-12 top-3 grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)] disabled:opacity-50"
+                        disabled={updateAddressMutation.isPending || deleteAddressMutation.isPending}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedAddressId(address.id);
+                          setEditingAddressId(address.id);
+                          setAddressForm(addressToPayload(address));
+                          setShowAddressForm(true);
+                          setErrorMessage("");
+                          setStatusMessage("");
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete address for ${address.name}`}
+                        className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        disabled={deleteAddressMutation.isPending}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (window.confirm("Delete this address?")) {
+                            deleteAddressMutation.mutate(address.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                      <span className="flex items-start gap-3">
+                        <Home className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-secondary)]" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold text-[var(--color-text)]">{address.name}</span>
+                          <span className="mt-1 block text-sm leading-6 text-[var(--color-muted)]">
+                            {address.doornumber}, {address.address}, {address.city}, {address.state} - {address.pincode}
+                          </span>
+                          <span className="mt-2 block text-xs font-semibold text-[var(--color-secondary)]">
+                            {address.mobilenumber}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {showAddressForm && (
+                <AddressForm
+                  form={addressForm}
+                  isEditing={Boolean(editingAddressId)}
+                  isPending={createAddressMutation.isPending || updateAddressMutation.isPending}
+                  onChange={setAddressForm}
+                  onCancel={() => {
+                    setShowAddressForm(false);
+                    setEditingAddressId(null);
+                    if (userId) {
+                      setAddressForm(emptyAddressForm(userId, userMobile));
+                    }
+                  }}
+                  onSubmit={handleAddressSubmit}
+                />
+              )}
+            </section>
+
+            <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
+                  <WalletCards className="h-5 w-5" />
+                </span>
+                <h2 className="text-lg font-bold text-[var(--color-text)]">Payment</h2>
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                <PaymentOption
+                  checked
+                  icon={<CreditCard className="h-5 w-5" />}
+                  title="Pay Online"
+                  detail="UPI, cards, wallets"
+                  onClick={() => undefined}
+                />
+              </div>
+            </section>
+          </div>
+
+          <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
+            <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>
+            <div className="mt-5 space-y-4">
+              {enrichedItems.map(({ item, product, quantity }) => (
+                <div key={item.id} className="flex gap-3">
+                  <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]">
+                    <img
+                      src={productImage(product)}
+                      alt={product?.name || "Product image"}
+                      className="h-full w-full object-cover"
+                      onError={(event) => {
+                        event.currentTarget.src = fallbackProduct;
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-bold text-[var(--color-text)]">
+                      {product?.name || `Product #${item.productid}`}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--color-muted)]">Qty {quantity}</p>
+                    {(checkoutStockIssueMap.has(item.productid) || checkoutBackendIssueMap.has(item.productid)) && (
+                      <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600">
+                        {checkoutBackendIssueMap.get(item.productid) || checkoutStockIssueMap.get(item.productid)}
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-sm font-bold text-[var(--color-secondary)]">
+                    {formatCurrency(productUnitPrice(product) * quantity)}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 space-y-3 border-t border-[var(--color-border)] pt-5 text-sm">
+              <SummaryLine label="Items total" value={formatCurrency(mrpTotal)} />
+              <SummaryLine label="Product discount" value={`-${formatCurrency(productDiscount)}`} />
+              <SummaryLine label="Shipping" value={shipping === 0 ? "Free" : formatCurrency(shipping)} />
+              <div className="flex justify-between border-t border-[var(--color-border)] pt-4 text-base font-bold text-[var(--color-text)]">
+                <span>Total</span>
+                <span>{formatCurrency(total)}</span>
+              </div>
+            </div>
+
+            <Button
+              className="mt-6 w-full gap-2"
+              disabled={
+                !selectedAddress ||
+                paymentMutation.isPending ||
+                createAddressMutation.isPending ||
+                updateAddressMutation.isPending ||
+                checkoutStockIssues.length > 0 ||
+                Object.keys(backendStockErrors).length > 0 ||
+                total <= 0
+              }
+              onClick={() => paymentMutation.mutate()}
+            >
+              {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+              Pay Now
+            </Button>
+          </aside>
+        </div>
+      </section>
+    </main>
+  );
+};
+
+function extractProductValidationErrors(error: unknown): Record<number, string> {
+  const data = (error as { data?: { validation_errors?: unknown[]; errors?: unknown[] } })?.data;
+  const rawErrors = Array.isArray(data?.validation_errors)
+    ? data.validation_errors
+    : Array.isArray(data?.errors)
+      ? data.errors
+      : [];
+
+  return rawErrors.reduce<Record<number, string>>((messages, rawError) => {
+    if (!rawError || typeof rawError !== "object") return messages;
+
+    const validationError = rawError as {
+      productid?: unknown;
+      productname?: unknown;
+      quantity?: unknown;
+      available?: unknown;
+      availableqty?: unknown;
+      error?: unknown;
+      error_code?: unknown;
+    };
+    const productId = Number(validationError.productid);
+    if (!Number.isFinite(productId)) return messages;
+
+    const available = Number(validationError.availableqty ?? validationError.available);
+    const requested = Number(validationError.quantity);
+    const productName = typeof validationError.productname === "string" ? validationError.productname : "This item";
+    const backendMessage = typeof validationError.error === "string" ? validationError.error : "";
+
+    if (Number.isFinite(available) && Number.isFinite(requested)) {
+      messages[productId] = `${productName}: only ${available} available, but cart has ${requested}.`;
+      return messages;
+    }
+
+    messages[productId] = backendMessage || `${productName} has a stock validation issue.`;
+    return messages;
+  }, {});
+}
+
+function buildOrderItems(
+  rows: Array<{ item: { id: number; productid: number }; product?: Product; quantity: number }>,
+  userId: number,
+  addressId: number
+): PaymentOrderItem[] {
+  return rows.map(({ item, product, quantity }) => {
+    const price = Number(product?.price || 0);
+    const discount = Number(product?.discount || 0);
+    const discountedPrice = Math.max(price - discount, 0);
+
+    return {
+      addressid: addressId,
+      cartId: item.id,
+      discountamount: discount * quantity,
+      orderamount: discountedPrice * quantity,
+      productamount: price,
+      productcategory: product?.category || product?.subcategory || "General",
+      productid: item.productid,
+      productname: product?.name || `Product ${item.productid}`,
+      quantity,
+      userid: userId,
+    };
+  });
+}
+
+function AddressForm({
+  form,
+  isEditing,
+  isPending,
+  onChange,
+  onCancel,
+  onSubmit,
+}: {
+  form: AddressPayload;
+  isEditing: boolean;
+  isPending: boolean;
+  onChange: React.Dispatch<React.SetStateAction<AddressPayload>>;
+  onCancel: () => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const [alternatePhone, setAlternatePhone] = useState("");
+  const [addressType, setAddressType] = useState<"home" | "work">("home");
+
+  const setField = (field: keyof AddressPayload, value: string | boolean) => {
+    onChange((current) => ({
+      ...current,
+      [field]: field === "mobilenumber" || field === "pincode" ? Number(value) : value,
+    }));
+  };
+
+  return (
+    <form className="mt-5 border-t border-[var(--color-border)] pt-5" onSubmit={onSubmit}>
+      <div className="rounded-[var(--radius-sm)] bg-[var(--color-primary)]/10 p-5 sm:p-6">
+        <p className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
+          {isEditing ? "Edit Address" : "Add New Address"}
+        </p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Field label="Name" value={form.name} onChange={(value) => setField("name", value)} required />
+          <Field
+            label="10-digit mobile number"
+            value={form.mobilenumber ? String(form.mobilenumber) : ""}
+            inputMode="numeric"
+            onChange={(value) => setField("mobilenumber", value.replace(/\D/g, "").slice(0, 10))}
+            required
+          />
+          <Field
+            label="Pincode"
+            value={form.pincode ? String(form.pincode) : ""}
+            inputMode="numeric"
+            onChange={(value) => setField("pincode", value.replace(/\D/g, "").slice(0, 6))}
+            required
+          />
+          <Field label="Locality" value={form.doornumber} onChange={(value) => setField("doornumber", value)} required />
+          <Field
+            className="sm:col-span-2"
+            label="Address (Area and Street)"
+            value={form.address}
+            onChange={(value) => setField("address", value)}
+            multiline
+            required
+          />
+          <Field label="City/District/Town" value={form.city} onChange={(value) => setField("city", value)} required />
+          <Field
+            label="State"
+            value={form.state}
+            onChange={(value) => setField("state", value)}
+            options={INDIAN_STATES}
+            required
+          />
+          <Field label="Landmark (Optional)" value={form.landmark} onChange={(value) => setField("landmark", value)} />
+          <Field
+            label="Alternate Phone (Optional)"
+            value={alternatePhone}
+            inputMode="numeric"
+            onChange={(value) => setAlternatePhone(value.replace(/\D/g, "").slice(0, 10))}
+          />
+        </div>
+
+        <div className="mt-5">
+          <p className="text-sm font-medium text-[var(--color-muted)]">Address Type</p>
+          <div className="mt-3 flex flex-wrap gap-8">
+            {(["home", "work"] as const).map((type) => (
+              <label key={type} className="inline-flex items-center gap-3 text-sm font-semibold capitalize text-[var(--color-text)]">
+                <input
+                  type="radio"
+                  name="address-type"
+                  checked={addressType === type}
+                  onChange={() => setAddressType(type)}
+                  className="h-5 w-5 accent-[var(--color-secondary)]"
+                />
+                {type}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <label className="mt-5 flex items-center gap-3 text-sm font-semibold text-[var(--color-text)]">
+          <input
+            type="checkbox"
+            checked={Boolean(form.isdefaultaddress)}
+            onChange={(event) => setField("isdefaultaddress", event.target.checked)}
+            className="h-4 w-4 accent-[var(--color-secondary)]"
+          />
+          Default address
+        </label>
+
+        <div className="mt-6 flex flex-wrap items-center gap-5">
+          <Button className="h-12 min-w-48 shadow-none hover:shadow-none" disabled={isPending}>
+            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isEditing ? "Update" : "Save"}
+          </Button>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={onCancel}
+            className="h-12 px-4 text-sm font-bold uppercase tracking-[0.04em] text-[var(--color-secondary)] transition hover:text-[var(--color-text)] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  className = "",
+  inputMode,
+  multiline,
+  options,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  multiline?: boolean;
+  options?: string[];
+  required?: boolean;
+}) {
+  const shellClass =
+    "block rounded-none border border-[var(--color-border)] bg-white px-4 py-3 transition focus-within:border-[var(--color-secondary)] focus-within:ring-1 focus-within:ring-[var(--color-secondary)]";
+  const controlClass =
+    "mt-1 w-full border-0 bg-transparent p-0 text-base font-medium text-[#050505] outline-none placeholder:text-[#858b94]";
+
+  return (
+    <label className={`${shellClass} ${multiline ? "min-h-28" : "min-h-[62px]"} ${className}`}>
+      <span className="block text-sm font-medium text-[#767d87]">{label}</span>
+      {options ? (
+        <select
+          value={value}
+          required={required}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${controlClass} appearance-auto`}
+        >
+          <option value="">Select state</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : multiline ? (
+        <textarea
+          value={value}
+          required={required}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${controlClass} min-h-16 resize-none`}
+        />
+      ) : (
+        <input
+          value={value}
+          inputMode={inputMode}
+          required={required}
+          onChange={(event) => onChange(event.target.value)}
+          className={controlClass}
+        />
+      )}
+    </label>
+  );
+}
+
+function PaymentOption({
+  checked,
+  icon,
+  title,
+  detail,
+  onClick,
+}: {
+  checked: boolean;
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-24 items-center gap-4 rounded-[var(--radius-sm)] border p-4 text-left transition ${
+        checked
+          ? "border-[var(--color-secondary)] bg-[var(--color-surface)]"
+          : "border-[var(--color-border)] bg-white hover:border-[var(--color-secondary)]/50"
+      }`}
+    >
+      <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold text-[var(--color-text)]">{title}</span>
+        <span className="mt-1 block text-xs text-[var(--color-muted)]">{detail}</span>
+      </span>
+      {checked && <CheckCircle2 className="h-5 w-5 text-[var(--color-success)]" />}
+    </button>
+  );
+}
+
+function SummaryLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4 text-[var(--color-muted)]">
+      <span>{label}</span>
+      <span className="font-semibold text-[var(--color-text)]">{value}</span>
+    </div>
+  );
+}
+
+export default Checkout;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
@@ -17,6 +17,11 @@ const Login: React.FC = () => {
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (mobile.length < 10) {
+      setMessage("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
@@ -33,6 +38,11 @@ const Login: React.FC = () => {
 
   const verifyOtp = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (otp.length < 4) {
+      setMessage("Please enter the 4-digit OTP.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
@@ -59,38 +69,79 @@ const Login: React.FC = () => {
   if (session) return null;
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
-      <section className="mx-auto max-w-lg rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-8 shadow-[var(--shadow-card)]">
-        <Smartphone className="h-8 w-8 text-[var(--color-secondary)]" />
-        <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login with OTP</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-          Use your mobile number to access cart, wishlist, and checkout.
-        </p>
+    <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-[#f7f6f2] px-6 py-12 lg:min-h-[calc(100vh-5rem)]">
+      <div className="w-full min-w-0 max-w-[21.375rem] sm:max-w-[28rem]">
+        <div className="flex items-center justify-center gap-4">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[#edca78] bg-[#fff8e8] text-[#d29210]" aria-hidden="true">
+            <Smartphone className="h-6 w-6" strokeWidth={1.8} />
+          </span>
+          <h1 className="font-['Cormorant_Garamond'] text-3xl font-bold leading-tight text-[#070707] sm:text-4xl">
+            Login with OTP
+          </h1>
+        </div>
 
-        <form className="mt-6 space-y-4" onSubmit={otpSent ? verifyOtp : requestOtp}>
-          <input
-            value={mobile}
-            onChange={(event) => setMobile(event.target.value.replace(/\D/g, "").slice(0, 10))}
-            placeholder="10-digit mobile number"
-            className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-4 text-sm outline-none focus:border-[var(--color-secondary)]"
-            required
-          />
-          {otpSent && (
+        <form className="mt-8" onSubmit={otpSent ? verifyOtp : requestOtp}>
+          <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="mobile">
+            Mobile Number
+          </label>
+          <div className="mt-3 flex h-12 overflow-hidden rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white transition focus-within:border-[#d29210] focus-within:ring-2 focus-within:ring-[#d29210]/15">
+            <div className="flex min-w-[4.75rem] items-center justify-center border-r border-[#e1d9cc] bg-[#fbf7ef] text-xs font-semibold text-[#3f3122]">
+              IN&nbsp;<span className="text-sm">+91</span>
+            </div>
             <input
-              value={otp}
-              onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="4-digit OTP"
-              className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-4 text-sm outline-none focus:border-[var(--color-secondary)]"
+              id="mobile"
+              value={mobile}
+              onChange={(event) => setMobile(event.target.value.replace(/\D/g, "").slice(0, 10))}
+              placeholder="10-digit mobile number"
+              inputMode="numeric"
+              autoComplete="tel"
+              className="min-w-0 flex-1 px-4 text-sm text-[#33271b] outline-none placeholder:text-[#b9aea0]"
               required
             />
+          </div>
+          <p className="mt-2 text-sm text-[#9b9188]">We'll send a one-time password to this number.</p>
+
+          {otpSent && (
+            <div className="mt-5">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="otp">
+                One-Time Password
+              </label>
+              <input
+                id="otp"
+                value={otp}
+                onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="4-digit OTP"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[#d29210] focus:ring-2 focus:ring-[#d29210]/15"
+                required
+              />
+            </div>
           )}
-          {message && <p className="text-sm text-[var(--color-muted)]">{message}</p>}
-          <Button className="w-full" disabled={loading || mobile.length < 10}>
+
+          {message && <p className="mt-4 text-sm font-medium text-[#766c63]">{message}</p>}
+
+          <Button
+            className="mt-6 h-12 w-full bg-[#d29210] text-sm font-bold text-white shadow-none hover:bg-[#b97f0e] hover:shadow-none"
+            disabled={loading}
+          >
             {loading ? "Please wait..." : otpSent ? "Verify OTP" : "Send OTP"}
           </Button>
         </form>
-      </section>
-    </main>
+
+        <p className="mx-auto mt-8 max-w-[30rem] text-center text-sm leading-6 text-[#9a8e80]">
+          By continuing, you agree to Nivaana's{" "}
+          <Link className="font-medium text-[#c17c00] hover:text-[#9e6500]" to="/terms">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link className="font-medium text-[#c17c00] hover:text-[#9e6500]" to="/privacy">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      </div>
+    </section>
   );
 };
 

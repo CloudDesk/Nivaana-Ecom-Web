@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Heart, LogOut, ShoppingBag, Trash2, UserRound } from "lucide-react";
+import { CreditCard, Heart, LogOut, MapPin, PackageCheck, ShoppingBag, Trash2, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { getUserDisplayName, sessionService, type AuthSession } from "../services/sessionService";
 
@@ -76,6 +76,24 @@ const Account: React.FC = () => {
               title="Wishlist"
               description="See products you saved for later."
               to="/wishlist"
+            />
+            <AccountLink
+              icon={<PackageCheck className="h-5 w-5" />}
+              title="Orders"
+              description="View order history, tracking, and purchased items."
+              to="/orders"
+            />
+            <AccountLink
+              icon={<CreditCard className="h-5 w-5" />}
+              title="Payments"
+              description="Check pending online payment status."
+              to="/payments"
+            />
+            <AccountLink
+              icon={<MapPin className="h-5 w-5" />}
+              title="Saved Addresses"
+              description="Manage your delivery addresses for checkout."
+              to="/addresses"
             />
             <AccountLink
               icon={<Trash2 className="h-5 w-5" />}

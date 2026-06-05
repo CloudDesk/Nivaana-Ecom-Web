@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, Minus, Plus, ShoppingBag, Star } from "lucide-react";
+import { Heart, ShoppingBag, Star } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Product } from "../types";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
@@ -10,6 +10,7 @@ import { cartService } from "../services/cartService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { cn } from "../lib/utils";
+import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 
 interface ProductCardProps {
   product: Product;
@@ -23,9 +24,6 @@ const getProductImage = (product: Product) =>
   product.medium?.[0] || product.small?.[0] || product.large?.[0] || fallbackProduct;
 
 const getFinalPrice = (product: Product) => Math.max(product.price - product.discount, 0);
-const clampCartQuantity = (quantity: number, availableQuantity: number) =>
-  Math.min(Math.max(quantity, 0), Math.max(availableQuantity || 99, 1));
-
 const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -33,6 +31,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
   const rating = product.averagerating ?? 4.7;
   const session = sessionService.getSession();
   const [, setStoreVersion] = useState(0);
+  const [stockMessage, setStockMessage] = useState("");
+  const availableStock = getAvailableStock(product);
+  const outOfStock = isOutOfStock(product);
+  const lowStock = isLowStock(product);
 
   useEffect(() => {
     const refresh = () => setStoreVersion((version) => version + 1);
@@ -68,9 +70,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
   const cartQuantity = session ? cartItem?.quantity ?? 0 : guestItem?.iscart ? guestItem.quantity : 0;
   const isInCart = cartQuantity > 0;
   const isInWishlist = session ? Boolean(wishlistItem) : Boolean(guestItem?.iswishlist);
+  const cartLimitReached = !outOfStock && Number(cartQuantity) >= availableStock;
+  const canAddToCart = !outOfStock && !cartLimitReached;
 
   const addItem = useMutation<unknown, Error, "cart" | "wishlist">({
     mutationFn: (mode: "cart" | "wishlist") => {
+      if (mode === "cart") {
+        if (outOfStock) {
+          return Promise.reject(new Error("This item is currently out of stock."));
+        }
+
+        if (cartLimitReached) {
+          return Promise.reject(new Error(stockLimitMessage(availableStock)));
+        }
+      }
+
       if (!session) {
         if (mode === "cart") {
           guestStoreService.addToCart(product.id);
@@ -115,56 +129,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
+      setStockMessage("");
     },
-  });
-
-  const updateCartQuantity = useMutation<unknown, Error, number>({
-    mutationFn: (quantity: number) => {
-      const nextQuantity = clampCartQuantity(quantity, product.availablequantity);
-
-      if (!session) {
-        guestStoreService.updateCartQuantity(product.id, nextQuantity);
-        return Promise.resolve();
-      }
-
-      if (!cartItem) {
-        if (nextQuantity <= 0) return Promise.resolve();
-
-        return cartService.upsert({
-          id: wishlistItem?.id,
-          productid: product.id,
-          userid: session.user.id,
-          quantity: nextQuantity,
-          iscart: true,
-          iswishlist: isInWishlist,
-        });
-      }
-
-      if (nextQuantity <= 0) {
-        return cartItem.iswishlist
-          ? cartService.upsert({
-              id: cartItem.id,
-              productid: cartItem.productid,
-              userid: cartItem.userid,
-              quantity: cartItem.quantity,
-              iscart: false,
-              iswishlist: true,
-            })
-          : cartService.remove(cartItem.id);
-      }
-
-      return cartService.upsert({
-        id: cartItem.id,
-        productid: cartItem.productid,
-        userid: cartItem.userid,
-        quantity: nextQuantity,
-        iscart: true,
-        iswishlist: cartItem.iswishlist || isInWishlist,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
-      queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
+    onError: (error) => {
+      setStockMessage(error.message);
     },
   });
 
@@ -182,12 +150,17 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
         />
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+          {outOfStock && (
+            <span className={cn("rounded-full bg-red-600 font-bold uppercase tracking-wide text-white", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]")}>
+              Out of stock
+            </span>
+          )}
           {(product.isdealoftheday || hasDiscount) && (
             <span className={cn("rounded-full bg-[var(--color-primary)] font-bold uppercase tracking-wide text-[var(--color-secondary)]", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]")}>
               {product.isdealoftheday ? "Deal" : "Sale"}
             </span>
           )}
-          {product.productstatus === "low_stock" && (
+          {lowStock && (
             <span className={cn("rounded-full bg-white font-bold uppercase tracking-wide text-[var(--color-danger)]", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]")}>
               Low stock
             </span>
@@ -231,68 +204,43 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </p>
         )}
 
-        <div className={cn("flex items-end justify-between gap-2", compact ? "mt-3" : "mt-4 gap-3")}>
-          <div>
-            <div className={cn("font-bold text-[var(--color-secondary)]", compact ? "text-base" : "text-lg")}>
+        {(outOfStock || stockMessage) && (
+          <p className={cn("mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 font-semibold text-red-600", compact ? "text-[11px]" : "text-xs")}>
+            {stockMessage || "Currently out of stock. Add to wishlist and check back later."}
+          </p>
+        )}
+
+        <div className={cn("flex items-end justify-between gap-3", compact ? "mt-3" : "mt-4")}>
+          <div className="min-w-0 flex-1">
+            <div className={cn("font-bold leading-tight text-[var(--color-secondary)]", compact ? "text-base" : "text-lg")}>
               Rs. {getFinalPrice(product).toLocaleString("en-IN")}
             </div>
             {hasDiscount && (
-              <div className={cn("text-[var(--color-muted)]", compact ? "text-[10px]" : "text-xs")}>
+              <div className={cn("mt-1 leading-4 text-[var(--color-muted)]", compact ? "text-[10px]" : "text-xs")}>
                 <span className="line-through">Rs. {product.price.toLocaleString("en-IN")}</span>
                 {!compact && <span className="ml-2 text-[var(--color-danger)]">Save Rs. {product.discount}</span>}
               </div>
             )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            {isInCart && (
-              <div className="inline-flex h-9 items-center overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-secondary)]">
-                <button
-                  type="button"
-                  className="grid h-full w-9 place-items-center transition hover:bg-white"
-                  aria-label={`Decrease ${product.name} quantity`}
-                  disabled={updateCartQuantity.isPending}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    updateCartQuantity.mutate(cartQuantity - 1);
-                  }}
-                >
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <span className="min-w-12 px-2 text-center text-xs font-bold">Qty {cartQuantity}</span>
-                <button
-                  type="button"
-                  className="grid h-full w-9 place-items-center transition hover:bg-white disabled:opacity-40"
-                  aria-label={`Increase ${product.name} quantity`}
-                  disabled={
-                    updateCartQuantity.isPending ||
-                    product.productstatus === "out_of_stock" ||
-                    cartQuantity >= Math.max(product.availablequantity || 99, 1)
-                  }
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    updateCartQuantity.mutate(cartQuantity + 1);
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
+          <div className="flex shrink-0 flex-col items-end justify-end gap-2">
             <Button
               aria-label={isInCart ? `${product.name} added to cart` : `Add ${product.name} to cart`}
               aria-pressed={isInCart}
-              disabled={addItem.isPending || (product.productstatus === "out_of_stock" && !isInCart)}
+              disabled={addItem.isPending || !canAddToCart}
               className={cn(
                 "shrink-0 gap-2 transition-all",
-                compact ? "h-9 min-h-9 px-3" : "h-10 min-h-10 px-3",
+                !canAddToCart && "cursor-not-allowed opacity-60",
+                compact ? "h-9 min-h-9 px-3" : "h-10 min-h-10 min-w-12 px-3",
+                isInCart ? "w-full" : compact ? "w-9" : "w-12",
                 isInCart && "bg-[var(--color-secondary)] text-white hover:bg-[var(--color-secondary)]/90"
               )}
               onClick={(event) => {
                 event.stopPropagation();
-                if (!isInCart) addItem.mutate("cart");
+                if (canAddToCart) addItem.mutate("cart");
               }}
             >
               <ShoppingBag className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-              {isInCart && !compact && <span className="text-xs font-bold">Added to cart</span>}
+              {!compact && <span className="text-xs font-bold">{outOfStock ? "Out" : isInCart ? "Added" : ""}</span>}
             </Button>
           </div>
         </div>

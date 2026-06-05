@@ -62,6 +62,7 @@ const Navbar: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [, setStoreVersion] = useState(0);
+  const categoryCloseTimer = React.useRef<number | null>(null);
   const session = sessionService.getSession();
 
   const { data: productResponse } = useQuery({
@@ -144,6 +145,18 @@ const Navbar: React.FC = () => {
     navigate(`/products?search=${encodeURIComponent(query)}`);
   };
 
+  const openCategoriesMenu = () => {
+    window.clearTimeout(categoryCloseTimer.current ?? undefined);
+    setIsCategoriesOpen(true);
+  };
+
+  const closeCategoriesMenu = () => {
+    window.clearTimeout(categoryCloseTimer.current ?? undefined);
+    categoryCloseTimer.current = window.setTimeout(() => {
+      setIsCategoriesOpen(false);
+    }, 120);
+  };
+
   const searchBox = (inputClassName: string, dropdownClassName = "") => (
     <>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
@@ -214,17 +227,24 @@ const Navbar: React.FC = () => {
             >
               Home
             </Link>
-            <div className="relative">
+            <div className="relative" onMouseEnter={openCategoriesMenu} onMouseLeave={closeCategoriesMenu}>
               <button
+                type="button"
                 className={cn(
                   "inline-flex h-11 items-center gap-1 rounded-[var(--radius-sm)] px-4 text-sm font-semibold transition hover:bg-[var(--color-surface)]",
                   isCategoriesOpen ? "text-[var(--color-secondary)]" : "text-[var(--color-text)]"
                 )}
-                onClick={() => setIsCategoriesOpen((value) => !value)}
+                onClick={() => navigate("/products")}
+                onFocus={openCategoriesMenu}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setIsCategoriesOpen(false);
+                  }
+                }}
                 aria-expanded={isCategoriesOpen}
                 aria-haspopup="true"
               >
-                Categories <ChevronDown className={cn("h-4 w-4 transition", isCategoriesOpen && "rotate-180")} />
+                Products <ChevronDown className={cn("h-4 w-4 transition", isCategoriesOpen && "rotate-180")} />
               </button>
             </div>
             <Link
@@ -297,6 +317,8 @@ const Navbar: React.FC = () => {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
             className="hidden border-b border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] lg:block"
+            onMouseEnter={openCategoriesMenu}
+            onMouseLeave={closeCategoriesMenu}
           >
             <div className={cn(theme.layout.container, "grid grid-cols-3 gap-12 py-10")}>
               {categoryGroups.map((group) => (
@@ -339,7 +361,7 @@ const Navbar: React.FC = () => {
               </Link>
               <details className="rounded-[var(--radius-sm)] px-3 py-3">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--color-secondary)]">
-                  Categories
+                  Products
                 </summary>
                 <div className="mt-4 space-y-5">
                   {categoryGroups.map((group) => (

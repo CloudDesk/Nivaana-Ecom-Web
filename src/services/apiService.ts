@@ -26,6 +26,8 @@ export interface ApiError {
   error: string;
   message?: string;
   statusCode?: number;
+  validation_errors?: unknown[];
+  errors?: unknown[];
 }
 
 // HTTP Methods
@@ -80,7 +82,19 @@ class ApiService {
       return data;
     } catch (error) {
       console.error('API Request Error:', error);
-      
+
+      if (axios.isAxiosError(error)) {
+        const responseData = error.response?.data as Partial<ApiError> | undefined;
+        const message = responseData?.message || responseData?.error || error.message;
+        const apiError = new Error(message) as Error & {
+          data?: Partial<ApiError>;
+          statusCode?: number;
+        };
+        apiError.data = responseData;
+        apiError.statusCode = error.response?.status;
+        throw apiError;
+      }
+
       throw error;
     }
   }

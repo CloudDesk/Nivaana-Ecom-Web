@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,11 +24,14 @@ import { platformProductService } from "../services/productPlatformService";
 import { sessionService } from "../services/sessionService";
 import type { Product } from "../types";
 import { cn } from "../lib/utils";
+import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 
 const formatLabel = (value?: string | null) =>
   value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "Nivaana";
 
 const finalPrice = (product: Product) => Math.max(product.price - product.discount, 0);
+const clampQuantity = (quantity: number, availableQuantity: number) =>
+  Math.min(Math.max(quantity, 0), Math.max(availableQuantity, 0));
 
 const productImages = (product?: Product) => {
   const images = [
@@ -40,6 +43,11 @@ const productImages = (product?: Product) => {
   return Array.from(new Set(images.length ? images : [fallbackProduct]));
 };
 
+const quantityFor = (quantity: unknown) => {
+  const parsed = Number(quantity);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const ProductDetails: React.FC = () => {
   const { productId } = useParams();
   const id = Number(productId);
@@ -48,6 +56,7 @@ const ProductDetails: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [message, setMessage] = useState("");
+  const [, setGuestStoreVersion] = useState(0);
 
   const productQuery = useQuery({
     queryKey: ["product", id],
@@ -85,12 +94,24 @@ const ProductDetails: React.FC = () => {
     queryFn: () => platformProductService.getProducts(1, 24),
   });
 
+  useEffect(() => {
+    const refresh = () => setGuestStoreVersion((version) => version + 1);
+    window.addEventListener("nivaana-guest-store-change", refresh);
+    window.addEventListener("nivaana-session-change", refresh);
+    return () => {
+      window.removeEventListener("nivaana-guest-store-change", refresh);
+      window.removeEventListener("nivaana-session-change", refresh);
+    };
+  }, []);
+
   const product = productQuery.data;
   const images = useMemo(() => productImages(product), [product]);
   const activeImage = images[selectedImage] || fallbackProduct;
   const rating = product?.averagerating ?? 4.7;
   const hasDiscount = Boolean(product && product.discount > 0);
-  const isOutOfStock = product?.productstatus === "out_of_stock" || (product?.availablequantity ?? 0) <= 0;
+  const availableStock = getAvailableStock(product);
+  const productOutOfStock = isOutOfStock(product);
+  const productLowStock = isLowStock(product);
   const userCartItem = session ? cartQuery.data?.data.find((item) => item.productid === product?.id && item.iscart) : undefined;
   const userWishlistItem = session
     ? wishlistQuery.data?.data.find((item) => item.productid === product?.id && item.iswishlist)
@@ -100,6 +121,9 @@ const ProductDetails: React.FC = () => {
   const cartItem = userCartItem ?? guestCartItem;
   const wishlistItem = userWishlistItem ?? guestWishlistItem;
   const isInWishlist = Boolean(wishlistItem);
+  const cartQuantity = quantityFor(cartItem?.quantity);
+  const displayedQuantity = cartItem ? cartQuantity : productOutOfStock ? 0 : quantity;
+  const maxQuantity = Math.max(availableStock, 0);
 
   const relatedProducts = useMemo(
     () =>
@@ -110,17 +134,27 @@ const ProductDetails: React.FC = () => {
     [product?.category, product?.id, relatedQuery.data?.data]
   );
 
-  const addToCart = useMutation({
+  const addToCart = useMutation<string | undefined>({
     mutationFn: async () => {
       if (!product) return;
       setMessage("");
+      const quantityToAdd = cartItem ? 1 : quantity;
+      const requestedQuantity = Number(userCartItem?.quantity ?? guestCartItem?.quantity ?? 0) + quantityToAdd;
 
-      if (!session) {
-        guestStoreService.addToCart(product.id, quantity);
-        return;
+      if (productOutOfStock) {
+        throw new Error("This item is currently out of stock. You can save it to wishlist.");
       }
 
-      const nextQuantity = Math.max((cartItem?.quantity ?? 0) + quantity, 1);
+      if (requestedQuantity > availableStock) {
+        throw new Error(stockLimitMessage(availableStock));
+      }
+
+      if (!session) {
+        guestStoreService.addToCart(product.id, quantityToAdd);
+        return cartItem ? "Cart quantity updated." : "Added to cart.";
+      }
+
+      const nextQuantity = clampQuantity(requestedQuantity, availableStock);
       await cartService.upsert({
         id: userCartItem?.id ?? userWishlistItem?.id,
         productid: product.id,
@@ -129,15 +163,83 @@ const ProductDetails: React.FC = () => {
         iscart: true,
         iswishlist: Boolean(wishlistItem),
       });
+      return cartItem ? "Cart quantity updated." : "Added to cart.";
     },
-    onSuccess: () => {
+    onSuccess: (successMessage) => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      setMessage("Added to cart.");
+      if (successMessage) setMessage(successMessage);
     },
+    onError: (error) => setMessage(error.message),
   });
 
-  const toggleWishlist = useMutation({
+  const updateCartQuantity = useMutation<string | undefined, Error, number>({
+    mutationFn: async (nextQuantityValue: number) => {
+      if (!product) return;
+      setMessage("");
+      const nextQuantity = clampQuantity(nextQuantityValue, availableStock);
+
+      if (nextQuantityValue > displayedQuantity && productOutOfStock) {
+        throw new Error("This item is currently out of stock. You can save it to wishlist.");
+      }
+
+      if (nextQuantityValue > availableStock) {
+        throw new Error(stockLimitMessage(availableStock));
+      }
+
+      if (!session) {
+        guestStoreService.updateCartQuantity(product.id, nextQuantity);
+        return nextQuantity <= 0 ? "Removed from cart." : "Cart quantity updated.";
+      }
+
+      if (!userCartItem) {
+        if (nextQuantity <= 0) return;
+        await cartService.upsert({
+          id: userWishlistItem?.id,
+          productid: product.id,
+          userid: session.user.id,
+          quantity: nextQuantity,
+          iscart: true,
+          iswishlist: Boolean(wishlistItem),
+        });
+        return "Cart quantity updated.";
+      }
+
+      if (nextQuantity <= 0) {
+        if (userCartItem.iswishlist || Boolean(wishlistItem)) {
+          await cartService.upsert({
+            id: userCartItem.id,
+            productid: userCartItem.productid,
+            userid: userCartItem.userid,
+            quantity: Math.max(userCartItem.quantity || 1, 1),
+            iscart: false,
+            iswishlist: true,
+          });
+        } else {
+          await cartService.remove(userCartItem.id);
+        }
+        return "Removed from cart.";
+      }
+
+      await cartService.upsert({
+        id: userCartItem.id,
+        productid: userCartItem.productid,
+        userid: userCartItem.userid,
+        quantity: nextQuantity,
+        iscart: true,
+        iswishlist: userCartItem.iswishlist || Boolean(wishlistItem),
+      });
+      return "Cart quantity updated.";
+    },
+    onSuccess: (successMessage) => {
+      queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+      queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
+      if (successMessage) setMessage(successMessage);
+    },
+    onError: (error) => setMessage(error.message),
+  });
+
+  const toggleWishlist = useMutation<"added" | "removed" | undefined>({
     mutationFn: async () => {
       if (!product) return;
       setMessage("");
@@ -145,24 +247,28 @@ const ProductDetails: React.FC = () => {
       if (!session) {
         if (isInWishlist) {
           guestStoreService.removeFromWishlist(product.id);
+          return "removed";
         } else {
           guestStoreService.addToWishlist(product.id);
+          return "added";
         }
-        return;
       }
 
       const existing = userWishlistItem ?? userCartItem;
       if (isInWishlist && existing) {
-        return userCartItem
-          ? cartService.upsert({
-              id: existing.id,
-              productid: product.id,
-              userid: session.user.id,
-              quantity: Math.max(userCartItem.quantity || 1, 1),
-              iscart: true,
-              iswishlist: false,
-            })
-          : cartService.remove(existing.id);
+        if (userCartItem) {
+          await cartService.upsert({
+            id: existing.id,
+            productid: product.id,
+            userid: session.user.id,
+            quantity: Math.max(userCartItem.quantity || 1, 1),
+            iscart: true,
+            iswishlist: false,
+          });
+        } else {
+          await cartService.remove(existing.id);
+        }
+        return "removed";
       }
 
       await cartService.upsert({
@@ -173,11 +279,12 @@ const ProductDetails: React.FC = () => {
         iscart: Boolean(cartItem),
         iswishlist: true,
       });
+      return "added";
     },
-    onSuccess: () => {
+    onSuccess: (action) => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      setMessage(isInWishlist ? "Removed from wishlist." : "Saved to wishlist.");
+      if (action) setMessage(action === "removed" ? "Removed from wishlist." : "Saved to wishlist.");
     },
   });
 
@@ -250,7 +357,8 @@ const ProductDetails: React.FC = () => {
           <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--color-secondary)]">
               <span>{formatLabel(product.subcategory || product.category)}</span>
-              {product.productstatus === "low_stock" && <span className="text-[var(--color-danger)]">Low Stock</span>}
+              {productOutOfStock && <span className="text-[var(--color-danger)]">Out of Stock</span>}
+              {productLowStock && <span className="text-[var(--color-danger)]">Low Stock</span>}
             </div>
 
             <h1 className="mt-3 text-2xl font-extrabold leading-tight text-[var(--color-text)] sm:text-3xl">{product.name}</h1>
@@ -261,7 +369,7 @@ const ProductDetails: React.FC = () => {
                 {rating.toFixed(1)}
               </span>
               <span>{(product.soldquantity || 0).toLocaleString("en-IN")} sold</span>
-              <span>{product.availablequantity} available</span>
+              <span>{availableStock} available</span>
             </div>
 
             <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
@@ -290,23 +398,44 @@ const ProductDetails: React.FC = () => {
             </div>
 
             <div className="mt-5">
+              {productOutOfStock && (
+                <p className="mb-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
+                  This item is currently out of stock. Add it to wishlist and check back later.
+                </p>
+              )}
               <p className="text-sm font-bold text-[var(--color-text)]">Choose quantity</p>
               <div className="mt-3 inline-flex h-11 items-center overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <button
                   type="button"
                   className="grid h-full w-11 place-items-center transition hover:bg-white disabled:opacity-40"
-                  onClick={() => setQuantity((value) => Math.max(value - 1, 1))}
-                  disabled={quantity <= 1}
-                  aria-label="Decrease quantity"
+                  onClick={() => {
+                    if (cartItem) {
+                      updateCartQuantity.mutate(cartQuantity - 1);
+                    } else {
+                      setQuantity((value) => Math.max(value - 1, 1));
+                    }
+                  }}
+                  disabled={cartItem ? updateCartQuantity.isPending : quantity <= 1}
+                  aria-label={cartItem && cartQuantity <= 1 ? "Remove from cart" : "Decrease quantity"}
                 >
                   <Minus className="h-4 w-4" />
                 </button>
-                <span className="min-w-16 px-3 text-center text-sm font-bold">Qty {quantity}</span>
+                <span className="min-w-16 px-3 text-center text-sm font-bold">Qty {displayedQuantity}</span>
                 <button
                   type="button"
                   className="grid h-full w-11 place-items-center transition hover:bg-white disabled:opacity-40"
-                  onClick={() => setQuantity((value) => Math.min(value + 1, Math.max(product.availablequantity || 1, 1)))}
-                  disabled={quantity >= Math.max(product.availablequantity || 1, 1)}
+                  onClick={() => {
+                    if (cartItem) {
+                      updateCartQuantity.mutate(cartQuantity + 1);
+                    } else {
+                      setQuantity((value) => Math.min(value + 1, maxQuantity));
+                    }
+                  }}
+                  disabled={
+                    updateCartQuantity.isPending ||
+                    productOutOfStock ||
+                    displayedQuantity >= maxQuantity
+                  }
                   aria-label="Increase quantity"
                 >
                   <Plus className="h-4 w-4" />
@@ -317,11 +446,11 @@ const ProductDetails: React.FC = () => {
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
               <Button
                 className="h-12 gap-2"
-                disabled={isOutOfStock || addToCart.isPending}
+                disabled={productOutOfStock || addToCart.isPending || (Boolean(cartItem) && cartQuantity >= maxQuantity)}
                 onClick={() => addToCart.mutate()}
               >
                 <ShoppingBag className="h-4 w-4" />
-                {isOutOfStock ? "Out of Stock" : cartItem ? "Add More" : "Add to Cart"}
+                {productOutOfStock ? "Out of Stock" : cartItem ? "Add More" : "Add to Cart"}
               </Button>
               <Button
                 variant="secondary"

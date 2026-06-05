@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -80,8 +80,11 @@ const brandPartners = ["NIVAANA", "KRAFTELLA", "AUORA", "AROMAHPURE", "RITUAL ED
 const formatLabel = (value?: string | null) =>
   value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "Nivaana";
 
+const usableImage = (images?: string[] | null) =>
+  images?.find((image) => image && !/example|placeholder/i.test(image));
+
 const productImage = (product?: Product) =>
-  product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
+  usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || fallbackProduct;
 
 const wrapIndex = (index: number, length: number) => (index + length) % length;
 
@@ -559,10 +562,13 @@ function DealTripleSlider({
   products: Product[];
   setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }) {
+  const navigate = useNavigate();
   const dragStartRef = useRef<number | null>(null);
   const lastDragDistanceRef = useRef(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const clickThreshold = 8;
+  const swipeThreshold = 36;
 
   if (loading) {
     return <Skeleton className="h-[260px] rounded-[28px] sm:h-[310px]" />;
@@ -588,18 +594,17 @@ function DealTripleSlider({
     setActiveIndex((current) => current + direction);
   };
 
-  const positions = [-1, 0, 1];
-  const cardThemes = [
-    "bg-[#edf7f1]",
-    "bg-[#f7efe7]",
-    "bg-[#f4edf8]",
-    "bg-[#eef4f7]",
-  ];
+  const resetDrag = () => {
+    dragStartRef.current = null;
+    setDragOffset(0);
+    setIsDragging(false);
+  };
 
+  const positions = [-1, 0, 1];
   return (
-    <div className="relative -mx-4 overflow-hidden px-4 py-2 sm:-mx-8 sm:px-8 lg:py-3">
+    <div className="relative -mx-4 overflow-hidden px-14 py-4 sm:-mx-8 sm:px-20 lg:px-24 lg:py-6">
       <button
-        className="absolute left-2 top-1/2 z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)] sm:left-4"
+        className="absolute left-3 top-[46%] z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-sm transition duration-200 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)] sm:left-5"
         onClick={() => move(-1)}
         aria-label="Previous deal"
       >
@@ -607,120 +612,136 @@ function DealTripleSlider({
       </button>
 
       <motion.div
-        className="relative h-[250px] cursor-grab select-none touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[300px] lg:h-[340px]"
+        className="relative h-[360px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[410px] lg:h-[450px]"
         onClickCapture={(event) => {
-          if (lastDragDistanceRef.current > 8) {
+          if (lastDragDistanceRef.current > clickThreshold) {
             event.preventDefault();
             event.stopPropagation();
           }
-        }}
-        onPointerDown={(event) => {
-          dragStartRef.current = event.clientX;
-          lastDragDistanceRef.current = 0;
-          setIsDragging(true);
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          if (dragStartRef.current === null) return;
-          const distance = event.clientX - dragStartRef.current;
-          lastDragDistanceRef.current = Math.abs(distance);
-          setDragOffset(Math.max(Math.min(distance, 220), -220));
-        }}
-        onPointerUp={(event) => {
-          if (dragStartRef.current === null) return;
-          const distance = event.clientX - dragStartRef.current;
-          if (distance < -70) move(1);
-          if (distance > 70) move(-1);
-          dragStartRef.current = null;
-          setDragOffset(0);
-          setIsDragging(false);
-        }}
-        onPointerCancel={() => {
-          dragStartRef.current = null;
-          setDragOffset(0);
-          setIsDragging(false);
         }}
       >
         {positions.map((position) => {
           const product = products[wrapIndex(activeIndex + position, products.length)];
           const isCenter = position === 0;
           const price = Math.max(product.price - product.discount, 0);
-          const cardX = position === -1 ? "-118%" : position === 1 ? "18%" : "-50%";
-          const normalizedIndex = wrapIndex(activeIndex + position, products.length);
+          const cardX = position === -1 ? "-106%" : position === 1 ? "6%" : "-50%";
 
           return (
             <motion.article
               key={product.id}
-              onClick={() => {
-                if (!isCenter) {
-                  setActiveIndex((current) => current + position);
+              onPointerDown={(event) => {
+                if ((event.target as HTMLElement).closest("button")) return;
+
+                dragStartRef.current = event.clientX;
+                lastDragDistanceRef.current = 0;
+                setIsDragging(true);
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (dragStartRef.current === null) return;
+                const distance = event.clientX - dragStartRef.current;
+                lastDragDistanceRef.current = Math.abs(distance);
+                setDragOffset(Math.max(Math.min(distance, 180), -180));
+              }}
+              onPointerUp={(event) => {
+                if (dragStartRef.current === null) return;
+                const distance = event.clientX - dragStartRef.current;
+                const dragDistance = Math.abs(distance);
+
+                lastDragDistanceRef.current = dragDistance;
+                resetDrag();
+
+                if (distance < -swipeThreshold) {
+                  move(1);
+                  return;
+                }
+
+                if (distance > swipeThreshold) {
+                  move(-1);
+                  return;
+                }
+
+                if ((event.target as HTMLElement).closest("button")) return;
+                if (dragDistance <= clickThreshold) {
+                  navigate(`/products/${product.id}`);
                 }
               }}
+              onPointerCancel={resetDrag}
               initial={false}
               animate={{
                 x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
-                y: isCenter ? 0 : 14,
-                rotateY: isCenter ? 0 : position === -1 ? 5 : -5,
-                scale: isCenter ? 1 : 0.88,
-                opacity: isCenter ? 1 : 0.62,
+                y: isCenter ? 0 : 18,
+                rotateY: 0,
+                scale: isCenter ? 1 : 0.86,
+                opacity: isCenter ? 1 : 0.64,
               }}
               transition={
                 isDragging
                   ? { duration: 0 }
                   : {
                       type: "spring",
-                      stiffness: 170,
-                      damping: 24,
-                      mass: 0.95,
+                      stiffness: 120,
+                      damping: 30,
+                      mass: 1.05,
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 h-[238px] w-[86vw] max-w-[660px] overflow-hidden rounded-[28px] border border-[var(--color-border)] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] sm:h-[286px] sm:w-[72vw] lg:h-[320px] lg:w-[48vw]",
-                cardThemes[normalizedIndex % cardThemes.length],
+                "absolute left-1/2 top-0 flex h-[342px] w-[78vw] max-w-[620px] cursor-pointer touch-pan-y flex-col overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#fff8e8] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[390px] sm:w-[62vw] lg:h-[430px] lg:w-[43vw]",
                 isCenter
-                  ? "z-10 shadow-[0_24px_70px_rgba(17,24,39,0.16)]"
-                  : "z-0 shadow-[0_12px_34px_rgba(17,24,39,0.08)]"
+                  ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
+                  : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
               )}
             >
-              <motion.img
-                src={productImage(product)}
-                alt=""
-                aria-hidden="true"
-                loading="lazy"
-                animate={{ scale: isCenter ? 1.04 : 1 }}
-                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute inset-y-0 right-0 h-full w-[62%] object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-white via-white/94 via-45% to-white/10" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_25%,rgba(255,255,255,0.55),transparent_32%)]" />
-              <div className="relative flex h-full max-w-[58%] flex-col justify-center p-5 sm:p-7 lg:p-8">
-                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-secondary)] sm:text-sm">
-                  {product.isdealoftheday ? "Deal of the Day" : "Limited Offer"}
-                </p>
-                <h3 className="mt-2 line-clamp-3 text-xl font-extrabold leading-tight text-[var(--color-text)] sm:text-3xl">
-                  {formatLabel(product.fragnancetype || product.subcategory)}
-                </h3>
-                <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-[var(--color-muted)]">
-                  {product.shortdescription || "Refresh your ritual with premium Nivaana fragrance."}
-                </p>
-                <div className="mt-4 flex items-end gap-3">
-                  <span className="text-xl font-extrabold text-[var(--color-text)] sm:text-2xl">
-                    Rs. {price.toLocaleString("en-IN")}
-                  </span>
-                  {product.discount > 0 && (
-                    <span className="pb-1 text-sm text-[var(--color-muted)] line-through">
-                      Rs. {product.price.toLocaleString("en-IN")}
-                    </span>
-                  )}
+              <div className="relative min-h-0 flex-1 overflow-hidden bg-[#efe6d4]">
+                <motion.img
+                  src={productImage(product)}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  loading="lazy"
+                  animate={{ scale: isCenter ? 1.01 : 1 }}
+                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                  className="pointer-events-none h-full w-full object-contain object-center"
+                />
+                <div className="pointer-events-none absolute right-4 top-4 hidden rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-[var(--color-secondary)] shadow-sm sm:block">
+                  {formatLabel(product.category)}
                 </div>
-                <Link to="/products" className="mt-4 inline-flex">
-                  <Button className="rounded-full bg-[var(--color-text)] px-5 text-white hover:bg-[var(--color-secondary)]">
-                    Explore Now <ChevronRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
+                <Button
+                  type="button"
+                  className="absolute bottom-4 left-4 h-10 rounded-full bg-[#f0c353] px-4 text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:px-5"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/products/${product.id}`);
+                  }}
+                >
+                  Explore <ChevronRight className="ml-1.5 h-4 w-4" />
+                </Button>
               </div>
-              <div className="pointer-events-none absolute bottom-4 right-5 hidden rounded-full bg-white/80 px-3 py-1 text-xs font-bold text-[var(--color-secondary)] shadow-sm sm:block">
-                {formatLabel(product.category)}
+              <div className="shrink-0 border-t border-[#edca78]/55 bg-[#fff8e8] p-4 sm:p-5">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#c17c00]">
+                      {product.isdealoftheday ? "Deal of the Day" : "Limited Offer"}
+                    </p>
+                    <h3 className="mt-1 line-clamp-2 text-lg font-extrabold leading-tight text-[var(--color-text)] sm:text-xl">
+                      {product.name}
+                    </h3>
+                    <p className="mt-1 line-clamp-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">
+                      {formatLabel(product.category)} - {formatLabel(product.subcategory)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-end gap-2 sm:justify-end">
+                    <span className="text-xl font-extrabold text-[var(--color-text)] sm:text-2xl">
+                      Rs. {price.toLocaleString("en-IN")}
+                    </span>
+                    {product.discount > 0 && (
+                      <span className="pb-1 text-sm text-[var(--color-muted)] line-through">
+                        Rs. {product.price.toLocaleString("en-IN")}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </motion.article>
           );
@@ -728,7 +749,7 @@ function DealTripleSlider({
       </motion.div>
 
       <button
-        className="absolute right-2 top-1/2 z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)] sm:right-4"
+        className="absolute right-3 top-[46%] z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-sm transition duration-200 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)] sm:right-5"
         onClick={() => move(1)}
         aria-label="Next deal"
       >
