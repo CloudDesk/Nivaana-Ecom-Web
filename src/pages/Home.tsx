@@ -321,9 +321,9 @@ const Home: React.FC = () => {
             </Link>
           </div>
 
-          <div className="relative">
+          <div className="relative md:px-16">
             <button
-              className={cn("absolute -left-14 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
+              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
               onClick={() => scrollFragrances(-1)}
               aria-label="Previous fragrances"
             >
@@ -332,7 +332,7 @@ const Home: React.FC = () => {
 
             <div
               ref={fragranceScrollerRef}
-              className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-3 scrollbar-hide sm:gap-5"
+              className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-3 scrollbar-hide sm:gap-5 md:mx-0 md:px-0"
             >
               {categories.map((category) => (
                 <Link
@@ -357,7 +357,7 @@ const Home: React.FC = () => {
             </div>
 
             <button
-              className={cn("absolute -right-14 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
+              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
               onClick={() => scrollFragrances(1)}
               aria-label="Next fragrances"
             >
@@ -398,9 +398,9 @@ const Home: React.FC = () => {
         <div className={theme.layout.container}>
           <SectionHeader eyebrow="New arrivals" title="Freshly added to Nivaana" linkText="Browse new" />
 
-          <div className="relative">
+          <div className="relative lg:px-16">
             <button
-              className={cn("absolute -left-14 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollNewArrivals(-1)}
               aria-label="Previous new arrivals"
             >
@@ -409,7 +409,7 @@ const Home: React.FC = () => {
 
             <div
               ref={newArrivalsScrollerRef}
-              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:gap-4"
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:gap-4 lg:mx-0 lg:px-0"
               onClickCapture={(event) => {
                 if (newArrivalsDragDistanceRef.current > 8) {
                   event.preventDefault();
@@ -417,13 +417,13 @@ const Home: React.FC = () => {
                 }
               }}
               onPointerDown={(event) => {
+                if (event.button !== 0) return;
                 newArrivalsDragRef.current = {
                   startX: event.clientX,
                   scrollLeft: event.currentTarget.scrollLeft,
                   dragging: true,
                 };
                 newArrivalsDragDistanceRef.current = 0;
-                event.currentTarget.setPointerCapture(event.pointerId);
               }}
               onPointerMove={(event) => {
                 if (!newArrivalsDragRef.current.dragging) return;
@@ -457,7 +457,7 @@ const Home: React.FC = () => {
             </div>
 
             <button
-              className={cn("absolute -right-14 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollNewArrivals(1)}
               aria-label="Next new arrivals"
             >
