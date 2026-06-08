@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
@@ -8,12 +8,22 @@ import { Button } from "../components/ui/button";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const session = sessionService.getSession();
+  const locationState = location.state && typeof location.state === "object" ? (location.state as { from?: unknown }).from : null;
+  const redirectParam = searchParams.get("redirect");
+  const redirectTarget =
+    typeof locationState === "string" && locationState.startsWith("/") && locationState !== "/login"
+      ? locationState
+      : redirectParam?.startsWith("/") && redirectParam !== "/login"
+        ? redirectParam
+        : "/account";
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -52,7 +62,7 @@ const Login: React.FC = () => {
       if (session) {
         await guestStoreService.mergeToUser(session.user.id);
       }
-      navigate("/", { replace: true });
+      navigate(redirectTarget, { replace: true });
     } catch {
       setMessage("OTP verification failed. Please try again.");
     } finally {
@@ -62,9 +72,9 @@ const Login: React.FC = () => {
 
   useEffect(() => {
     if (session) {
-      navigate("/account", { replace: true });
+      navigate(redirectTarget, { replace: true });
     }
-  }, [navigate, session]);
+  }, [navigate, redirectTarget, session]);
 
   if (session) return null;
 

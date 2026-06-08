@@ -505,7 +505,7 @@ const Cart: React.FC = () => {
         {!session && items.length > 0 && (
           <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
             Login before checkout and we will move these guest items into your account.
-            <Link to="/login" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
+            <Link to="/login?redirect=/cart" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
           </div>
         )}
         {(actionMessage || actionError) && (
@@ -705,7 +705,7 @@ const Cart: React.FC = () => {
                   <Button className="w-full">Checkout</Button>
                 </Link>
               ) : (
-                <Link to="/login" className="mt-5 block"><Button className="w-full">Login to Checkout</Button></Link>
+                <Link to="/login?redirect=/checkout" className="mt-5 block"><Button className="w-full">Login to Checkout</Button></Link>
               )}
             </aside>
           </div>

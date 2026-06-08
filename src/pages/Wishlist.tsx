@@ -109,7 +109,7 @@ const Wishlist: React.FC = () => {
         {!session && items.length > 0 && (
           <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
             Login to move these saved products into your account wishlist.
-            <Link to="/login" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
+            <Link to="/login?redirect=/wishlist" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
           </div>
         )}
 
