@@ -2,27 +2,41 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckCircle,
+  ArrowLeft,
+  Car,
+  Flame,
+  Flower2,
+  Gift,
+  Home,
   Heart,
+  HeartHandshake,
+  IndianRupee,
+  Leaf,
   Minus,
   Package,
   Plus,
   RefreshCw,
+  Repeat2,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
   Star,
   Truck,
+  WandSparkles,
+  X,
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
+import { toast } from "../components/Toast";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import { cartService } from "../services/cartService";
 import { guestStoreService } from "../services/guestStoreService";
 import { platformProductService } from "../services/productPlatformService";
+import { promotionService, type Promotion } from "../services/promotionService";
+import { ratingService } from "../services/ratingService";
 import { sessionService } from "../services/sessionService";
-import type { Product } from "../types";
+import type { Product, Rating } from "../types";
 import { cn } from "../lib/utils";
 import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 
@@ -35,6 +49,73 @@ const clampQuantity = (quantity: number, availableQuantity: number) =>
 
 const isAuthExpiredError = (error: Error) =>
   (error as Error & { statusCode?: number }).statusCode === 401 || /invalid or expired token|unauthorized/i.test(error.message);
+
+const isWarningMessage = (message: string) =>
+  /out of stock|available stock|only \d+ item|currently available|quantity/i.test(message);
+
+const categoryRail = [
+  { label: "Incense", to: "/products?subcategory=incense", icon: Flame },
+  { label: "Car Fresheners", to: "/products?subcategory=car_%26_room_fresheners", icon: Car },
+  { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends", icon: Flower2 },
+  { label: "Home Fragrance", to: "/products?category=home_fragrance", icon: Home },
+  { label: "Daily Rituals", to: "/products?collection=best-sellers", icon: HeartHandshake },
+];
+
+const splitDescriptionPoints = (product: Product) => {
+  const source = product.fulldescription || product.shortdescription || product.name;
+  const chunks = source
+    .split(/[.|]/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 18);
+
+  const fallback = [
+    "Premium fragrance crafted for everyday rituals",
+    "Designed for calm homes and mindful spaces",
+    "Easy to place, use, and enjoy daily",
+  ];
+
+  return (chunks.length ? chunks : fallback).slice(0, 3);
+};
+
+const productOfferItems = (product: Product, promotions: Promotion[] = []) => {
+  if (promotions.length > 0) {
+    return promotions.slice(0, 4).map((promotion) => {
+      const code = promotion.code ? ` Use code ${promotion.code}.` : "";
+      return `${promotion.name}${promotion.description ? ` - ${promotion.description}` : "."}${code}`;
+    });
+  }
+
+  const price = finalPrice(product);
+  const items = [];
+
+  if (product.discount > 0) {
+    items.push(`Save Rs. ${product.discount.toLocaleString("en-IN")} on this product.`);
+    items.push(`Offer price: Rs. ${price.toLocaleString("en-IN")} instead of Rs. ${product.price.toLocaleString("en-IN")}.`);
+  } else {
+    items.push(`Available at Rs. ${price.toLocaleString("en-IN")}.`);
+  }
+
+  if (product.isdealoftheday) {
+    items.push("Deal of the Day pricing is active for this product.");
+  }
+
+  items.push("Add to cart to apply eligible checkout offers.");
+
+  return items.slice(0, 4);
+};
+
+const reviewAuthor = (review: Rating) => review.usermail || (review.userid ? `Customer #${review.userid}` : "Customer");
+
+const formatReviewDate = (value?: number | null) => {
+  if (!value) return "";
+  const timestamp = value > 0 && value < 1_000_000_000_000 ? value * 1000 : value;
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(timestamp);
+};
 
 const productImages = (product?: Product) => {
   const images = [
@@ -58,8 +139,7 @@ const ProductDetails: React.FC = () => {
   const navigate = useNavigate();
   const session = sessionService.getSession();
   const [selectedImage, setSelectedImage] = useState(0);
-  const [quantity, setQuantity] = useState(1);
-  const [message, setMessage] = useState("");
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [, setGuestStoreVersion] = useState(0);
 
   const productQuery = useQuery({
@@ -98,6 +178,27 @@ const ProductDetails: React.FC = () => {
     queryFn: () => platformProductService.getProducts(1, 24),
   });
 
+  const publicPromotionsQuery = useQuery({
+    queryKey: ["detail-public-promotions", session?.user.id],
+    queryFn: () =>
+      promotionService.list({
+        userid: session?.user.id,
+        channel: "web",
+        geo: "IN",
+        status: "active",
+        visibility: "public",
+        limit: 8,
+      }),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const ratingsQuery = useQuery({
+    queryKey: ["product-ratings", productQuery.data?.id],
+    queryFn: () => ratingService.getRatings(1, 100),
+    enabled: Boolean(productQuery.data?.id),
+    staleTime: 1000 * 60 * 5,
+  });
+
   useEffect(() => {
     const refresh = () => setGuestStoreVersion((version) => version + 1);
     window.addEventListener("nivaana-guest-store-change", refresh);
@@ -126,7 +227,7 @@ const ProductDetails: React.FC = () => {
   const wishlistItem = userWishlistItem ?? guestWishlistItem;
   const isInWishlist = Boolean(wishlistItem);
   const cartQuantity = quantityFor(cartItem?.quantity);
-  const displayedQuantity = cartItem ? cartQuantity : productOutOfStock ? 0 : quantity;
+  const displayedQuantity = cartItem ? cartQuantity : 0;
   const maxQuantity = Math.max(availableStock, 0);
 
   const relatedProducts = useMemo(
@@ -137,23 +238,33 @@ const ProductDetails: React.FC = () => {
         .slice(0, 5),
     [product?.category, product?.id, relatedQuery.data?.data]
   );
+  const availablePromotions = publicPromotionsQuery.data?.data ?? [];
+  const productReviews = useMemo(
+    () =>
+      (ratingsQuery.data?.data ?? [])
+        .filter((review) => review.productid === product?.id)
+        .sort((a, b) => (b.createddate ?? 0) - (a.createddate ?? 0)),
+    [product?.id, ratingsQuery.data?.data]
+  );
 
   const handleMutationError = (error: Error) => {
     if (isAuthExpiredError(error)) {
       sessionService.clearSession();
-      setMessage("");
       navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
 
-    setMessage(error.message);
+    if (isWarningMessage(error.message)) {
+      toast.warning(error.message);
+    } else {
+      toast.error(error.message);
+    }
   };
 
   const addToCart = useMutation<string | undefined>({
     mutationFn: async () => {
       if (!product) return;
-      setMessage("");
-      const quantityToAdd = cartItem ? 1 : quantity;
+      const quantityToAdd = 1;
       const requestedQuantity = Number(userCartItem?.quantity ?? guestCartItem?.quantity ?? 0) + quantityToAdd;
 
       if (productOutOfStock) {
@@ -183,7 +294,7 @@ const ProductDetails: React.FC = () => {
     onSuccess: (successMessage) => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      if (successMessage) setMessage(successMessage);
+      if (successMessage) toast.success(successMessage);
     },
     onError: handleMutationError,
   });
@@ -191,7 +302,6 @@ const ProductDetails: React.FC = () => {
   const updateCartQuantity = useMutation<string | undefined, Error, number>({
     mutationFn: async (nextQuantityValue: number) => {
       if (!product) return;
-      setMessage("");
       const nextQuantity = clampQuantity(nextQuantityValue, availableStock);
 
       if (nextQuantityValue > displayedQuantity && productOutOfStock) {
@@ -249,7 +359,7 @@ const ProductDetails: React.FC = () => {
     onSuccess: (successMessage) => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      if (successMessage) setMessage(successMessage);
+      if (successMessage) toast.success(successMessage);
     },
     onError: handleMutationError,
   });
@@ -257,7 +367,6 @@ const ProductDetails: React.FC = () => {
   const toggleWishlist = useMutation<"added" | "removed" | undefined>({
     mutationFn: async () => {
       if (!product) return;
-      setMessage("");
 
       if (!session) {
         if (isInWishlist) {
@@ -290,7 +399,7 @@ const ProductDetails: React.FC = () => {
         id: existing?.id,
         productid: product.id,
         userid: session.user.id,
-        quantity: Math.max(cartItem?.quantity || quantity, 1),
+        quantity: Math.max(cartItem?.quantity || 1, 1),
         iscart: Boolean(cartItem),
         iswishlist: true,
       });
@@ -299,7 +408,7 @@ const ProductDetails: React.FC = () => {
     onSuccess: (action) => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      if (action) setMessage(action === "removed" ? "Removed from wishlist." : "Saved to wishlist.");
+      if (action) toast.success(action === "removed" ? "Removed from wishlist." : "Saved to wishlist.");
     },
     onError: handleMutationError,
   });
@@ -329,10 +438,19 @@ const ProductDetails: React.FC = () => {
   }
 
   const price = finalPrice(product);
+  const promotionItems = [
+    hasDiscount ? `Save Rs. ${product.discount.toLocaleString("en-IN")} today` : "Fresh Nivaana picks",
+    "Buy more, save more",
+    "Free delivery checks at checkout",
+    productLowStock ? "Low stock available" : "Secure payment",
+  ];
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8">
-      <section className="mx-auto max-w-7xl">
+    <main className="min-h-screen bg-[var(--color-surface)] px-4 pb-8 pt-0">
+      <section className="w-full">
+        <CategoryBannerRail />
+        <PromotionRail items={promotionItems} />
+
         <div className="mb-5 text-sm text-[var(--color-muted)]">
           <Link to="/" className="hover:text-[var(--color-secondary)]">Home</Link>
           <span className="mx-2">/</span>
@@ -341,36 +459,40 @@ const ProductDetails: React.FC = () => {
           <span className="text-[var(--color-text)]">{product.name}</span>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_470px]">
-          <div className="grid gap-4 lg:grid-cols-[92px_1fr]">
-            <div className="order-2 flex gap-3 overflow-x-auto lg:order-1 lg:flex-col lg:overflow-visible">
-              {images.map((image, index) => (
-                <button
-                  key={`${image}-${index}`}
-                  type="button"
-                  onClick={() => setSelectedImage(index)}
-                  className={cn(
-                    "h-20 w-20 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border bg-white",
-                    selectedImage === index ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]" : "border-[var(--color-border)]"
-                  )}
-                >
-                  <img src={image} alt="" className="h-full w-full object-cover" />
-                </button>
-              ))}
-            </div>
-            <div className="order-1 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white lg:order-2">
+        <div className="mx-auto grid max-w-[1480px] items-start gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,0.7fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(620px,0.75fr)]">
+          <div className="self-start lg:sticky lg:top-4">
+            <div className="overflow-hidden rounded-3xl bg-[var(--color-surface)]">
               <img
                 src={activeImage}
                 alt={product.name}
-                className="h-[360px] w-full object-contain sm:h-[520px] lg:h-[640px]"
+                className="h-[360px] w-full rounded-3xl object-cover sm:h-[520px] lg:h-[calc(100vh-148px)]"
                 onError={(event) => {
                   event.currentTarget.src = fallbackProduct;
                 }}
               />
             </div>
+            {images.length > 1 && (
+              <div className="mt-4 flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+                {images.map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedImage(index)}
+                    className={cn(
+                      "h-20 w-20 shrink-0 overflow-hidden rounded-2xl border bg-white sm:h-24 sm:w-24",
+                      selectedImage === index
+                        ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]"
+                        : "border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
+                    )}
+                  >
+                    <img src={image} alt="" className="h-full w-full rounded-2xl object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <aside className="pb-8 lg:pr-4">
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--color-secondary)]">
               <span>{formatLabel(product.subcategory || product.category)}</span>
               {productOutOfStock && <span className="text-[var(--color-danger)]">Out of Stock</span>}
@@ -388,131 +510,108 @@ const ProductDetails: React.FC = () => {
               <span>{availableStock} available</span>
             </div>
 
-            <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-              {product.shortdescription || product.fulldescription || "Premium Nivaana fragrance crafted for everyday rituals."}
-            </p>
-
-            <div className="mt-5 flex flex-wrap items-end gap-3">
-              <span className="text-3xl font-extrabold text-[var(--color-secondary)]">Rs. {price.toLocaleString("en-IN")}</span>
-              {hasDiscount && (
-                <>
-                  <span className="pb-1 text-sm text-[var(--color-muted)] line-through">Rs. {product.price.toLocaleString("en-IN")}</span>
-                  <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-[var(--color-danger)]">
-                    Save Rs. {product.discount.toLocaleString("en-IN")}
-                  </span>
-                </>
-              )}
-            </div>
-
-            <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--color-primary)]/50 bg-[var(--color-primary)]/10 p-4">
-              <p className="text-sm font-bold text-[var(--color-text)]">Offers</p>
-              <ul className="mt-2 space-y-2 text-sm text-[var(--color-muted)]">
-                <li>Instant savings shown in product price.</li>
-                <li>Login before checkout to sync cart and wishlist.</li>
-                <li>Fresh Nivaana picks for home, prayer spaces, and travel.</li>
-              </ul>
+            <div className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
+              <p>
+                {product.shortdescription || product.fulldescription || "Premium Nivaana fragrance crafted for everyday rituals."}
+              </p>
             </div>
 
             <div className="mt-5">
-              {productOutOfStock && (
-                <p className="mb-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
-                  This item is currently out of stock. Add it to wishlist and check back later.
-                </p>
-              )}
-              <p className="text-sm font-bold text-[var(--color-text)]">Choose quantity</p>
-              <div className="mt-3 inline-flex h-11 items-center overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]">
-                <button
-                  type="button"
-                  className="grid h-full w-11 place-items-center transition hover:bg-white disabled:opacity-40"
-                  onClick={() => {
-                    if (cartItem) {
-                      updateCartQuantity.mutate(cartQuantity - 1);
-                    } else {
-                      setQuantity((value) => Math.max(value - 1, 1));
-                    }
-                  }}
-                  disabled={cartItem ? updateCartQuantity.isPending : quantity <= 1}
-                  aria-label={cartItem && cartQuantity <= 1 ? "Remove from cart" : "Decrease quantity"}
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="min-w-16 px-3 text-center text-sm font-bold">Qty {displayedQuantity}</span>
-                <button
-                  type="button"
-                  className="grid h-full w-11 place-items-center transition hover:bg-white disabled:opacity-40"
-                  onClick={() => {
-                    if (cartItem) {
-                      updateCartQuantity.mutate(cartQuantity + 1);
-                    } else {
-                      setQuantity((value) => Math.min(value + 1, maxQuantity));
-                    }
-                  }}
-                  disabled={
-                    updateCartQuantity.isPending ||
-                    productOutOfStock ||
-                    displayedQuantity >= maxQuantity
-                  }
-                  aria-label="Increase quantity"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
+              <p className="text-sm font-bold text-[var(--color-text)]">Offers</p>
+              <div className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                <ul className="space-y-2">
+                  {publicPromotionsQuery.isLoading ? (
+                    <li>Checking available promotions...</li>
+                  ) : (
+                    productOfferItems(product, availablePromotions).map((offer) => (
+                      <li key={offer}>{offer}</li>
+                    ))
+                  )}
+                </ul>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-              <Button
-                className="h-12 gap-2"
-                disabled={productOutOfStock || addToCart.isPending || (Boolean(cartItem) && cartQuantity >= maxQuantity)}
-                onClick={() => addToCart.mutate()}
-              >
-                <ShoppingBag className="h-4 w-4" />
-                {productOutOfStock ? "Out of Stock" : cartItem ? "Add More" : "Add to Cart"}
-              </Button>
-              <Button
-                variant="secondary"
-                className="h-12 gap-2"
-                disabled={toggleWishlist.isPending}
-                onClick={() => toggleWishlist.mutate()}
-              >
-                <Heart className={cn("h-4 w-4", isInWishlist && "fill-[var(--color-secondary)]")} />
-                {isInWishlist ? "Saved" : "Wishlist"}
-              </Button>
+            {productOutOfStock && (
+              <p className="mt-5 text-sm font-semibold text-red-600">
+                This item is currently out of stock. Add it to wishlist and check back later.
+              </p>
+            )}
+
+            <div className="mt-5 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-xl font-extrabold leading-tight text-[var(--color-secondary)] sm:text-2xl">
+                  Rs. {price.toLocaleString("en-IN")}
+                </div>
+                {hasDiscount && (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] leading-tight text-[var(--color-muted)] sm:text-xs">
+                    <span className="line-through">Rs. {product.price.toLocaleString("en-IN")}</span>
+                    <span className="font-bold text-[var(--color-danger)]">Save Rs. {product.discount.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {cartItem ? (
+                  <div className="inline-flex h-11 w-[124px] items-center justify-between overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] sm:w-[150px]">
+                    <button
+                      type="button"
+                      className="grid h-full w-10 place-items-center transition hover:bg-white disabled:opacity-40 sm:w-12"
+                      onClick={() => updateCartQuantity.mutate(cartQuantity - 1)}
+                      disabled={updateCartQuantity.isPending || displayedQuantity < 1}
+                      aria-label={cartQuantity <= 1 ? "Remove from cart" : "Decrease quantity"}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span className="min-w-10 px-1 text-center text-sm font-bold sm:min-w-14">Qty {displayedQuantity}</span>
+                    <button
+                      type="button"
+                      className="grid h-full w-10 place-items-center transition hover:bg-white disabled:opacity-40 sm:w-12"
+                      onClick={() => updateCartQuantity.mutate(cartQuantity + 1)}
+                      disabled={updateCartQuantity.isPending || productOutOfStock || displayedQuantity >= maxQuantity}
+                      aria-label="Increase quantity"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    className="h-11 w-11 gap-2 px-0 sm:w-auto sm:px-4"
+                    disabled={productOutOfStock || addToCart.isPending}
+                    onClick={() => addToCart.mutate()}
+                  >
+                    <ShoppingBag className="h-4 w-4" />
+                    <span className="hidden sm:inline">{productOutOfStock ? "Out of Stock" : "Add to Cart"}</span>
+                  </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  className="h-11 w-11 gap-2 px-0 sm:w-auto sm:px-4"
+                  disabled={toggleWishlist.isPending}
+                  onClick={() => toggleWishlist.mutate()}
+                >
+                  <Heart className={cn("h-4 w-4", isInWishlist && "fill-[var(--color-secondary)]")} />
+                  <span className="hidden sm:inline">{isInWishlist ? "Saved" : "Wishlist"}</span>
+                </Button>
+              </div>
             </div>
 
-            {message && <p className="mt-3 text-sm font-semibold text-green-700">{message}</p>}
+            <ProductHighlights product={product} />
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="mt-6 hidden grid-cols-2 gap-3 sm:grid">
               {[
                 [Truck, "Free delivery checks at checkout"],
                 [ShieldCheck, "Secure payment"],
                 [RefreshCw, "Replacement support"],
                 [Package, "Packed with care"],
               ].map(([Icon, label]) => (
-                <div key={label as string} className="flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3 text-xs font-semibold text-[var(--color-secondary)]">
+                <div key={label as string} className="flex items-center gap-2 text-xs font-semibold text-[var(--color-secondary)]">
                   <Icon className="h-4 w-4" />
                   <span>{label as string}</span>
                 </div>
               ))}
             </div>
-          </aside>
-        </div>
 
-        <div className="mt-10 grid gap-5 lg:grid-cols-3">
-          <InfoPanel title="Overview" icon={<Sparkles className="h-5 w-5" />}>
-            <p>{product.fulldescription || product.shortdescription || "A premium Nivaana product made to add calm, freshness, and a refined ritual feel to everyday spaces."}</p>
-          </InfoPanel>
-          <InfoPanel title="How to Use" icon={<CheckCircle className="h-5 w-5" />}>
-            <p>Place or use the product in a clean, dry space. Keep away from direct heat, children, and pets unless the product instructions say otherwise.</p>
-          </InfoPanel>
-          <InfoPanel title="Details" icon={<Package className="h-5 w-5" />}>
-            <ul className="space-y-2">
-              <li>Category: {formatLabel(product.category)}</li>
-              <li>Subcategory: {formatLabel(product.subcategory)}</li>
-              {product.fragnancetype && <li>Fragrance: {formatLabel(product.fragnancetype)}</li>}
-              {product.pack && <li>Pack: {product.pack}</li>}
-              <li>PUC: {product.puc}</li>
-            </ul>
-          </InfoPanel>
+            <ProductInsights product={product} />
+          </aside>
         </div>
 
         {relatedProducts.length > 0 && (
@@ -524,27 +623,388 @@ const ProductDetails: React.FC = () => {
               </div>
               <Link to="/products" className="text-sm font-bold text-[var(--color-secondary)] hover:underline">View all</Link>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:scroll-px-0 lg:px-0">
               {relatedProducts.map((item) => (
-                <ProductCard key={item.id} product={item} compact />
+                <div key={item.id} className="w-[72vw] min-w-[180px] max-w-[250px] flex-none snap-start sm:w-[38vw] sm:max-w-[280px] md:w-[30vw] lg:w-[240px] lg:max-w-none xl:w-[260px]">
+                  <ProductCard product={item} compact />
+                </div>
               ))}
             </div>
           </section>
         )}
+
+        <ProductReviewSection
+          product={product}
+          reviews={productReviews}
+          reviewsLoading={ratingsQuery.isLoading}
+          onWriteReview={() => setIsReviewModalOpen(true)}
+        />
       </section>
+      <WriteReviewModal
+        activeImage={activeImage}
+        isOpen={isReviewModalOpen}
+        product={product}
+        onClose={() => setIsReviewModalOpen(false)}
+      />
     </main>
   );
 };
 
-function InfoPanel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function CategoryBannerRail() {
   return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 text-sm leading-7 text-[var(--color-muted)] shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex items-center gap-2 text-[var(--color-secondary)]">
-        {icon}
-        <h2 className="text-base font-bold text-[var(--color-text)]">{title}</h2>
+    <div className="-mx-4 mb-0 overflow-hidden border-b border-[var(--color-border)] bg-white sm:-mx-6 lg:mx-0 lg:mb-0">
+      <div className="flex snap-x gap-5 overflow-x-auto scroll-px-4 px-4 py-4 scrollbar-hide sm:justify-center sm:gap-8 lg:gap-12 lg:py-5">
+        {categoryRail.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.label}
+              to={item.to}
+              className="group flex min-w-[88px] snap-start flex-col items-center gap-2 text-center"
+            >
+              <span className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-text)]/60 bg-white text-[var(--color-text)] transition duration-300 group-hover:border-[var(--color-primary)] group-hover:bg-[var(--color-primary)]/20 sm:h-16 sm:w-16">
+                <Icon className="h-7 w-7 stroke-[1.7]" />
+              </span>
+              <span className="text-[11px] font-semibold leading-tight text-[var(--color-muted)] group-hover:text-[var(--color-secondary)] sm:text-sm">
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
       </div>
-      {children}
+    </div>
+  );
+}
+
+function PromotionRail({ items }: { items: string[] }) {
+  const feedItems = [...items, ...items, ...items, ...items];
+
+  return (
+    <div className="-mx-4 mb-5 overflow-hidden bg-[var(--color-primary)] sm:-mx-6 lg:mx-0">
+      <div className="flex w-max animate-[marquee_24s_linear_infinite] gap-8 whitespace-nowrap px-4 py-2.5 text-xs font-extrabold text-[var(--color-text)] hover:[animation-play-state:paused] sm:text-sm">
+        {feedItems.map((item, index) => (
+          <span key={`${item}-${index}`} className="inline-flex items-center gap-2">
+            {index % 2 === 0 ? <IndianRupee className="h-4 w-4" /> : <Gift className="h-4 w-4" />}
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductHighlights({ product }: { product: Product }) {
+  const points = [
+    ...splitDescriptionPoints(product),
+    "Long-lasting freshness",
+    "Refill, reuse, and enjoy daily",
+  ].slice(0, 6);
+  const icons = [WandSparkles, Leaf, ShieldCheck, Repeat2, Sparkles, Package];
+
+  return (
+    <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {points.map((point, index) => {
+          const Icon = icons[index % icons.length];
+
+          return (
+            <div key={`${point}-${index}`} className="flex items-center gap-3 text-sm font-medium text-[var(--color-text)]">
+              <span className="grid h-8 w-8 shrink-0 place-items-center text-[var(--color-secondary)]">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="line-clamp-2">{point}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProductInsights({ product }: { product: Product }) {
+  return (
+    <section className="mt-9 space-y-8 border-t border-[var(--color-border)] pt-6">
+      <nav className="flex flex-wrap gap-8 border-b border-[var(--color-border)] pb-3 text-base font-extrabold text-[var(--color-muted)]">
+        <a href="#overview" className="text-[var(--color-text)] hover:text-[var(--color-secondary)]">
+          Overview
+        </a>
+        <a href="#how-to-use" className="hover:text-[var(--color-secondary)]">
+          How to Use
+        </a>
+        <a href="#reviews" className="hover:text-[var(--color-secondary)]">
+          Review
+        </a>
+      </nav>
+
+      <div id="overview" className="scroll-mt-6">
+        <p className="mt-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8">
+          {product.fulldescription || product.shortdescription || "A premium Nivaana product made to add calm, freshness, and a refined ritual feel to everyday spaces."}
+        </p>
+      </div>
+
+      <div id="how-to-use" className="scroll-mt-6">
+        <h2 className="text-base font-extrabold text-[var(--color-text)]">How to Use</h2>
+        <div className="mt-4 grid gap-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8 lg:grid-cols-3">
+          {[
+            "Place or use the product in a clean, dry space.",
+            "Keep away from direct heat, children, and pets unless product instructions say otherwise.",
+            "Use regularly in your preferred room, car, or ritual space for a consistent fragrance experience.",
+          ].map((step, index) => (
+            <div key={step}>
+              <span className="mb-2 block text-sm font-extrabold text-[var(--color-secondary)]">
+                {index + 1}
+              </span>
+              {step}
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
+  );
+}
+function ProductReviewSection({
+  product,
+  reviews,
+  reviewsLoading,
+  onWriteReview,
+}: {
+  product: Product;
+  reviews: Rating[];
+  reviewsLoading: boolean;
+  onWriteReview: () => void;
+}) {
+  const averageRating =
+    reviews.length > 0
+      ? reviews.reduce((sum, review) => sum + Number(review.starrating || 0), 0) / reviews.length
+      : product.averagerating ?? 0;
+
+  return (
+    <section id="reviews" className="mt-12 scroll-mt-6">
+      <div className="flex flex-col gap-5 border-b border-[var(--color-border)] pb-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Customer reviews</p>
+          <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)]">Ratings & reviews</h2>
+        </div>
+        <Button className="h-11 gap-2" onClick={onWriteReview}>
+          <Star className="h-4 w-4" />
+          Write a Review
+        </Button>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="text-center">
+          <div className="text-5xl font-extrabold text-[var(--color-text)]">{Number(averageRating || 0).toFixed(1)}</div>
+          <div className="mt-3 flex justify-center gap-1 text-[var(--color-primary)]">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Star key={index} className={cn("h-5 w-5", index < Math.round(averageRating || 0) && "fill-current")} />
+            ))}
+          </div>
+          <p className="mt-3 text-sm font-semibold text-[var(--color-muted)]">
+            {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
+          </p>
+        </div>
+
+        {reviewsLoading ? (
+          <p className="text-sm font-semibold text-[var(--color-muted)]">Loading customer reviews...</p>
+        ) : reviews.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {reviews.map((review) => (
+              <article key={review.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-[var(--color-text)]">{reviewAuthor(review)}</p>
+                    {formatReviewDate(review.createddate) && (
+                      <p className="mt-0.5 text-xs text-[var(--color-muted)]">{formatReviewDate(review.createddate)}</p>
+                    )}
+                  </div>
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-surface)] px-2 py-1 text-xs font-bold text-[var(--color-secondary)]">
+                    <Star className="h-3.5 w-3.5 fill-[var(--color-primary)] text-[var(--color-primary)]" />
+                    {Number(review.starrating || 0).toFixed(1)}
+                  </span>
+                </div>
+                {review.comments?.trim() ? (
+                  <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">{review.comments}</p>
+                ) : (
+                  <p className="mt-3 text-sm italic leading-6 text-[var(--color-muted)]">No written comment provided.</p>
+                )}
+                {review.url && review.url.filter(Boolean).length > 0 && (
+                  <div className="mt-3 flex gap-2 overflow-x-auto">
+                    {review.url.filter(Boolean).map((image, index) => (
+                      <img
+                        key={`${image}-${index}`}
+                        src={image}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                      />
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-[var(--color-muted)]">
+            No customer reviews have been added for this product yet.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WriteReviewModal({
+  activeImage,
+  isOpen,
+  product,
+  onClose,
+}: {
+  activeImage: string;
+  isOpen: boolean;
+  product: Product;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [anonymous, setAnonymous] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setStep(1);
+      setRating(0);
+      setComment("");
+      setEmail("");
+      setDisplayName("");
+      setAnonymous(false);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const submitReview = () => {
+    toast.success("Review submitted. Thank you for sharing your experience.");
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/55 px-4 py-6">
+      <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto bg-white p-6 shadow-[var(--shadow-hover)] sm:p-10">
+        <button
+          type="button"
+          className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+          onClick={onClose}
+          aria-label="Close review modal"
+        >
+          <X className="h-6 w-6" />
+        </button>
+
+        {step === 1 && (
+          <div className="text-center">
+            <h2 className="pr-8 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">How would you rate this product?</h2>
+            <p className="mt-3 text-sm text-[var(--color-muted)] sm:text-base">We would love it if you shared a bit about your experience.</p>
+            <img src={activeImage} alt={product.name} className="mx-auto mt-8 h-36 w-36 rounded-2xl object-cover sm:h-44 sm:w-44" />
+            <p className="mx-auto mt-6 max-w-xl text-lg font-bold text-[var(--color-text)]">{product.name}</p>
+            <div className="mt-8 flex justify-center gap-3">
+              {Array.from({ length: 5 }).map((_, index) => {
+                const value = index + 1;
+                return (
+                  <button key={value} type="button" onClick={() => setRating(value)} aria-label={`Rate ${value} stars`}>
+                    <Star className={cn("h-10 w-10 text-[var(--color-text)] sm:h-14 sm:w-14", value <= rating && "fill-[var(--color-text)]")} />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mx-auto mt-2 flex max-w-[320px] justify-between text-xs font-bold text-[var(--color-text)]">
+              <span>Poor</span>
+              <span>Great</span>
+            </div>
+            <div className="mt-8 flex justify-end">
+              <Button disabled={rating <= 0} onClick={() => setStep(2)}>Next</Button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            <h2 className="text-center text-xl font-bold text-[var(--color-text)] sm:text-2xl">{product.name}</h2>
+            <div className="mt-5 flex justify-center gap-2 text-[var(--color-text)]">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Star key={index} className={cn("h-8 w-8 sm:h-11 sm:w-11", index < rating && "fill-current")} />
+              ))}
+            </div>
+            <label className="mt-8 block text-sm font-semibold text-[var(--color-text)]" htmlFor="review-content">
+              Review content (Required)
+            </label>
+            <textarea
+              id="review-content"
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Start writing here..."
+              className="mt-3 min-h-48 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4 text-sm outline-none focus:border-[var(--color-secondary)]"
+            />
+            <p className="mt-4 text-center text-xs leading-5 text-[var(--color-muted)]">
+              We will only contact you about your review if necessary.
+            </p>
+            <div className="mt-8 flex items-center justify-between gap-4">
+              <button type="button" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]" onClick={() => setStep(1)}>
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+              <Button disabled={!comment.trim()} onClick={() => setStep(3)}>Next</Button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div>
+            <h2 className="text-center text-2xl font-bold text-[var(--color-text)] sm:text-3xl">About you</h2>
+            <p className="mt-3 text-center text-sm text-[var(--color-muted)] sm:text-base">Please tell us more about you.</p>
+            <div className="mt-10 grid gap-5">
+              <label className="block text-sm font-semibold text-[var(--color-text)]">
+                Email address (Required)
+                <input
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Your email address"
+                  className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-4 text-sm outline-none focus:border-[var(--color-secondary)]"
+                />
+                <span className="mt-2 block text-xs font-normal text-[var(--color-muted)]">We respect your privacy.</span>
+              </label>
+              <label className="block text-sm font-semibold text-[var(--color-text)]">
+                Display name (Required)
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="Display name"
+                  className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-4 text-sm outline-none focus:border-[var(--color-secondary)]"
+                />
+              </label>
+              <label className="inline-flex items-center gap-3 text-sm text-[var(--color-text)]">
+                <input
+                  type="checkbox"
+                  checked={anonymous}
+                  onChange={(event) => setAnonymous(event.target.checked)}
+                  className="h-5 w-5 rounded border-[var(--color-border)]"
+                />
+                Post review as anonymous
+              </label>
+            </div>
+            <div className="mt-8 flex items-center justify-between gap-4">
+              <button type="button" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]" onClick={() => setStep(2)}>
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+              <Button disabled={!email.trim() || (!anonymous && !displayName.trim())} onClick={submitReview}>
+                Submit Review
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

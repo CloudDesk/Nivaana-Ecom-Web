@@ -87,6 +87,8 @@ const reviewImage = (review: Rating, products: Product[]) =>
 
 const carouselArrowClass =
   "h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
+const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
+const homeSection = "py-7 sm:py-8 lg:py-10";
 
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
@@ -211,7 +213,7 @@ const Home: React.FC = () => {
   return (
     <div className="min-h-screen bg-[var(--color-surface)]">
       <section className="bg-[var(--color-surface)] pb-3 pt-4 sm:pb-4 sm:pt-6 lg:pb-5 lg:pt-7">
-        <div className="mx-auto w-full max-w-[1840px] px-2 sm:px-4 lg:px-6">
+        <div className={homeContainer}>
           <div className="relative overflow-hidden rounded-[28px] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)]">
             <div
               className="relative h-[420px] touch-pan-y select-none sm:h-[520px] lg:h-[640px]"
@@ -364,8 +366,8 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className="bg-[var(--color-surface)] py-5 sm:py-6 lg:py-7">
-        <div className={theme.layout.container}>
+      <section className="bg-[var(--color-surface)] pb-0 pt-3 sm:pt-4 lg:pt-5">
+        <div className={homeContainer}>
           <SectionHeader eyebrow="Deal of the day" title="Limited-time Nivaana picks" linkText="Shop deals" />
           <DealTripleSlider
             activeIndex={activeDeal}
@@ -377,8 +379,8 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className="bg-[var(--color-surface)] pb-8 pt-0 sm:pb-10 lg:pb-12">
-        <div className={theme.layout.container}>
+      <section className="bg-[var(--color-surface)] pb-6 pt-0 sm:pb-7 lg:pb-8">
+        <div className={homeContainer}>
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
               <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Shop by fragrance</p>
@@ -435,15 +437,15 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-        <div className={theme.layout.container}>
+      <section className={cn(homeSection, "bg-[var(--color-surface)]")}>
+        <div className={homeContainer}>
           <SectionHeader eyebrow="Best sellers" title="Loved across daily rituals" linkText="View products" />
           <ProductGrid products={bestSellers} loading={isLoading} error={isError} />
         </div>
       </section>
 
       <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-        <div className={theme.layout.container}>
+        <div className={homeContainer}>
           <SectionHeader eyebrow="New arrivals" title="Freshly added to Nivaana" linkText="Browse new" />
 
           <div className="relative lg:px-16">
@@ -516,8 +518,8 @@ const Home: React.FC = () => {
       </section>
 
       {activeCustomerReview && (
-        <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-          <div className={theme.layout.container}>
+      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
+        <div className={homeContainer}>
             <SectionHeader eyebrow="Customer reviews" title="What our customers say" />
             <div className="md:hidden">
               <div className="relative mx-auto max-w-[340px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white px-5 pb-9 pt-6 text-center shadow-[var(--shadow-card)]">
@@ -604,7 +606,7 @@ function SectionHeader({ eyebrow, title, linkText }: { eyebrow: string; title: s
         <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">{title}</h2>
       </div>
       {linkText && (
-        <Link to="/products" className="hidden text-sm font-bold text-[var(--color-secondary)] hover:underline sm:inline-flex">
+        <Link to="/products" className="inline-flex shrink-0 text-sm font-bold text-[var(--color-secondary)] hover:underline">
           {linkText}
         </Link>
       )}
@@ -665,7 +667,7 @@ function DealTripleSlider({
 
   const positions = [-1, 0, 1];
   return (
-    <div className="relative -mx-4 overflow-hidden px-0 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-24 lg:py-6">
+    <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-24 lg:pb-0 lg:pt-3">
       <button
         className={cn("absolute left-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(-1)}
@@ -675,7 +677,7 @@ function DealTripleSlider({
       </button>
 
       <motion.div
-        className="relative h-[360px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[420px] lg:h-[450px]"
+        className="relative h-[326px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[374px] lg:h-[404px]"
         onClickCapture={(event) => {
           if (lastDragDistanceRef.current > clickThreshold) {
             event.preventDefault();
@@ -687,7 +689,7 @@ function DealTripleSlider({
           const product = products[wrapIndex(activeIndex + position, products.length)];
           const isCenter = position === 0;
           const price = Math.max(product.price - product.discount, 0);
-          const cardX = position === -1 ? "-94%" : position === 1 ? "-6%" : "-50%";
+          const cardX = position === -1 ? "-108%" : position === 1 ? "8%" : "-50%";
 
           return (
             <motion.article
@@ -735,8 +737,8 @@ function DealTripleSlider({
                 x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
                 y: isCenter ? 0 : 18,
                 rotateY: 0,
-                scale: isCenter ? 1 : 0.86,
-                opacity: isCenter ? 1 : 0.64,
+                scale: isCenter ? 1 : 0.88,
+                opacity: isCenter ? 1 : 0.72,
               }}
               transition={
                 isDragging
@@ -749,7 +751,7 @@ function DealTripleSlider({
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 flex h-[342px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y flex-col overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#fff8e8] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[400px] sm:w-[62vw] sm:max-w-[460px] lg:h-[430px] lg:w-[43vw] lg:max-w-[620px]",
+                "absolute left-1/2 top-0 flex h-[312px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y flex-col overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#fff8e8] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[358px] sm:w-[62vw] sm:max-w-[460px] lg:h-[388px] lg:w-[43vw] lg:max-w-[620px]",
                 isCenter
                   ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
                   : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
@@ -766,9 +768,6 @@ function DealTripleSlider({
                   transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                   className="pointer-events-none h-full w-full object-contain object-center"
                 />
-                <div className="pointer-events-none absolute right-4 top-4 hidden rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-[var(--color-secondary)] shadow-sm sm:block">
-                  {formatLabel(product.category)}
-                </div>
                 <Button
                   type="button"
                   className="absolute bottom-4 left-4 h-10 rounded-full bg-[#f0c353] px-4 text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:px-5"
@@ -790,9 +789,6 @@ function DealTripleSlider({
                     <h3 className="mt-1 hidden line-clamp-2 text-base font-extrabold leading-snug text-[var(--color-text)] sm:block sm:text-xl sm:leading-tight">
                       {product.name}
                     </h3>
-                    <p className="mt-1 line-clamp-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">
-                      {formatLabel(product.category)} - {formatLabel(product.subcategory)}
-                    </p>
                   </div>
                   <div className="hidden shrink-0 items-end gap-2 sm:flex sm:justify-end">
                     <span className="text-lg font-extrabold text-[var(--color-text)] sm:text-2xl">
@@ -841,9 +837,9 @@ function DealTripleSlider({
 function ProductGrid({ products, loading, error }: { products: Product[]; loading: boolean; error: boolean }) {
   if (loading) {
     return (
-      <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", theme.layout.gridGap)}>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-[360px]" />
+          <Skeleton key={index} className="h-[280px] sm:h-[360px]" />
         ))}
       </div>
     );
@@ -858,7 +854,7 @@ function ProductGrid({ products, loading, error }: { products: Product[]; loadin
   }
 
   return (
-    <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5", theme.layout.gridGap)}>
+    <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
       {products.map((product) => (
         <ProductCard key={product.id} product={product} />
       ))}

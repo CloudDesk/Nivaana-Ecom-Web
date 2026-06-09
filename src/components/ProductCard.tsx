@@ -152,38 +152,38 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
       whileHover={{ y: compact ? -3 : -6 }}
       className={cn(
         "group flex cursor-pointer flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:shadow-[var(--shadow-hover)]",
-        compact ? "h-full" : "h-fit self-start"
+        compact ? "h-full" : "h-full min-h-[270px] self-stretch sm:min-h-[320px]"
       )}
       onClick={() => navigate(`/products/${product.id}`)}
     >
-      <div className={cn("relative overflow-hidden bg-[var(--color-surface)]", compact ? "aspect-[4/3.1]" : "aspect-[4/3.2]")}>
+      <div className={cn("relative overflow-hidden bg-[var(--color-surface)]", compact ? "aspect-[4/3.55]" : "aspect-[4/3.75]")}>
         <img
           src={getProductImage(product)}
           alt={product.name}
           loading="lazy"
           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
         />
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+        <div className="absolute left-2 top-2 flex max-w-[calc(100%-3rem)] flex-wrap gap-1.5 sm:left-3 sm:top-3 sm:gap-2">
           {outOfStock && (
-            <span className={cn("rounded-full bg-red-600 font-bold uppercase tracking-wide text-white", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]")}>
+            <span className={cn("rounded-full bg-red-600 font-bold uppercase tracking-wide text-white", compact ? "px-2 py-0.5 text-[10px]" : "px-2 py-0.5 text-[9px] sm:px-3 sm:py-1 sm:text-[11px]")}>
               Out of stock
             </span>
           )}
           {(product.isdealoftheday || hasDiscount) && (
-            <span className={cn("rounded-full bg-[var(--color-primary)] font-bold uppercase tracking-wide text-[var(--color-secondary)]", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]")}>
+            <span className={cn("rounded-full bg-[var(--color-primary)] font-bold uppercase tracking-wide text-[var(--color-secondary)]", compact ? "px-2 py-0.5 text-[10px]" : "px-2 py-0.5 text-[9px] sm:px-3 sm:py-1 sm:text-[11px]")}>
               {product.isdealoftheday ? "Deal" : "Sale"}
             </span>
           )}
           {lowStock && (
-            <span className={cn("rounded-full bg-white font-bold uppercase tracking-wide text-[var(--color-danger)]", compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]")}>
+            <span className={cn("rounded-full bg-white font-bold uppercase tracking-wide text-[var(--color-danger)]", compact ? "px-2 py-0.5 text-[10px]" : "px-2 py-0.5 text-[9px] sm:px-3 sm:py-1 sm:text-[11px]")}>
               Low stock
             </span>
           )}
         </div>
         <button
           className={cn(
-            "absolute right-3 top-3 grid place-items-center rounded-full shadow-sm transition",
-            compact ? "h-8 w-8" : "h-10 w-10",
+            "absolute right-2 top-2 grid place-items-center rounded-full shadow-sm transition sm:right-3 sm:top-3",
+            compact ? "h-8 w-8" : "h-8 w-8 sm:h-10 sm:w-10",
             isInWishlist
               ? "bg-[var(--color-primary)] text-[var(--color-secondary)] ring-2 ring-[var(--color-secondary)]"
               : "bg-white/90 text-[var(--color-secondary)] hover:bg-[var(--color-primary)]"
@@ -195,12 +195,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
             addItem.mutate("wishlist");
           }}
         >
-          <Heart className={cn(compact ? "h-3.5 w-3.5" : "h-4 w-4", isInWishlist && "fill-[var(--color-secondary)]")} />
+          <Heart className={cn(compact ? "h-3.5 w-3.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4", isInWishlist && "fill-[var(--color-secondary)]")} />
         </button>
       </div>
 
-      <div className={cn("flex flex-col", compact ? "flex-1 p-3" : "p-3.5 sm:p-4")}>
-        <div className={cn("flex items-center justify-between gap-2 text-[var(--color-muted)]", compact ? "mb-1.5 text-[11px]" : "mb-2 text-xs")}>
+      <div className={cn("flex flex-col", compact ? "flex-1 p-2.5" : "flex-1 p-2 sm:p-3")}>
+        <div className={cn("flex items-center justify-between gap-2 text-[var(--color-muted)]", compact ? "mb-1 text-[11px]" : "mb-1 text-[11px] sm:text-xs")}>
           <span className="truncate">{formatLabel(product.subcategory)}</span>
           <span className="flex shrink-0 items-center gap-1">
             <Star className="h-3.5 w-3.5 fill-[var(--color-primary)] text-[var(--color-primary)]" />
@@ -208,7 +208,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </span>
         </div>
 
-        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-9 text-xs leading-[18px]" : "text-sm leading-5")}>
+        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-8 text-xs leading-4" : "min-h-8 text-xs leading-4 sm:min-h-9 sm:text-sm sm:leading-[18px]")}>
           {product.name}
         </h3>
 
@@ -218,15 +218,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </p>
         )}
 
-        <div className={cn("flex items-end justify-between gap-3", compact ? "mt-3" : "mt-5")}>
+        <div className={cn("mt-auto flex items-end justify-between gap-2 pt-2 sm:gap-3", compact ? "" : "sm:pt-3")}>
           <div className="min-w-0 flex-1">
-            <div className={cn("font-bold leading-tight text-[var(--color-secondary)]", compact ? "text-base" : "text-lg")}>
+            <div className={cn("font-bold leading-tight text-[var(--color-secondary)]", compact ? "text-base" : "text-base sm:text-lg")}>
               Rs. {getFinalPrice(product).toLocaleString("en-IN")}
             </div>
             {hasDiscount && (
-              <div className={cn("mt-1 leading-4 text-[var(--color-muted)]", compact ? "text-[10px]" : "text-xs")}>
+              <div className={cn("mt-1 flex flex-wrap gap-x-1.5 leading-4 text-[var(--color-muted)]", compact ? "text-[10px]" : "text-[10px] sm:text-xs")}>
                 <span className="line-through">Rs. {product.price.toLocaleString("en-IN")}</span>
-                {!compact && <span className="ml-2 text-[var(--color-danger)]">Save Rs. {product.discount}</span>}
+                {!compact && <span className="text-[var(--color-danger)]">Save Rs. {product.discount}</span>}
               </div>
             )}
           </div>
@@ -238,17 +238,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
               className={cn(
                 "shrink-0 gap-2 transition-all",
                 !canAddToCart && "cursor-not-allowed opacity-60",
-                compact ? "h-9 min-h-9 px-3" : "h-10 min-h-10 min-w-12 px-3",
-                isInCart ? "w-full" : compact ? "w-9" : "w-12",
-                isInCart && "bg-[var(--color-secondary)] text-white hover:bg-[var(--color-secondary)]/90"
+                compact ? "h-9 min-h-9 px-3" : "h-9 w-9 min-w-9 px-0 sm:h-10 sm:w-10 sm:min-w-10",
+                isInCart && "bg-[var(--color-secondary)] text-white hover:bg-[var(--color-secondary)]/90",
+                outOfStock && "bg-[var(--color-surface)] text-[var(--color-muted)] shadow-none"
               )}
               onClick={(event) => {
                 event.stopPropagation();
                 if (canAddToCart) addItem.mutate("cart");
               }}
             >
-              <ShoppingBag className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-              {!compact && <span className="text-xs font-bold">{outOfStock ? "Out" : isInCart ? "Added" : ""}</span>}
+              <ShoppingBag className={compact ? "h-3.5 w-3.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4"} />
             </Button>
           </div>
         </div>

@@ -23,11 +23,13 @@ import SavedAddresses from './pages/SavedAddresses';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
 import Promotions from './pages/Promotions';
+import { ToastProvider } from './components/Toast';
 
 function App() {
   return (
     <Router>
       <ScrollToTop />
+      <ToastProvider />
       <div className="min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-grow">

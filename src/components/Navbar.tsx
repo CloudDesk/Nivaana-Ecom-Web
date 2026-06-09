@@ -90,6 +90,7 @@ const Navbar: React.FC = () => {
   const cartCount = session ? countDistinctProducts(cartQuery.data?.data ?? []) : guestCartCount;
   const wishlistCount = session ? countDistinctProducts(wishlistQuery.data?.data ?? []) : guestWishlistCount;
   const accountLabel = session ? getUserDisplayName(session.user) : "Account";
+  const isProductDetailsPage = /^\/products\/\d+/.test(location.pathname);
 
   const searchSuggestions = (productResponse?.data ?? [])
     .filter((product) => {
@@ -206,7 +207,7 @@ const Navbar: React.FC = () => {
   );
 
   return (
-    <header className="sticky top-0 z-50">
+    <header className={cn("z-50", isProductDetailsPage ? "relative" : "sticky top-0")}>
       <motion.nav
         className={cn(
           "border-b transition duration-300",
@@ -216,6 +217,18 @@ const Navbar: React.FC = () => {
         )}
       >
         <div className={cn(theme.layout.container, "flex h-16 items-center justify-between gap-4 lg:h-20")}>
+          <button
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--color-border)] text-[var(--color-secondary)] lg:hidden"
+            onClick={() => {
+              setIsMobileMenuOpen((value) => !value);
+              setIsSearchOpen(false);
+            }}
+            aria-label="Toggle menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+
           <Link to="/" className="flex shrink-0 items-center" aria-label="Nivaana home">
             <img src={logo} alt="Nivaana" className="h-11 w-auto lg:h-14" loading="eager" />
           </Link>
@@ -298,16 +311,46 @@ const Navbar: React.FC = () => {
             </Link>
           </div>
 
-          <button
-            className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] text-[var(--color-secondary)] lg:hidden"
-            onClick={() => setIsMobileMenuOpen((value) => !value)}
-            aria-label="Toggle menu"
-            aria-expanded={isMobileMenuOpen}
-          >
-            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          <div className="flex items-center gap-1.5 md:hidden">
+            <button
+              type="button"
+              className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]"
+              onClick={() => {
+                setIsSearchOpen((value) => !value);
+                setIsMobileMenuOpen(false);
+              }}
+              aria-label="Search products"
+              aria-expanded={isSearchOpen}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <Link to={session ? "/account" : "/login"} aria-label={session ? `Account for ${accountLabel}` : "Account"} className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
+              <UserRound className="h-4 w-4" />
+            </Link>
+            <Link to="/cart" aria-label="Cart" className="relative grid h-9 w-9 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
+              <ShoppingBag className="h-4 w-4" />
+              <Badge count={cartCount} />
+            </Link>
+          </div>
+
         </div>
       </motion.nav>
+
+      <AnimatePresence>
+        {isSearchOpen && !isMobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="border-b border-[var(--color-border)] bg-white px-4 py-3 shadow-[var(--shadow-card)] md:hidden"
+          >
+            <form className="relative" onSubmit={handleSearchSubmit}>
+              {searchBox("h-11 w-full rounded-full border border-[var(--color-border)] bg-white pl-9 pr-4 text-sm outline-none focus:border-[var(--color-secondary)]")}
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isCategoriesOpen && (
