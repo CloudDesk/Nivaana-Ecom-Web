@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle,
@@ -33,6 +33,9 @@ const finalPrice = (product: Product) => Math.max(product.price - product.discou
 const clampQuantity = (quantity: number, availableQuantity: number) =>
   Math.min(Math.max(quantity, 0), Math.max(availableQuantity, 0));
 
+const isAuthExpiredError = (error: Error) =>
+  (error as Error & { statusCode?: number }).statusCode === 401 || /invalid or expired token|unauthorized/i.test(error.message);
+
 const productImages = (product?: Product) => {
   const images = [
     ...(product?.large ?? []),
@@ -52,6 +55,7 @@ const ProductDetails: React.FC = () => {
   const { productId } = useParams();
   const id = Number(productId);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const session = sessionService.getSession();
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -134,6 +138,17 @@ const ProductDetails: React.FC = () => {
     [product?.category, product?.id, relatedQuery.data?.data]
   );
 
+  const handleMutationError = (error: Error) => {
+    if (isAuthExpiredError(error)) {
+      sessionService.clearSession();
+      setMessage("");
+      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
+    }
+
+    setMessage(error.message);
+  };
+
   const addToCart = useMutation<string | undefined>({
     mutationFn: async () => {
       if (!product) return;
@@ -170,7 +185,7 @@ const ProductDetails: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
       if (successMessage) setMessage(successMessage);
     },
-    onError: (error) => setMessage(error.message),
+    onError: handleMutationError,
   });
 
   const updateCartQuantity = useMutation<string | undefined, Error, number>({
@@ -236,7 +251,7 @@ const ProductDetails: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
       if (successMessage) setMessage(successMessage);
     },
-    onError: (error) => setMessage(error.message),
+    onError: handleMutationError,
   });
 
   const toggleWishlist = useMutation<"added" | "removed" | undefined>({
@@ -286,6 +301,7 @@ const ProductDetails: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
       if (action) setMessage(action === "removed" ? "Removed from wishlist." : "Saved to wishlist.");
     },
+    onError: handleMutationError,
   });
 
   if (productQuery.isLoading) {

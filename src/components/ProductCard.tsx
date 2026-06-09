@@ -24,6 +24,10 @@ const getProductImage = (product: Product) =>
   product.medium?.[0] || product.small?.[0] || product.large?.[0] || fallbackProduct;
 
 const getFinalPrice = (product: Product) => Math.max(product.price - product.discount, 0);
+
+const isAuthExpiredError = (error: Error) =>
+  (error as Error & { statusCode?: number }).statusCode === 401 || /invalid or expired token|unauthorized/i.test(error.message);
+
 const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -132,6 +136,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
       setStockMessage("");
     },
     onError: (error) => {
+      if (isAuthExpiredError(error)) {
+        sessionService.clearSession();
+        setStockMessage("");
+        navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        return;
+      }
+
       setStockMessage(error.message);
     },
   });
@@ -139,7 +150,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
   return (
     <motion.article
       whileHover={{ y: compact ? -3 : -6 }}
-      className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:shadow-[var(--shadow-hover)]"
+      className={cn(
+        "group flex cursor-pointer flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:shadow-[var(--shadow-hover)]",
+        compact ? "h-full" : "h-fit self-start"
+      )}
       onClick={() => navigate(`/products/${product.id}`)}
     >
       <div className={cn("relative overflow-hidden bg-[var(--color-surface)]", compact ? "aspect-[4/3.1]" : "aspect-[4/3.2]")}>
@@ -185,7 +199,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
         </button>
       </div>
 
-      <div className={cn("flex flex-1 flex-col", compact ? "p-3" : "p-4")}>
+      <div className={cn("flex flex-col", compact ? "flex-1 p-3" : "p-3.5 sm:p-4")}>
         <div className={cn("flex items-center justify-between gap-2 text-[var(--color-muted)]", compact ? "mb-1.5 text-[11px]" : "mb-2 text-xs")}>
           <span className="truncate">{formatLabel(product.subcategory)}</span>
           <span className="flex shrink-0 items-center gap-1">
@@ -194,15 +208,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </span>
         </div>
 
-        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-9 text-xs leading-[18px]" : "min-h-11 text-sm leading-5")}>
+        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-9 text-xs leading-[18px]" : "text-sm leading-5")}>
           {product.name}
         </h3>
-
-        {!compact && (
-          <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-[var(--color-muted)]">
-            {product.shortdescription || product.fulldescription || "Premium Nivaana fragrance crafted for everyday rituals."}
-          </p>
-        )}
 
         {stockMessage && !outOfStock && (
           <p className={cn("mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 font-semibold text-red-600", compact ? "text-[11px]" : "text-xs")}>
@@ -210,7 +218,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </p>
         )}
 
-        <div className={cn("flex items-end justify-between gap-3", compact ? "mt-3" : "mt-4")}>
+        <div className={cn("flex items-end justify-between gap-3", compact ? "mt-3" : "mt-5")}>
           <div className="min-w-0 flex-1">
             <div className={cn("font-bold leading-tight text-[var(--color-secondary)]", compact ? "text-base" : "text-lg")}>
               Rs. {getFinalPrice(product).toLocaleString("en-IN")}

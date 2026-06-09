@@ -35,6 +35,20 @@ export interface BannerItem {
   ctaLink: string;
 }
 
+export interface Rating {
+  id: number;
+  userid: number | null;
+  productid: number | null;
+  orderid: number | null;
+  starrating: number;
+  comments: string | null;
+  url: string[] | null;
+  usermail: string | null;
+  orderlineid: number | null;
+  createddate: number;
+  modifieddate: number;
+}
+
 // User interface
 export interface User {
   id: number;

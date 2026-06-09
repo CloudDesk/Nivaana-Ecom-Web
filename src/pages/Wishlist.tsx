@@ -130,7 +130,11 @@ const Wishlist: React.FC = () => {
                   key={`${item.productid}-${apiId ?? "guest"}`}
                   className="relative flex gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)]"
                 >
-                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]">
+                  <Link
+                    to={`/products/${item.productid}`}
+                    className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]"
+                    aria-label={`View ${product?.name || `product ${item.productid}`}`}
+                  >
                     <img
                       src={imageFor(product)}
                       alt={product?.name || "Product image"}
@@ -139,11 +143,14 @@ const Wishlist: React.FC = () => {
                         event.currentTarget.src = fallbackProduct;
                       }}
                     />
-                  </div>
+                  </Link>
                   <div className="min-w-0 flex-1 pr-16">
-                    <h2 className="line-clamp-2 text-base font-bold text-[var(--color-text)]">
+                    <Link
+                      to={`/products/${item.productid}`}
+                      className="line-clamp-2 text-base font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)]"
+                    >
                       {product?.name || `Product #${item.productid}`}
-                    </h2>
+                    </Link>
                     <p className="mt-1 text-sm capitalize text-[var(--color-muted)]">
                       {product?.subcategory?.replace(/_/g, " ") || product?.category?.replace(/_/g, " ") || "Saved product"}
                     </p>

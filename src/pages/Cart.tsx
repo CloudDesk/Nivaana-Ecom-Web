@@ -535,7 +535,11 @@ const Cart: React.FC = () => {
             <div className="space-y-4">
               {enriched.map(({ apiId, item, product, quantity }) => (
                 <article key={`${item.productid}-${apiId ?? "guest"}`} className="flex gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)]">
-                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]">
+                  <Link
+                    to={`/products/${item.productid}`}
+                    className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]"
+                    aria-label={`View ${product?.name || `product ${item.productid}`}`}
+                  >
                     <img
                       src={imageFor(product)}
                       alt={product?.name || "Product image"}
@@ -544,9 +548,14 @@ const Cart: React.FC = () => {
                         event.currentTarget.src = fallbackProduct;
                       }}
                     />
-                  </div>
+                  </Link>
                   <div className="min-w-0 flex-1">
-                    <h2 className="line-clamp-2 text-base font-bold text-[var(--color-text)]">{product?.name || `Product #${item.productid}`}</h2>
+                    <Link
+                      to={`/products/${item.productid}`}
+                      className="line-clamp-2 text-base font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)]"
+                    >
+                      {product?.name || `Product #${item.productid}`}
+                    </Link>
                     <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
                     {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
                       <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">

@@ -5,8 +5,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
-  HeartHandshake,
-  Sparkles,
   Star,
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
@@ -15,7 +13,8 @@ import { Skeleton } from "../components/ui/skeleton";
 import { theme } from "../config/theme.config";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
-import type { Product } from "../types";
+import { ratingService } from "../services/ratingService";
+import type { Product, Rating } from "../types";
 import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
 import heroTwo from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import fallbackProduct from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
@@ -68,12 +67,6 @@ const categoryFallbacks = [
   "Home Decor",
 ];
 
-const testimonials = [
-  "The fragrance is gentle but stays in the room beautifully.",
-  "Nivaana incense has become part of my evening prayer routine.",
-  "The car freshener feels premium and not overpowering.",
-];
-
 const brandPartners = ["NIVAANA", "KRAFTELLA", "AUORA", "AROMAHPURE", "RITUAL EDITS"];
 
 const formatLabel = (value?: string | null) =>
@@ -87,14 +80,23 @@ const productImage = (product?: Product) =>
 
 const wrapIndex = (index: number, length: number) => (index + length) % length;
 
+const reviewAuthor = (review: Rating) => review.usermail || (review.userid ? `Customer #${review.userid}` : "");
+
+const reviewImage = (review: Rating, products: Product[]) =>
+  review.url?.find(Boolean) || productImage(products.find((product) => product.id === review.productid));
+
 const carouselArrowClass =
-  "grid h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
+  "h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeDeal, setActiveDeal] = useState(0);
+  const [activeReview, setActiveReview] = useState(0);
   const fragranceScrollerRef = useRef<HTMLDivElement | null>(null);
   const newArrivalsScrollerRef = useRef<HTMLDivElement | null>(null);
+  const heroSwipeRef = useRef({ startX: 0, startY: 0, swiping: false, tracking: false });
+  const heroSwipeDistanceRef = useRef(0);
+  const suppressHeroClickRef = useRef(false);
   const newArrivalsDragRef = useRef({ startX: 0, scrollLeft: 0, dragging: false });
   const newArrivalsDragDistanceRef = useRef(0);
 
@@ -103,7 +105,19 @@ const Home: React.FC = () => {
     queryFn: () => platformProductService.getProducts(1, 24),
   });
 
+  const ratingsQuery = useQuery({
+    queryKey: ["home-ratings"],
+    queryFn: () => ratingService.getRatings(1, 12),
+  });
+
   const products = useMemo(() => data?.data ?? [], [data?.data]);
+  const customerReviews = useMemo(
+    () =>
+      (ratingsQuery.data?.data ?? [])
+        .filter((review) => review.comments?.trim())
+        .sort((a, b) => (b.createddate ?? 0) - (a.createddate ?? 0)),
+    [ratingsQuery.data?.data]
+  );
 
   const dealProducts = useMemo(() => {
     const deals = products.filter((product) => product.isdealoftheday || product.discount > 0);
@@ -164,6 +178,15 @@ const Home: React.FC = () => {
 
   const slide = heroSlides[activeSlide];
 
+  const moveHeroSlide = (direction: number) => {
+    setActiveSlide((current) => wrapIndex(current + direction, heroSlides.length));
+  };
+
+  const moveReview = (direction: number) => {
+    if (!customerReviews.length) return;
+    setActiveReview((current) => wrapIndex(current + direction, customerReviews.length));
+  };
+
   const scrollFragrances = (direction: number) => {
     fragranceScrollerRef.current?.scrollBy({
       left: direction * 320,
@@ -181,27 +204,72 @@ const Home: React.FC = () => {
     });
   };
 
+  const activeCustomerReview = customerReviews.length
+    ? customerReviews[wrapIndex(activeReview, customerReviews.length)]
+    : undefined;
+
   return (
     <div className="min-h-screen bg-[var(--color-surface)]">
       <section className="bg-[var(--color-surface)] pb-3 pt-4 sm:pb-4 sm:pt-6 lg:pb-5 lg:pt-7">
         <div className="mx-auto w-full max-w-[1840px] px-2 sm:px-4 lg:px-6">
           <div className="relative overflow-hidden rounded-[28px] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)]">
-            <div className="relative h-[420px] sm:h-[520px] lg:h-[640px]">
+            <div
+              className="relative h-[420px] touch-pan-y select-none sm:h-[520px] lg:h-[640px]"
+              onClickCapture={(event) => {
+                if (suppressHeroClickRef.current) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onPointerDownCapture={(event) => {
+                if ((event.target as HTMLElement).closest("a, button")) return;
+
+                heroSwipeRef.current = {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  swiping: false,
+                  tracking: true,
+                };
+                heroSwipeDistanceRef.current = 0;
+                suppressHeroClickRef.current = false;
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMoveCapture={(event) => {
+                if (!heroSwipeRef.current.tracking) return;
+
+                const distanceX = event.clientX - heroSwipeRef.current.startX;
+                const distanceY = event.clientY - heroSwipeRef.current.startY;
+
+                heroSwipeDistanceRef.current = Math.abs(distanceX);
+                heroSwipeRef.current.swiping = Math.abs(distanceX) > 12 && Math.abs(distanceX) > Math.abs(distanceY);
+              }}
+              onPointerUpCapture={(event) => {
+                if (!heroSwipeRef.current.tracking) return;
+
+                const distanceX = event.clientX - heroSwipeRef.current.startX;
+                const distanceY = event.clientY - heroSwipeRef.current.startY;
+                const isHorizontalSwipe = Math.abs(distanceX) > 52 && Math.abs(distanceX) > Math.abs(distanceY) * 1.25;
+
+                heroSwipeRef.current.tracking = false;
+                heroSwipeRef.current.swiping = false;
+
+                if (!isHorizontalSwipe) return;
+                suppressHeroClickRef.current = true;
+                window.setTimeout(() => {
+                  suppressHeroClickRef.current = false;
+                  heroSwipeDistanceRef.current = 0;
+                }, 0);
+                moveHeroSlide(distanceX < 0 ? 1 : -1);
+              }}
+              onPointerCancelCapture={() => {
+                heroSwipeRef.current.tracking = false;
+                heroSwipeRef.current.swiping = false;
+              }}
+            >
               <motion.div
                 className="flex h-full cursor-grab active:cursor-grabbing"
                 animate={{ x: `-${activeSlide * 100}%` }}
                 transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.12}
-                onDragEnd={(_, info) => {
-                  if (info.offset.x < -70) {
-                    setActiveSlide((activeSlide + 1) % heroSlides.length);
-                  }
-                  if (info.offset.x > 70) {
-                    setActiveSlide((activeSlide + heroSlides.length - 1) % heroSlides.length);
-                  }
-                }}
               >
                 {heroSlides.map((item, index) => (
                   <div key={item.title} className="relative h-full min-w-full overflow-hidden">
@@ -272,12 +340,12 @@ const Home: React.FC = () => {
                     />
                   ))}
                 </div>
-                <div className="hidden gap-2 sm:flex">
+                <div className="hidden gap-2 lg:flex">
                   <Button
                     variant="icon"
                     className={carouselArrowClass}
                     aria-label="Previous hero slide"
-                    onClick={() => setActiveSlide((activeSlide + heroSlides.length - 1) % heroSlides.length)}
+                    onClick={() => moveHeroSlide(-1)}
                   >
                     <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
                   </Button>
@@ -285,7 +353,7 @@ const Home: React.FC = () => {
                     variant="icon"
                     className={carouselArrowClass}
                     aria-label="Next hero slide"
-                    onClick={() => setActiveSlide((activeSlide + 1) % heroSlides.length)}
+                    onClick={() => moveHeroSlide(1)}
                   >
                     <ChevronRight className="h-5 w-5 stroke-[2.4]" />
                   </Button>
@@ -321,9 +389,9 @@ const Home: React.FC = () => {
             </Link>
           </div>
 
-          <div className="relative md:px-16">
+          <div className="relative lg:px-16">
             <button
-              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
+              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollFragrances(-1)}
               aria-label="Previous fragrances"
             >
@@ -332,7 +400,7 @@ const Home: React.FC = () => {
 
             <div
               ref={fragranceScrollerRef}
-              className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-3 scrollbar-hide sm:gap-5 md:mx-0 md:px-0"
+              className="-mx-4 flex snap-x gap-4 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 sm:gap-5 lg:mx-0 lg:scroll-px-0 lg:px-0"
             >
               {categories.map((category) => (
                 <Link
@@ -357,7 +425,7 @@ const Home: React.FC = () => {
             </div>
 
             <button
-              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 md:grid", carouselArrowClass)}
+              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollFragrances(1)}
               aria-label="Next fragrances"
             >
@@ -371,26 +439,6 @@ const Home: React.FC = () => {
         <div className={theme.layout.container}>
           <SectionHeader eyebrow="Best sellers" title="Loved across daily rituals" linkText="View products" />
           <ProductGrid products={bestSellers} loading={isLoading} error={isError} />
-        </div>
-      </section>
-
-      <section className={cn(theme.layout.compactSection, "bg-[var(--color-surface)]")}>
-        <div className={theme.layout.container}>
-          <div className="grid overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] lg:grid-cols-2">
-            <div className="p-6 sm:p-10 lg:p-14">
-              <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Bundle and save</p>
-              <h2 className="mt-3 text-3xl font-bold leading-tight text-[var(--color-text)] sm:text-4xl">
-                Curate a calm home with incense, oils, and room fragrance.
-              </h2>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-[var(--color-muted)] sm:text-base">
-                Build a daily ritual kit for prayer corners, bedrooms, work desks, and cars with premium Nivaana selections.
-              </p>
-              <Link to="/products" className="mt-7 inline-flex">
-                <Button>Build your bundle</Button>
-              </Link>
-            </div>
-            <img src={heroTwo} alt="Nivaana fragrance ritual products" loading="lazy" className="h-full min-h-[320px] w-full object-cover" />
-          </div>
         </div>
       </section>
 
@@ -409,7 +457,7 @@ const Home: React.FC = () => {
 
             <div
               ref={newArrivalsScrollerRef}
-              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:gap-4 lg:mx-0 lg:px-0"
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
               onClickCapture={(event) => {
                 if (newArrivalsDragDistanceRef.current > 8) {
                   event.preventDefault();
@@ -443,13 +491,13 @@ const Home: React.FC = () => {
                 ? Array.from({ length: 6 }).map((_, index) => (
                     <Skeleton
                       key={index}
-                      className="h-[300px] min-w-[170px] flex-none snap-start sm:min-w-[190px] lg:basis-[calc((100%-5rem)/6)]"
+                      className="h-[300px] w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
                     />
                   ))
                 : newArrivals.map((product) => (
                     <div
                       key={product.id}
-                      className="min-w-[170px] flex-none snap-start sm:min-w-[190px] lg:min-w-0 lg:basis-[calc((100%-5rem)/6)]"
+                      className="w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
                     >
                       <ProductCard product={product} compact />
                     </div>
@@ -467,43 +515,74 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-        <div className={theme.layout.container}>
-          <SectionHeader eyebrow="Why choose us" title="A premium store built for trust" />
-          <div className={cn("grid md:grid-cols-3", theme.layout.gridGap)}>
-            {[
-              ["Verified catalog", "Only platform-published inventory is shown on the homepage."],
-              ["Ritual-first curation", "Products are grouped by space, fragrance family, and everyday use."],
-              ["Quiet premium feel", "White space, restrained gold accents, and clear product hierarchy."],
-            ].map(([title, text]) => (
-              <div key={title} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-6 shadow-[var(--shadow-card)]">
-                <Sparkles className="h-6 w-6 text-[var(--color-secondary)]" />
-                <h3 className="mt-5 text-lg font-bold text-[var(--color-text)]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-        <div className={theme.layout.container}>
-          <SectionHeader eyebrow="Testimonials" title="What customers notice first" />
-          <div className={cn("grid md:grid-cols-3", theme.layout.gridGap)}>
-            {testimonials.map((quote, index) => (
-              <div key={quote} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-6 shadow-[var(--shadow-card)]">
-                <div className="mb-4 flex gap-1 text-[var(--color-primary)]">
-                  {Array.from({ length: 5 }).map((_, star) => (
+      {activeCustomerReview && (
+        <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
+          <div className={theme.layout.container}>
+            <SectionHeader eyebrow="Customer reviews" title="What our customers say" />
+            <div className="md:hidden">
+              <div className="relative mx-auto max-w-[340px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white px-5 pb-9 pt-6 text-center shadow-[var(--shadow-card)]">
+                <div className="mb-3 flex justify-center gap-1 text-[var(--color-text)]">
+                  {Array.from({ length: Math.max(1, Math.min(activeCustomerReview.starrating || 5, 5)) }).map((_, star) => (
                     <Star key={star} className="h-4 w-4 fill-current" />
                   ))}
                 </div>
-                <p className="text-sm leading-7 text-[var(--color-text)]">"{quote}"</p>
-                <p className="mt-5 text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Nivaana customer {index + 1}</p>
+                <p className="mx-auto max-w-[270px] text-sm leading-6 text-[var(--color-muted)]">
+                  {activeCustomerReview.comments}
+                </p>
+                {reviewAuthor(activeCustomerReview) && (
+                  <p className="mt-4 text-sm font-bold text-[var(--color-text)]">{reviewAuthor(activeCustomerReview)}</p>
+                )}
+                <span className="absolute bottom-4 right-5 text-5xl font-bold leading-none text-[var(--color-border)]">"</span>
+                <div className="absolute -bottom-6 left-1/2 h-12 w-12 -translate-x-1/2 overflow-hidden rounded-full border-2 border-white bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
+                  <img
+                    src={reviewImage(activeCustomerReview, products)}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               </div>
-            ))}
+
+              {customerReviews.length > 1 && (
+                <div className="mt-9 flex items-center justify-center gap-4">
+                  <button
+                    type="button"
+                    className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-text)] text-white shadow-[var(--shadow-card)]"
+                    onClick={() => moveReview(-1)}
+                    aria-label="Previous review"
+                  >
+                    <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+                  </button>
+                  <button
+                    type="button"
+                    className="grid h-9 w-9 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-muted)]"
+                    onClick={() => moveReview(1)}
+                    aria-label="Next review"
+                  >
+                    <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className={cn("hidden md:grid md:grid-cols-3", theme.layout.gridGap)}>
+              {customerReviews.slice(0, 3).map((review) => (
+                <div key={review.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-6 shadow-[var(--shadow-card)]">
+                  <div className="mb-4 flex gap-1 text-[var(--color-primary)]">
+                    {Array.from({ length: Math.max(1, Math.min(review.starrating || 5, 5)) }).map((_, star) => (
+                      <Star key={star} className="h-4 w-4 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-sm leading-7 text-[var(--color-text)]">"{review.comments}"</p>
+                  {reviewAuthor(review) && (
+                    <p className="mt-5 text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">{reviewAuthor(review)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)] py-5">
         <div className="flex w-max animate-[marquee_26s_linear_infinite] gap-10 whitespace-nowrap text-sm font-bold tracking-[0.2em] text-[var(--color-secondary)] hover:[animation-play-state:paused]">
@@ -513,26 +592,6 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-        <div className={theme.layout.container}>
-          <div className="mx-auto max-w-3xl text-center">
-            <HeartHandshake className="mx-auto h-8 w-8 text-[var(--color-secondary)]" />
-            <h2 className="mt-4 text-3xl font-bold text-[var(--color-text)] sm:text-4xl">Join the Nivaana ritual list</h2>
-            <p className="mt-3 text-sm leading-7 text-[var(--color-muted)] sm:text-base">
-              Get product drops, festive offers, and fragrance notes for calmer everyday spaces.
-            </p>
-            <form className="mx-auto mt-7 flex max-w-lg flex-col gap-3 sm:flex-row">
-              <input
-                type="email"
-                aria-label="Email address"
-                placeholder="Enter your email"
-                className="h-12 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-4 text-sm outline-none focus:border-[var(--color-secondary)]"
-              />
-              <Button type="submit">Subscribe</Button>
-            </form>
-          </div>
-        </div>
-      </section>
     </div>
   );
 };
@@ -606,9 +665,9 @@ function DealTripleSlider({
 
   const positions = [-1, 0, 1];
   return (
-    <div className="relative -mx-4 overflow-hidden px-14 py-4 sm:-mx-8 sm:px-20 lg:px-24 lg:py-6">
+    <div className="relative -mx-4 overflow-hidden px-0 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-24 lg:py-6">
       <button
-        className={cn("absolute left-3 top-[46%] z-20 -translate-y-1/2 sm:left-5", carouselArrowClass)}
+        className={cn("absolute left-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(-1)}
         aria-label="Previous deal"
       >
@@ -616,7 +675,7 @@ function DealTripleSlider({
       </button>
 
       <motion.div
-        className="relative h-[360px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[410px] lg:h-[450px]"
+        className="relative h-[360px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[420px] lg:h-[450px]"
         onClickCapture={(event) => {
           if (lastDragDistanceRef.current > clickThreshold) {
             event.preventDefault();
@@ -628,7 +687,7 @@ function DealTripleSlider({
           const product = products[wrapIndex(activeIndex + position, products.length)];
           const isCenter = position === 0;
           const price = Math.max(product.price - product.discount, 0);
-          const cardX = position === -1 ? "-106%" : position === 1 ? "6%" : "-50%";
+          const cardX = position === -1 ? "-94%" : position === 1 ? "-6%" : "-50%";
 
           return (
             <motion.article
@@ -690,7 +749,7 @@ function DealTripleSlider({
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 flex h-[342px] w-[78vw] max-w-[620px] cursor-pointer touch-pan-y flex-col overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#fff8e8] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[390px] sm:w-[62vw] lg:h-[430px] lg:w-[43vw]",
+                "absolute left-1/2 top-0 flex h-[342px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y flex-col overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#fff8e8] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[400px] sm:w-[62vw] sm:max-w-[460px] lg:h-[430px] lg:w-[43vw] lg:max-w-[620px]",
                 isCenter
                   ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
                   : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
@@ -722,21 +781,21 @@ function DealTripleSlider({
                   Explore <ChevronRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
-              <div className="shrink-0 border-t border-[#edca78]/55 bg-[#fff8e8] p-4 sm:p-5">
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="shrink-0 border-t border-[#edca78]/55 bg-[#fff8e8] p-3 sm:p-5">
+                <div className="grid gap-2 sm:gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <div className="min-w-0">
                     <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#c17c00]">
                       {product.isdealoftheday ? "Deal of the Day" : "Limited Offer"}
                     </p>
-                    <h3 className="mt-1 line-clamp-2 text-lg font-extrabold leading-tight text-[var(--color-text)] sm:text-xl">
+                    <h3 className="mt-1 hidden line-clamp-2 text-base font-extrabold leading-snug text-[var(--color-text)] sm:block sm:text-xl sm:leading-tight">
                       {product.name}
                     </h3>
                     <p className="mt-1 line-clamp-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">
                       {formatLabel(product.category)} - {formatLabel(product.subcategory)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-end gap-2 sm:justify-end">
-                    <span className="text-xl font-extrabold text-[var(--color-text)] sm:text-2xl">
+                  <div className="hidden shrink-0 items-end gap-2 sm:flex sm:justify-end">
+                    <span className="text-lg font-extrabold text-[var(--color-text)] sm:text-2xl">
                       Rs. {price.toLocaleString("en-IN")}
                     </span>
                     {product.discount > 0 && (
@@ -753,7 +812,7 @@ function DealTripleSlider({
       </motion.div>
 
       <button
-        className={cn("absolute right-3 top-[46%] z-20 -translate-y-1/2 sm:right-5", carouselArrowClass)}
+        className={cn("absolute right-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(1)}
         aria-label="Next deal"
       >
