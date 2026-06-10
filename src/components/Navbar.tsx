@@ -59,10 +59,13 @@ const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [, setStoreVersion] = useState(0);
   const categoryCloseTimer = React.useRef<number | null>(null);
+  const lastScrollYRef = React.useRef(0);
+  const scrollTickingRef = React.useRef(false);
   const session = sessionService.getSession();
 
   const { data: productResponse } = useQuery({
@@ -110,11 +113,38 @@ const Navbar: React.FC = () => {
     .slice(0, 6);
 
   useEffect(() => {
-    const onScroll = () => setIsScrolled(window.scrollY > 16);
+    const onScroll = () => {
+      if (scrollTickingRef.current) return;
+
+      scrollTickingRef.current = true;
+      window.requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        const scrollDelta = currentScrollY - lastScrollYRef.current;
+
+        setIsScrolled(currentScrollY > 16);
+
+        if (currentScrollY < 80 || scrollDelta < -6) {
+          setIsHeaderHidden(false);
+        } else if (scrollDelta > 6 && !isMobileMenuOpen && !isSearchOpen && !isCategoriesOpen) {
+          setIsHeaderHidden(true);
+        }
+
+        lastScrollYRef.current = currentScrollY;
+        scrollTickingRef.current = false;
+      });
+    };
+
+    lastScrollYRef.current = window.scrollY;
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [isCategoriesOpen, isMobileMenuOpen, isSearchOpen]);
+
+  useEffect(() => {
+    if (isMobileMenuOpen || isSearchOpen || isCategoriesOpen) {
+      setIsHeaderHidden(false);
+    }
+  }, [isCategoriesOpen, isMobileMenuOpen, isSearchOpen]);
 
   useEffect(() => {
     const refresh = () => setStoreVersion((version) => version + 1);
@@ -130,6 +160,8 @@ const Navbar: React.FC = () => {
     setIsMobileMenuOpen(false);
     setIsCategoriesOpen(false);
     setIsSearchOpen(false);
+    setIsHeaderHidden(false);
+    lastScrollYRef.current = window.scrollY;
   }, [location.hash, location.pathname, location.search]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -207,7 +239,13 @@ const Navbar: React.FC = () => {
   );
 
   return (
-    <header className={cn("z-50", isProductDetailsPage ? "relative" : "sticky top-0")}>
+    <header
+      className={cn(
+        "z-50 transition-transform duration-300 ease-out",
+        isProductDetailsPage ? "relative" : "sticky top-0",
+        isHeaderHidden && "-translate-y-full"
+      )}
+    >
       <motion.nav
         className={cn(
           "border-b transition duration-300",

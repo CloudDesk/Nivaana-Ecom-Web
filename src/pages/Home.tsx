@@ -95,6 +95,7 @@ const categoryFallbacks = [
 const brandPartners = ["NIVAANA", "KRAFTELLA", "AUORA", "AROMAHPURE", "RITUAL EDITS"];
 
 type CategorySlide = {
+  id: string;
   name: string;
   subcategory: string;
   image: string;
@@ -239,6 +240,7 @@ const Home: React.FC = () => {
         if (subcategory) params.set("subcategory", subcategory);
 
         categoryMap.set(key, {
+          id: key,
           name: formatLabel(category || subcategory),
           subcategory: formatLabel(subcategory || category),
           image: productImage(product),
@@ -251,6 +253,7 @@ const Home: React.FC = () => {
     if (fromApi.length) return fromApi;
 
     return categoryFallbacks.slice(0, limit).map((category) => ({
+      id: `fallback:${category.toLowerCase()}`,
       name: "Nivaana",
       subcategory: formatLabel(category),
       image: fallbackProduct,
@@ -295,7 +298,7 @@ const Home: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[var(--color-surface)]">
-      <section className="bg-white pb-6 pt-7 sm:pb-8 sm:pt-10 lg:pb-10 lg:pt-16">
+      <section className="bg-[var(--color-surface)] pb-6 pt-7 sm:pb-8 sm:pt-10 lg:pb-10 lg:pt-16">
         <div className={heroContainer}>
           <div className="relative w-full overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-card)] sm:rounded-[28px] lg:rounded-[34px]">
             <div
@@ -463,11 +466,6 @@ const Home: React.FC = () => {
 
       <section className="bg-[var(--color-surface)] pb-0 pt-3 sm:pt-4 lg:pt-5">
         <div className={homeContainer}>
-          <SectionHeader
-            eyebrow={categoryConfig.section_eyebrow || "Shop by fragrance"}
-            title={categoryConfig.section_title || "Fragrance for every space"}
-            linkText={categoryConfig.link_text || "View all"}
-          />
           <CategoryTripleSlider
             activeIndex={activeCategory}
             categories={categories}
@@ -785,7 +783,7 @@ function CategoryTripleSlider({
 
   const positions = [-1, 0, 1];
   return (
-    <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-24 lg:pb-0 lg:pt-3">
+    <div className="relative -mx-4 overflow-visible px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-24 lg:pb-0 lg:pt-1">
       <button
         className={cn("absolute left-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(-1)}
@@ -795,7 +793,7 @@ function CategoryTripleSlider({
       </button>
 
       <motion.div
-        className="relative h-[276px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[324px] lg:h-[354px]"
+        className="relative h-[276px] cursor-grab select-none overflow-visible touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[324px] lg:h-[354px]"
         onClickCapture={(event) => {
           if (lastDragDistanceRef.current > clickThreshold) {
             event.preventDefault();
@@ -806,11 +804,11 @@ function CategoryTripleSlider({
         {positions.map((position) => {
           const category = categories[wrapIndex(activeIndex + position, categories.length)];
           const isCenter = position === 0;
-          const cardX = position === -1 ? "-108%" : position === 1 ? "8%" : "-50%";
+          const cardX = position === -1 ? "-112%" : position === 1 ? "12%" : "-50%";
 
           return (
             <motion.article
-              key={category.name}
+              key={category.id}
               onPointerDown={(event) => {
                 if ((event.target as HTMLElement).closest("button")) return;
 
@@ -852,19 +850,18 @@ function CategoryTripleSlider({
               initial={false}
               animate={{
                 x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
-                y: isCenter ? 0 : 18,
+                y: isCenter ? 0 : 10,
                 rotateY: 0,
-                scale: isCenter ? 1 : 0.88,
-                opacity: isCenter ? 1 : 0.72,
+                scale: isCenter ? 1 : 0.94,
+                opacity: 1,
               }}
               transition={
                 isDragging
                   ? { duration: 0 }
                   : {
-                      type: "spring",
-                      stiffness: 120,
-                      damping: 30,
-                      mass: 1.05,
+                      type: "tween",
+                      duration: 0.55,
+                      ease: [0.22, 1, 0.36, 1],
                     }
               }
               className={cn(
@@ -885,7 +882,7 @@ function CategoryTripleSlider({
                   className="pointer-events-none h-full w-full object-cover object-center"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
-                <div className="absolute bottom-4 left-4 right-4 max-w-[75%] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
+                <div className="absolute bottom-4 left-5 right-5 max-w-[calc(100%-2.5rem)] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:left-6 sm:right-6 sm:max-w-[76%]">
                   <p className="line-clamp-1 text-xs font-bold uppercase tracking-wide">{category.name}</p>
                   <h3 className="mt-1 line-clamp-2 text-xl font-extrabold leading-tight sm:text-2xl">
                     {category.subcategory}
@@ -919,7 +916,7 @@ function CategoryTripleSlider({
       <div className="mt-2 flex justify-center gap-2">
         {categories.map((category, index) => (
           <button
-            key={category.name}
+            key={category.id}
             className={cn(
               "h-2.5 rounded-full transition-all",
               wrapIndex(activeIndex, categories.length) === index
