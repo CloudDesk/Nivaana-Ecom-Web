@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Car,
+  ChevronLeft,
+  ChevronRight,
   Flame,
   Flower2,
   Gift,
@@ -132,6 +134,32 @@ const quantityFor = (quantity: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const RECENTLY_VIEWED_PRODUCT_IDS = "nivaana-recently-viewed-product-ids";
+const MAX_RECENTLY_VIEWED_PRODUCTS = 12;
+
+const readRecentlyViewedProductIds = () => {
+  try {
+    const rawValue = window.localStorage.getItem(RECENTLY_VIEWED_PRODUCT_IDS);
+    const parsed = rawValue ? JSON.parse(rawValue) : [];
+
+    return Array.isArray(parsed)
+      ? parsed.map(Number).filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveRecentlyViewedProductId = (productId: number) => {
+  const nextIds = [
+    productId,
+    ...readRecentlyViewedProductIds().filter((storedId) => storedId !== productId),
+  ].slice(0, MAX_RECENTLY_VIEWED_PRODUCTS);
+
+  window.localStorage.setItem(RECENTLY_VIEWED_PRODUCT_IDS, JSON.stringify(nextIds));
+  return nextIds;
+};
+
 const ProductDetails: React.FC = () => {
   const { productId } = useParams();
   const id = Number(productId);
@@ -140,7 +168,9 @@ const ProductDetails: React.FC = () => {
   const session = sessionService.getSession();
   const [selectedImage, setSelectedImage] = useState(0);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
   const [, setGuestStoreVersion] = useState(0);
+  const thumbnailScrollerRef = React.useRef<HTMLDivElement | null>(null);
 
   const productQuery = useQuery({
     queryKey: ["product", id],
@@ -199,6 +229,13 @@ const ProductDetails: React.FC = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  const recentlyViewedQuery = useQuery({
+    queryKey: ["recently-viewed-products"],
+    queryFn: () => platformProductService.getProducts(1, 100),
+    enabled: recentlyViewedIds.length > 0,
+    staleTime: 1000 * 60 * 5,
+  });
+
   useEffect(() => {
     const refresh = () => setGuestStoreVersion((version) => version + 1);
     window.addEventListener("nivaana-guest-store-change", refresh);
@@ -230,6 +267,21 @@ const ProductDetails: React.FC = () => {
   const displayedQuantity = cartItem ? cartQuantity : 0;
   const maxQuantity = Math.max(availableStock, 0);
 
+  useEffect(() => {
+    if (!product?.id) return;
+    setRecentlyViewedIds(saveRecentlyViewedProductId(product.id));
+  }, [product?.id]);
+
+  const scrollThumbnails = (direction: number) => {
+    const scroller = thumbnailScrollerRef.current;
+    if (!scroller) return;
+
+    scroller.scrollBy({
+      left: direction * Math.max(scroller.clientWidth * 0.75, 160),
+      behavior: "smooth",
+    });
+  };
+
   const relatedProducts = useMemo(
     () =>
       (relatedQuery.data?.data ?? [])
@@ -246,6 +298,16 @@ const ProductDetails: React.FC = () => {
         .sort((a, b) => (b.createddate ?? 0) - (a.createddate ?? 0)),
     [product?.id, ratingsQuery.data?.data]
   );
+  const recentlyViewedProducts = useMemo(() => {
+    const currentProductId = product?.id;
+    const recentlyViewedSet = new Set(recentlyViewedIds.filter((itemId) => itemId !== currentProductId));
+    const productsById = new Map((recentlyViewedQuery.data?.data ?? []).map((item) => [item.id, item]));
+
+    return Array.from(recentlyViewedSet)
+      .map((itemId) => productsById.get(itemId))
+      .filter((item): item is Product => Boolean(item))
+      .slice(0, 10);
+  }, [product?.id, recentlyViewedIds, recentlyViewedQuery.data?.data]);
 
   const handleMutationError = (error: Error) => {
     if (isAuthExpiredError(error)) {
@@ -446,60 +508,85 @@ const ProductDetails: React.FC = () => {
   ];
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 pb-8 pt-0">
-      <section className="w-full">
+    <main className="min-h-screen overflow-x-clip bg-[var(--color-surface)] px-4 pb-8 pt-0 sm:px-6 lg:px-8">
+      <section className="min-w-0 w-full">
         <CategoryBannerRail />
         <PromotionRail items={promotionItems} />
 
-        <div className="mb-5 text-sm text-[var(--color-muted)]">
+        <div className="mb-5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--color-muted)]">
           <Link to="/" className="hover:text-[var(--color-secondary)]">Home</Link>
-          <span className="mx-2">/</span>
+          <span>/</span>
           <Link to="/products" className="hover:text-[var(--color-secondary)]">Products</Link>
-          <span className="mx-2">/</span>
-          <span className="text-[var(--color-text)]">{product.name}</span>
+          <span>/</span>
+          <span className="min-w-0 break-words text-[var(--color-text)]">{product.name}</span>
         </div>
 
-        <div className="mx-auto grid max-w-[1480px] items-start gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,0.7fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(620px,0.75fr)]">
-          <div className="self-start lg:sticky lg:top-4">
-            <div className="overflow-hidden rounded-3xl bg-[var(--color-surface)]">
+        <div className="mx-auto grid w-full min-w-0 max-w-[1480px] grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,0.7fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(620px,0.75fr)]">
+          <div className="min-w-0 self-start lg:sticky lg:top-4">
+            <div className="min-w-0 overflow-hidden rounded-3xl bg-[var(--color-surface)]">
               <img
                 src={activeImage}
                 alt={product.name}
-                className="h-[360px] w-full rounded-3xl object-cover sm:h-[520px] lg:h-[calc(100vh-148px)]"
+                className="block h-[360px] w-full max-w-full rounded-3xl object-cover sm:h-[520px] lg:h-[calc(100vh-148px)]"
                 onError={(event) => {
                   event.currentTarget.src = fallbackProduct;
                 }}
               />
             </div>
             {images.length > 1 && (
-              <div className="mt-4 flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-                {images.map((image, index) => (
-                  <button
-                    key={`${image}-${index}`}
-                    type="button"
-                    onClick={() => setSelectedImage(index)}
-                    className={cn(
-                      "h-20 w-20 shrink-0 overflow-hidden rounded-2xl border bg-white sm:h-24 sm:w-24",
-                      selectedImage === index
-                        ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]"
-                        : "border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
-                    )}
-                  >
-                    <img src={image} alt="" className="h-full w-full rounded-2xl object-cover" />
-                  </button>
-                ))}
+              <div className="relative mt-4">
+                {images.length > 4 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => scrollThumbnails(-1)}
+                      className="absolute left-1 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white/95 text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)]"
+                      aria-label="Previous product images"
+                    >
+                      <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollThumbnails(1)}
+                      className="absolute right-1 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white/95 text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)]"
+                      aria-label="Next product images"
+                    >
+                      <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+                    </button>
+                  </>
+                )}
+                <div
+                  ref={thumbnailScrollerRef}
+                  className="flex max-w-full snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-1 pb-1 scrollbar-hide"
+                >
+                  {images.map((image, index) => (
+                    <button
+                      key={`${image}-${index}`}
+                      type="button"
+                      onClick={() => setSelectedImage(index)}
+                      className={cn(
+                        "h-20 w-20 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white sm:h-24 sm:w-24",
+                        selectedImage === index
+                          ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]"
+                          : "border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
+                      )}
+                    >
+                      <img src={image} alt="" className="h-full w-full rounded-2xl object-cover" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          <aside className="pb-8 lg:pr-4">
+          <aside className="min-w-0 pb-8 lg:pr-4">
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--color-secondary)]">
               <span>{formatLabel(product.subcategory || product.category)}</span>
               {productOutOfStock && <span className="text-[var(--color-danger)]">Out of Stock</span>}
               {productLowStock && <span className="text-[var(--color-danger)]">Low Stock</span>}
             </div>
 
-            <h1 className="mt-3 text-2xl font-extrabold leading-tight text-[var(--color-text)] sm:text-3xl">{product.name}</h1>
+            <h1 className="mt-3 break-words text-2xl font-extrabold leading-tight text-[var(--color-text)] sm:text-3xl">{product.name}</h1>
 
             <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-[var(--color-muted)]">
               <span className="inline-flex items-center gap-1">
@@ -510,7 +597,7 @@ const ProductDetails: React.FC = () => {
               <span>{availableStock} available</span>
             </div>
 
-            <div className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
+            <div className="mt-4 min-w-0 break-words text-sm leading-7 text-[var(--color-muted)]">
               <p>
                 {product.shortdescription || product.fulldescription || "Premium Nivaana fragrance crafted for everyday rituals."}
               </p>
@@ -518,7 +605,7 @@ const ProductDetails: React.FC = () => {
 
             <div className="mt-5">
               <p className="text-sm font-bold text-[var(--color-text)]">Offers</p>
-              <div className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+              <div className="mt-2 min-w-0 break-words text-sm leading-6 text-[var(--color-muted)]">
                 <ul className="space-y-2">
                   {publicPromotionsQuery.isLoading ? (
                     <li>Checking available promotions...</li>
@@ -537,7 +624,7 @@ const ProductDetails: React.FC = () => {
               </p>
             )}
 
-            <div className="mt-5 flex items-center gap-2">
+            <div className="mt-5 flex min-w-0 items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="text-xl font-extrabold leading-tight text-[var(--color-secondary)] sm:text-2xl">
                   Rs. {price.toLocaleString("en-IN")}
@@ -610,12 +697,12 @@ const ProductDetails: React.FC = () => {
               ))}
             </div>
 
-            <ProductInsights product={product} />
+            <ProductInsights product={product} hasReviews={productReviews.length > 0} />
           </aside>
         </div>
 
         {relatedProducts.length > 0 && (
-          <section className="mt-12">
+          <section className="mt-12 min-w-0">
             <div className="mb-5 flex items-end justify-between">
               <div>
                 <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">More recommendations</p>
@@ -623,7 +710,7 @@ const ProductDetails: React.FC = () => {
               </div>
               <Link to="/products" className="text-sm font-bold text-[var(--color-secondary)] hover:underline">View all</Link>
             </div>
-            <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:scroll-px-0 lg:px-0">
+            <div className="-mx-4 flex max-w-[calc(100%+2rem)] snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:max-w-[calc(100%+3rem)] sm:scroll-px-6 sm:px-6 lg:mx-0 lg:max-w-full lg:scroll-px-0 lg:px-0">
               {relatedProducts.map((item) => (
                 <div key={item.id} className="w-[72vw] min-w-[180px] max-w-[250px] flex-none snap-start sm:w-[38vw] sm:max-w-[280px] md:w-[30vw] lg:w-[240px] lg:max-w-none xl:w-[260px]">
                   <ProductCard product={item} compact />
@@ -633,12 +720,16 @@ const ProductDetails: React.FC = () => {
           </section>
         )}
 
-        <ProductReviewSection
-          product={product}
-          reviews={productReviews}
-          reviewsLoading={ratingsQuery.isLoading}
-          onWriteReview={() => setIsReviewModalOpen(true)}
-        />
+        <RecentlyViewedProducts products={recentlyViewedProducts} />
+
+        {productReviews.length > 0 && (
+          <ProductReviewSection
+            product={product}
+            reviews={productReviews}
+            reviewsLoading={ratingsQuery.isLoading}
+            onWriteReview={() => setIsReviewModalOpen(true)}
+          />
+        )}
       </section>
       <WriteReviewModal
         activeImage={activeImage}
@@ -652,8 +743,8 @@ const ProductDetails: React.FC = () => {
 
 function CategoryBannerRail() {
   return (
-    <div className="-mx-4 mb-0 overflow-hidden border-b border-[var(--color-border)] bg-white sm:-mx-6 lg:mx-0 lg:mb-0">
-      <div className="flex snap-x gap-5 overflow-x-auto scroll-px-4 px-4 py-4 scrollbar-hide sm:justify-center sm:gap-8 lg:gap-12 lg:py-5">
+    <div className="-mx-4 mb-0 max-w-[calc(100%+2rem)] overflow-hidden border-b border-[var(--color-border)] bg-white sm:-mx-6 sm:max-w-[calc(100%+3rem)] lg:mx-0 lg:mb-0 lg:max-w-full">
+      <div className="flex snap-x gap-5 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 py-4 scrollbar-hide sm:justify-center sm:gap-8 lg:gap-12 lg:py-5">
         {categoryRail.map((item) => {
           const Icon = item.icon;
 
@@ -681,7 +772,7 @@ function PromotionRail({ items }: { items: string[] }) {
   const feedItems = [...items, ...items, ...items, ...items];
 
   return (
-    <div className="-mx-4 mb-5 overflow-hidden bg-[var(--color-primary)] sm:-mx-6 lg:mx-0">
+    <div className="-mx-4 mb-5 max-w-[calc(100%+2rem)] overflow-hidden bg-[var(--color-primary)] sm:-mx-6 sm:max-w-[calc(100%+3rem)] lg:mx-0 lg:max-w-full">
       <div className="flex w-max animate-[marquee_24s_linear_infinite] gap-8 whitespace-nowrap px-4 py-2.5 text-xs font-extrabold text-[var(--color-text)] hover:[animation-play-state:paused] sm:text-sm">
         {feedItems.map((item, index) => (
           <span key={`${item}-${index}`} className="inline-flex items-center gap-2">
@@ -691,6 +782,32 @@ function PromotionRail({ items }: { items: string[] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function RecentlyViewedProducts({ products }: { products: Product[] }) {
+  if (!products.length) return null;
+
+  return (
+    <section className="mt-12 min-w-0">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Recently viewed</p>
+          <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)]">Continue where you left off</h2>
+        </div>
+        <Link to="/products" className="shrink-0 text-sm font-bold text-[var(--color-secondary)] hover:underline">
+          View all
+        </Link>
+      </div>
+
+      <div className="-mx-4 flex max-w-[calc(100%+2rem)] snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:max-w-[calc(100%+3rem)] sm:scroll-px-6 sm:px-6 lg:mx-0 lg:max-w-full lg:scroll-px-0 lg:px-0">
+        {products.map((item) => (
+          <div key={item.id} className="w-[72vw] min-w-[180px] max-w-[250px] flex-none snap-start sm:w-[38vw] sm:max-w-[280px] md:w-[30vw] lg:w-[240px] lg:max-w-none xl:w-[260px]">
+            <ProductCard product={item} compact />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -709,11 +826,11 @@ function ProductHighlights({ product }: { product: Product }) {
           const Icon = icons[index % icons.length];
 
           return (
-            <div key={`${point}-${index}`} className="flex items-center gap-3 text-sm font-medium text-[var(--color-text)]">
+            <div key={`${point}-${index}`} className="flex min-w-0 items-center gap-3 text-sm font-medium text-[var(--color-text)]">
               <span className="grid h-8 w-8 shrink-0 place-items-center text-[var(--color-secondary)]">
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="line-clamp-2">{point}</span>
+              <span className="min-w-0 break-words line-clamp-2">{point}</span>
             </div>
           );
         })}
@@ -722,7 +839,7 @@ function ProductHighlights({ product }: { product: Product }) {
   );
 }
 
-function ProductInsights({ product }: { product: Product }) {
+function ProductInsights({ product, hasReviews }: { product: Product; hasReviews: boolean }) {
   return (
     <section className="mt-9 space-y-8 border-t border-[var(--color-border)] pt-6">
       <nav className="flex flex-wrap gap-8 border-b border-[var(--color-border)] pb-3 text-base font-extrabold text-[var(--color-muted)]">
@@ -732,26 +849,28 @@ function ProductInsights({ product }: { product: Product }) {
         <a href="#how-to-use" className="hover:text-[var(--color-secondary)]">
           How to Use
         </a>
-        <a href="#reviews" className="hover:text-[var(--color-secondary)]">
-          Review
-        </a>
+        {hasReviews && (
+          <a href="#reviews" className="hover:text-[var(--color-secondary)]">
+            Review
+          </a>
+        )}
       </nav>
 
       <div id="overview" className="scroll-mt-6">
-        <p className="mt-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8">
+        <p className="mt-4 break-words text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8">
           {product.fulldescription || product.shortdescription || "A premium Nivaana product made to add calm, freshness, and a refined ritual feel to everyday spaces."}
         </p>
       </div>
 
       <div id="how-to-use" className="scroll-mt-6">
         <h2 className="text-base font-extrabold text-[var(--color-text)]">How to Use</h2>
-        <div className="mt-4 grid gap-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8 lg:grid-cols-3">
+        <div className="mt-4 grid min-w-0 gap-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8 lg:grid-cols-3">
           {[
             "Place or use the product in a clean, dry space.",
             "Keep away from direct heat, children, and pets unless product instructions say otherwise.",
             "Use regularly in your preferred room, car, or ritual space for a consistent fragrance experience.",
           ].map((step, index) => (
-            <div key={step}>
+            <div key={step} className="min-w-0 break-words">
               <span className="mb-2 block text-sm font-extrabold text-[var(--color-secondary)]">
                 {index + 1}
               </span>
@@ -780,7 +899,7 @@ function ProductReviewSection({
       : product.averagerating ?? 0;
 
   return (
-    <section id="reviews" className="mt-12 scroll-mt-6">
+    <section id="reviews" className="mt-12 min-w-0 scroll-mt-6">
       <div className="flex flex-col gap-5 border-b border-[var(--color-border)] pb-5 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Customer reviews</p>

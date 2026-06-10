@@ -85,7 +85,7 @@ const Login: React.FC = () => {
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[#edca78] bg-[#fff8e8] text-[#d29210]" aria-hidden="true">
             <Smartphone className="h-6 w-6" strokeWidth={1.8} />
           </span>
-          <h1 className="font-['Cormorant_Garamond'] text-3xl font-bold leading-tight text-[#070707] sm:text-4xl">
+          <h1 className="font-sans text-3xl font-bold leading-tight text-[#070707] sm:text-4xl">
             Login with OTP
           </h1>
         </div>

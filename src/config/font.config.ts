@@ -1,7 +1,7 @@
 export const fontConfig = {
-  heading: "Inter",
-  body: "Inter",
-  button: "Inter",
+  heading: "Gilroy",
+  body: "Gilroy",
+  button: "Gilroy",
   className: "font-sans",
 };
 

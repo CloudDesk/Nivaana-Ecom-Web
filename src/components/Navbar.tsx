@@ -160,7 +160,7 @@ const Navbar: React.FC = () => {
 
   const searchBox = (inputClassName: string, dropdownClassName = "") => (
     <>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
+      <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-muted)]" />
       <input
         aria-label="Search products"
         placeholder="Search"
@@ -216,9 +216,9 @@ const Navbar: React.FC = () => {
             : "border-white/40 bg-white/80 backdrop-blur-md"
         )}
       >
-        <div className={cn(theme.layout.container, "flex h-16 items-center justify-between gap-4 lg:h-20")}>
+        <div className={cn(theme.layout.container, "flex h-[4.5rem] items-center justify-between gap-4 lg:h-24")}>
           <button
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--color-border)] text-[var(--color-secondary)] lg:hidden"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[var(--color-border)] text-[var(--color-secondary)] lg:hidden"
             onClick={() => {
               setIsMobileMenuOpen((value) => !value);
               setIsSearchOpen(false);
@@ -226,17 +226,17 @@ const Navbar: React.FC = () => {
             aria-label="Toggle menu"
             aria-expanded={isMobileMenuOpen}
           >
-            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
 
           <Link to="/" className="flex shrink-0 items-center" aria-label="Nivaana home">
-            <img src={logo} alt="Nivaana" className="h-11 w-auto lg:h-14" loading="eager" />
+            <img src={logo} alt="Nivaana" className="h-14 w-auto lg:h-20" loading="eager" />
           </Link>
 
-          <div className="hidden items-center gap-2 lg:flex">
+          <div className="hidden items-center gap-3 lg:flex">
             <Link
               to="/"
-              className="inline-flex h-11 items-center rounded-[var(--radius-sm)] px-4 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
             >
               Home
             </Link>
@@ -244,7 +244,7 @@ const Navbar: React.FC = () => {
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-11 items-center gap-1 rounded-[var(--radius-sm)] px-4 text-sm font-semibold transition hover:bg-[var(--color-surface)]",
+                  "inline-flex h-12 items-center gap-2 rounded-[var(--radius-sm)] px-5 text-lg font-semibold transition hover:bg-[var(--color-surface)]",
                   isCategoriesOpen ? "text-[var(--color-secondary)]" : "text-[var(--color-text)]"
                 )}
                 onClick={() => navigate("/products")}
@@ -257,39 +257,39 @@ const Navbar: React.FC = () => {
                 aria-expanded={isCategoriesOpen}
                 aria-haspopup="true"
               >
-                Products <ChevronDown className={cn("h-4 w-4 transition", isCategoriesOpen && "rotate-180")} />
+                Products <ChevronDown className={cn("h-5 w-5 transition", isCategoriesOpen && "rotate-180")} />
               </button>
             </div>
             <Link
               to="/products?collection=deals"
-              className="inline-flex h-11 items-center rounded-[var(--radius-sm)] px-4 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
             >
               Deals
             </Link>
             <Link
               to="/about"
-              className="inline-flex h-11 items-center rounded-[var(--radius-sm)] px-4 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
             >
               About
             </Link>
             <Link
               to="/#contact"
-              className="inline-flex h-11 items-center rounded-[var(--radius-sm)] px-4 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
             >
               Contact
             </Link>
           </div>
 
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-3 md:flex">
             <form className="relative hidden xl:block" onSubmit={handleSearchSubmit}>
               {searchBox(
-                "h-10 w-52 rounded-full border border-[var(--color-border)] bg-white pl-9 pr-4 text-sm outline-none transition focus:border-[var(--color-secondary)]",
-                "w-[360px]"
+                "h-12 w-64 rounded-full border border-[var(--color-border)] bg-white pl-12 pr-5 text-lg outline-none transition focus:border-[var(--color-secondary)]",
+                "w-[400px]"
               )}
             </form>
             <Link to="/wishlist">
-              <Button variant="icon" aria-label="Wishlist" className="relative">
-                <Heart className="h-4 w-4" />
+              <Button variant="icon" aria-label="Wishlist" className="relative w-12 min-h-12">
+                <Heart className="h-5 w-5" />
                 <Badge count={wishlistCount} />
               </Button>
             </Link>
@@ -297,15 +297,15 @@ const Navbar: React.FC = () => {
               <Button
                 variant={session ? "secondary" : "icon"}
                 aria-label={session ? `Account for ${accountLabel}` : "Account"}
-                className={cn(session && "h-10 max-w-44 gap-2 rounded-full px-3")}
+                className={cn("min-h-12", session ? "h-12 max-w-52 gap-2 rounded-full px-4" : "w-12")}
               >
-                <UserRound className="h-4 w-4 shrink-0" />
-                {session && <span className="truncate text-xs font-bold">{accountLabel}</span>}
+                <UserRound className="h-5 w-5 shrink-0" />
+                {session && <span className="truncate text-sm font-bold">{accountLabel}</span>}
               </Button>
             </Link>
             <Link to="/cart">
-              <Button variant="icon" aria-label="Cart" className="relative">
-                <ShoppingBag className="h-4 w-4" />
+              <Button variant="icon" aria-label="Cart" className="relative w-12 min-h-12">
+                <ShoppingBag className="h-5 w-5" />
                 <Badge count={cartCount} />
               </Button>
             </Link>
@@ -314,7 +314,7 @@ const Navbar: React.FC = () => {
           <div className="flex items-center gap-1.5 md:hidden">
             <button
               type="button"
-              className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]"
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]"
               onClick={() => {
                 setIsSearchOpen((value) => !value);
                 setIsMobileMenuOpen(false);
@@ -322,13 +322,13 @@ const Navbar: React.FC = () => {
               aria-label="Search products"
               aria-expanded={isSearchOpen}
             >
-              <Search className="h-4 w-4" />
+              <Search className="h-5 w-5" />
             </button>
-            <Link to={session ? "/account" : "/login"} aria-label={session ? `Account for ${accountLabel}` : "Account"} className="grid h-9 w-9 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
-              <UserRound className="h-4 w-4" />
+            <Link to={session ? "/account" : "/login"} aria-label={session ? `Account for ${accountLabel}` : "Account"} className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
+              <UserRound className="h-5 w-5" />
             </Link>
-            <Link to="/cart" aria-label="Cart" className="relative grid h-9 w-9 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
-              <ShoppingBag className="h-4 w-4" />
+            <Link to="/cart" aria-label="Cart" className="relative grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
+              <ShoppingBag className="h-5 w-5" />
               <Badge count={cartCount} />
             </Link>
           </div>
@@ -346,7 +346,7 @@ const Navbar: React.FC = () => {
             className="border-b border-[var(--color-border)] bg-white px-4 py-3 shadow-[var(--shadow-card)] md:hidden"
           >
             <form className="relative" onSubmit={handleSearchSubmit}>
-              {searchBox("h-11 w-full rounded-full border border-[var(--color-border)] bg-white pl-9 pr-4 text-sm outline-none focus:border-[var(--color-secondary)]")}
+              {searchBox("h-12 w-full rounded-full border border-[var(--color-border)] bg-white pl-12 pr-5 text-base outline-none focus:border-[var(--color-secondary)]")}
             </form>
           </motion.div>
         )}
@@ -397,13 +397,13 @@ const Navbar: React.FC = () => {
           >
             <div className={cn(theme.layout.container, "space-y-2 py-4")}>
               <form className="relative mb-3" onSubmit={handleSearchSubmit}>
-                {searchBox("h-11 w-full rounded-full border border-[var(--color-border)] pl-9 pr-4 text-sm outline-none focus:border-[var(--color-secondary)]")}
+                {searchBox("h-12 w-full rounded-full border border-[var(--color-border)] pl-12 pr-5 text-base outline-none focus:border-[var(--color-secondary)]")}
               </form>
-              <Link to="/" className="block rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]">
+              <Link to="/" className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]">
                 Home
               </Link>
               <details className="rounded-[var(--radius-sm)] px-3 py-3">
-                <summary className="cursor-pointer text-sm font-semibold text-[var(--color-secondary)]">
+                <summary className="cursor-pointer text-base font-semibold text-[var(--color-secondary)]">
                   Products
                 </summary>
                 <div className="mt-4 space-y-5">
@@ -417,7 +417,7 @@ const Navbar: React.FC = () => {
                           <Link
                             key={item.label}
                             to={item.to}
-                            className="block rounded-[var(--radius-sm)] px-2 py-2 text-sm text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
+                            className="block rounded-[var(--radius-sm)] px-2 py-2 text-base text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
                           >
                             {item.label}
                           </Link>
@@ -429,42 +429,42 @@ const Navbar: React.FC = () => {
               </details>
               <Link
                 to="/products?collection=deals"
-                className="block rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
                 Deals
               </Link>
               <Link
                 to="/about"
-                className="block rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
                 About
               </Link>
               <Link
                 to="/#contact"
-                className="block rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
                 Contact
               </Link>
               <Link
                 to={session ? "/account" : "/login"}
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
-                <UserRound className="h-4 w-4" />
+                <UserRound className="h-5 w-5" />
                 {session ? accountLabel : "Login"}
               </Link>
               <Link
                 to="/wishlist"
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
-                <Heart className="h-4 w-4" />
+                <Heart className="h-5 w-5" />
                 Wishlist
                 {wishlistCount > 0 && <span className="ml-auto text-xs font-bold">{wishlistCount}</span>}
               </Link>
               <Link
                 to="/cart"
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-sm font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
-                <ShoppingBag className="h-4 w-4" />
+                <ShoppingBag className="h-5 w-5" />
                 Cart
                 {cartCount > 0 && <span className="ml-auto text-xs font-bold">{cartCount}</span>}
               </Link>

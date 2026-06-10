@@ -88,6 +88,7 @@ const reviewImage = (review: Rating, products: Product[]) =>
 const carouselArrowClass =
   "h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
+const heroContainer = "mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-14";
 const homeSection = "py-7 sm:py-8 lg:py-10";
 
 const Home: React.FC = () => {
@@ -212,11 +213,11 @@ const Home: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[var(--color-surface)]">
-      <section className="bg-[var(--color-surface)] pb-3 pt-4 sm:pb-4 sm:pt-6 lg:pb-5 lg:pt-7">
-        <div className={homeContainer}>
-          <div className="relative overflow-hidden rounded-[28px] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)]">
+      <section className="bg-white pb-6 pt-7 sm:pb-8 sm:pt-10 lg:pb-10 lg:pt-16">
+        <div className={heroContainer}>
+          <div className="relative w-full overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-card)] sm:rounded-[28px] lg:rounded-[34px]">
             <div
-              className="relative h-[420px] touch-pan-y select-none sm:h-[520px] lg:h-[640px]"
+              className="relative h-[calc(100svh-9.5rem)] min-h-[380px] max-h-[620px] touch-pan-y select-none sm:h-[calc(100svh-11rem)] sm:min-h-[460px] md:min-h-[520px] lg:h-[calc(100svh-12.5rem)] lg:min-h-[560px] lg:max-h-[704px]"
               onClickCapture={(event) => {
                 if (suppressHeroClickRef.current) {
                   event.preventDefault();
@@ -309,17 +310,17 @@ const Home: React.FC = () => {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -24 }}
                       transition={{ duration: 0.45 }}
-                      className="pointer-events-auto max-w-xl text-white"
+                      className="pointer-events-auto max-w-lg text-white lg:ml-auto lg:max-w-2xl lg:text-center"
                     >
-                      <p className="text-lg font-semibold text-white sm:text-2xl">{slide.eyebrow}</p>
-                      <h1 className="mt-4 text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-7xl">
+                      <p className="text-base font-semibold text-white sm:text-xl lg:text-3xl">{slide.eyebrow}</p>
+                      <h1 className="mt-3 text-3xl font-bold leading-tight text-white sm:text-5xl lg:text-7xl">
                         {slide.title}
                       </h1>
-                      <p className="mt-4 max-w-lg text-sm leading-7 text-white/86 sm:text-base">
+                      <p className="mt-3 max-w-lg text-sm leading-6 text-white/86 sm:text-base sm:leading-7 lg:mx-auto">
                         {slide.text}
                       </p>
-                      <Link to="/products" className="mt-7 inline-flex">
-                        <Button className="rounded-full bg-[var(--color-text)] px-8 text-white hover:bg-[var(--color-secondary)]">
+                      <Link to="/products" className="mt-5 inline-flex sm:mt-6">
+                        <Button className="min-h-9 rounded-full bg-[var(--color-text)] px-6 text-white hover:bg-[var(--color-secondary)] sm:px-8">
                           Shop Now
                         </Button>
                       </Link>
@@ -328,7 +329,7 @@ const Home: React.FC = () => {
                 </div>
               </div>
 
-              <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between sm:left-10 sm:right-10 lg:left-16 lg:right-16">
+              <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between sm:left-10 sm:right-10 lg:left-14 lg:right-14">
                 <div className="flex items-center gap-4">
                   {heroSlides.map((item, index) => (
                     <button
