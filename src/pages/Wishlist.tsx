@@ -8,9 +8,17 @@ import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import type { Product } from "../types";
+import { isOutOfStock } from "../lib/stock";
 
 const imageFor = (product?: { medium: string[] | null; small: string[] | null; large: string[] | null }) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
+
+type MoveToCartInput = {
+  itemId: number;
+  productid: number;
+  product?: Product;
+};
 
 const Wishlist: React.FC = () => {
   const queryClient = useQueryClient();
@@ -34,11 +42,19 @@ const Wishlist: React.FC = () => {
     queryFn: () => platformProductService.getProducts(1, 100),
   });
 
-  const moveToCart = useMutation<unknown, Error, number>({
-    mutationFn: (itemId: number) => {
+  const moveToCart = useMutation<unknown, Error, MoveToCartInput>({
+    mutationFn: ({ itemId, productid, product }) => {
+      if (!product) {
+        return Promise.reject(new Error("Product details are not available yet."));
+      }
+
+      if (isOutOfStock(product)) {
+        return Promise.reject(new Error("This item is currently out of stock."));
+      }
+
       if (!session) {
-        guestStoreService.addToCart(itemId);
-        guestStoreService.removeFromWishlist(itemId);
+        guestStoreService.addToCart(productid);
+        guestStoreService.removeFromWishlist(productid);
         return Promise.resolve();
       }
 
@@ -124,6 +140,9 @@ const Wishlist: React.FC = () => {
           <div className="mt-8 grid gap-4 md:grid-cols-2">
             {wishlistProducts.map(({ apiId, item, product }) => {
               const price = product ? Math.max(product.price - product.discount, 0) : 0;
+              const productMissing = !productsQuery.isLoading && !product;
+              const outOfStock = Boolean(product) && isOutOfStock(product);
+              const cannotAddToCart = productsQuery.isLoading || productMissing || outOfStock;
 
               return (
                 <article
@@ -157,8 +176,17 @@ const Wishlist: React.FC = () => {
                     {product?.shortdescription && (
                       <p className="mt-2 line-clamp-2 text-sm text-[var(--color-muted)]">{product.shortdescription}</p>
                     )}
+                    {outOfStock && (
+                      <p className="mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
+                        This item is currently out of stock.
+                      </p>
+                    )}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Button className="h-9" disabled={moveToCart.isPending} onClick={() => moveToCart.mutate(apiId ?? item.productid)}>
+                      <Button
+                        className="h-9"
+                        disabled={moveToCart.isPending || cannotAddToCart}
+                        onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
+                      >
                         <ShoppingBag className="mr-2 h-4 w-4" /> Add to Cart
                       </Button>
                       <Button

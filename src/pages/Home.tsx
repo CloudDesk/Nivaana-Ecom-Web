@@ -94,6 +94,13 @@ const categoryFallbacks = [
 
 const brandPartners = ["NIVAANA", "KRAFTELLA", "AUORA", "AROMAHPURE", "RITUAL EDITS"];
 
+type CategorySlide = {
+  name: string;
+  subcategory: string;
+  image: string;
+  to: string;
+};
+
 const formatLabel = (value?: string | null) =>
   value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "Nivaana";
 
@@ -146,13 +153,15 @@ const configuredHeroSlides = (assets?: PromotionalAsset[]): HeroSlide[] =>
 
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
-  const [activeDeal, setActiveDeal] = useState(0);
+  const [activeCategory, setActiveCategory] = useState(0);
   const [activeReview, setActiveReview] = useState(0);
-  const fragranceScrollerRef = useRef<HTMLDivElement | null>(null);
+  const dealsScrollerRef = useRef<HTMLDivElement | null>(null);
   const newArrivalsScrollerRef = useRef<HTMLDivElement | null>(null);
   const heroSwipeRef = useRef({ startX: 0, startY: 0, swiping: false, tracking: false });
   const heroSwipeDistanceRef = useRef(0);
   const suppressHeroClickRef = useRef(false);
+  const dealsDragRef = useRef({ startX: 0, scrollLeft: 0, dragging: false });
+  const dealsDragDistanceRef = useRef(0);
   const newArrivalsDragRef = useRef({ startX: 0, scrollLeft: 0, dragging: false });
   const newArrivalsDragDistanceRef = useRef(0);
 
@@ -215,44 +224,37 @@ const Home: React.FC = () => {
   );
 
   const categories = useMemo(() => {
-    const fragranceTypes = Array.from(
-      new Set(
-        products.flatMap((product) =>
-          (product.fragnancetype || "")
-            .split(",")
-            .map((fragrance) => fragrance.trim())
-            .filter(Boolean)
-        )
-      )
-    ).slice(0, categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6);
+    const limit = categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6;
+    const categoryMap = new Map<string, CategorySlide>();
 
-    if (fragranceTypes.length) {
-      return fragranceTypes.map((fragrance, index) => {
-        const matchingProducts = products.filter((product) =>
-          (product.fragnancetype || "")
-            .split(",")
-            .map((value) => value.trim())
-            .includes(fragrance)
-        );
+    products.forEach((product) => {
+      const category = product.category?.trim();
+      const subcategory = product.subcategory?.trim();
+      if (!category && !subcategory) return;
 
-        return {
-          name: formatLabel(fragrance),
-          image: productImage(matchingProducts[0]),
-          count: matchingProducts.length || index + 1,
-          to: `/products?subcategory=${encodeURIComponent(fragrance)}`,
-        };
-      });
-    }
+      const key = `${category || "nivaana"}:${subcategory || category || "all"}`.toLowerCase();
+      if (!categoryMap.has(key)) {
+        const params = new URLSearchParams();
+        if (category) params.set("category", category);
+        if (subcategory) params.set("subcategory", subcategory);
 
-    const fromApi = Array.from(new Set(products.map((product) => product.subcategory || product.category)))
-      .filter(Boolean)
-      .slice(0, categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6);
+        categoryMap.set(key, {
+          name: formatLabel(category || subcategory),
+          subcategory: formatLabel(subcategory || category),
+          image: productImage(product),
+          to: `/products?${params.toString()}`,
+        });
+      }
+    });
 
-    return (fromApi.length ? fromApi : categoryFallbacks).map((category, index) => ({
-      name: formatLabel(category),
-      image: productImage(products.find((product) => (product.subcategory || product.category) === category)),
-      count: products.filter((product) => (product.subcategory || product.category) === category).length || index + 3,
-      to: `/products?subcategory=${encodeURIComponent(String(category))}`,
+    const fromApi = Array.from(categoryMap.values()).slice(0, limit);
+    if (fromApi.length) return fromApi;
+
+    return categoryFallbacks.slice(0, limit).map((category) => ({
+      name: "Nivaana",
+      subcategory: formatLabel(category),
+      image: fallbackProduct,
+      to: `/products?subcategory=${encodeURIComponent(category)}`,
     }));
   }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
 
@@ -267,9 +269,12 @@ const Home: React.FC = () => {
     setActiveReview((current) => wrapIndex(current + direction, customerReviews.length));
   };
 
-  const scrollFragrances = (direction: number) => {
-    fragranceScrollerRef.current?.scrollBy({
-      left: direction * 320,
+  const scrollDeals = (direction: number) => {
+    const scroller = dealsScrollerRef.current;
+    if (!scroller) return;
+
+    scroller.scrollBy({
+      left: direction * Math.max(scroller.clientWidth * 0.9, 320),
       behavior: "smooth",
     });
   };
@@ -390,26 +395,26 @@ const Home: React.FC = () => {
                 ))}
               </motion.div>
 
-              <div className="pointer-events-none absolute inset-0 flex items-center">
-                <div className="w-full px-6 sm:px-10 lg:px-16">
+              <div className="pointer-events-none absolute inset-0 flex items-start">
+                <div className="w-full px-6 pt-8 sm:px-10 sm:pt-10 lg:px-16 lg:pt-14">
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={slide.title}
-                      initial={{ opacity: 0, x: 24 }}
+                      initial={{ opacity: 0, x: -18 }}
                       animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -24 }}
+                      exit={{ opacity: 0, x: -18 }}
                       transition={{ duration: 0.45 }}
-                      className="pointer-events-auto max-w-lg text-white lg:ml-auto lg:max-w-2xl lg:text-center"
+                      className="pointer-events-auto max-w-[300px] text-left text-white drop-shadow-[0_3px_14px_rgba(0,0,0,0.45)] sm:max-w-[380px] lg:max-w-[460px]"
                     >
-                      <p className="text-base font-semibold text-white sm:text-xl lg:text-3xl">{slide.eyebrow}</p>
-                      <h1 className="mt-3 text-3xl font-bold leading-tight text-white sm:text-5xl lg:text-7xl">
+                      <p className="text-sm font-semibold text-white sm:text-base lg:text-lg">{slide.eyebrow}</p>
+                      <h1 className="mt-2 text-2xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl">
                         {slide.title}
                       </h1>
-                      <p className="mt-3 max-w-lg text-sm leading-6 text-white/86 sm:text-base sm:leading-7 lg:mx-auto">
+                      <p className="mt-2 max-w-[34rem] text-xs leading-5 text-white/88 sm:text-sm sm:leading-6 lg:text-base">
                         {slide.text}
                       </p>
-                      <Link to={slide.ctaUrl || "/products"} className="mt-5 inline-flex sm:mt-6">
-                        <Button className="min-h-9 rounded-full bg-[var(--color-text)] px-6 text-white hover:bg-[var(--color-secondary)] sm:px-8">
+                      <Link to={slide.ctaUrl || "/products"} className="mt-4 inline-flex sm:mt-5">
+                        <Button className="min-h-8 rounded-full bg-[var(--color-text)] px-5 text-sm text-white hover:bg-[var(--color-secondary)] sm:min-h-9 sm:px-6">
                           {slide.ctaText || "Shop Now"}
                         </Button>
                       </Link>
@@ -459,71 +464,89 @@ const Home: React.FC = () => {
       <section className="bg-[var(--color-surface)] pb-0 pt-3 sm:pt-4 lg:pt-5">
         <div className={homeContainer}>
           <SectionHeader
-            eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
-            title={dealConfig.section_title || "Limited-time Nivaana picks"}
-            linkText={dealConfig.link_text || "Shop deals"}
+            eyebrow={categoryConfig.section_eyebrow || "Shop by fragrance"}
+            title={categoryConfig.section_title || "Fragrance for every space"}
+            linkText={categoryConfig.link_text || "View all"}
           />
-          <DealTripleSlider
-            activeIndex={activeDeal}
-            error={isError}
+          <CategoryTripleSlider
+            activeIndex={activeCategory}
+            categories={categories}
             loading={isLoading}
-            products={dealProducts}
-            setActiveIndex={setActiveDeal}
+            setActiveIndex={setActiveCategory}
           />
         </div>
       </section>
 
       <section className="bg-[var(--color-surface)] pb-6 pt-0 sm:pb-7 lg:pb-8">
         <div className={homeContainer}>
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">{categoryConfig.section_eyebrow || "Shop by fragrance"}</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">{categoryConfig.section_title || "Fragrance for every space"}</h2>
-            </div>
-            <Link to="/products" className="hidden text-sm font-bold text-[var(--color-secondary)] hover:underline sm:inline-flex">
-              View all
-            </Link>
-          </div>
+          <SectionHeader
+            eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
+            title={dealConfig.section_title || "Limited-time Nivaana picks"}
+            linkText={dealConfig.link_text || "Shop deals"}
+          />
 
           <div className="relative lg:px-16">
             <button
               className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollFragrances(-1)}
-              aria-label="Previous fragrances"
+              onClick={() => scrollDeals(-1)}
+              aria-label="Previous deals"
             >
               <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
             </button>
 
             <div
-              ref={fragranceScrollerRef}
-              className="-mx-4 flex snap-x gap-4 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 sm:gap-5 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              ref={dealsScrollerRef}
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              onClickCapture={(event) => {
+                if (dealsDragDistanceRef.current > 8) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                dealsDragRef.current = {
+                  startX: event.clientX,
+                  scrollLeft: event.currentTarget.scrollLeft,
+                  dragging: true,
+                };
+                dealsDragDistanceRef.current = 0;
+              }}
+              onPointerMove={(event) => {
+                if (!dealsDragRef.current.dragging) return;
+
+                const distance = event.clientX - dealsDragRef.current.startX;
+                dealsDragDistanceRef.current = Math.abs(distance);
+                event.currentTarget.scrollLeft = dealsDragRef.current.scrollLeft - distance;
+              }}
+              onPointerUp={() => {
+                dealsDragRef.current.dragging = false;
+              }}
+              onPointerCancel={() => {
+                dealsDragRef.current.dragging = false;
+              }}
             >
-              {categories.map((category) => (
-                <Link
-                  to={category.to}
-                  key={category.name}
-                  className="group min-w-[180px] snap-start overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-[var(--shadow-hover)] sm:min-w-[210px] lg:min-w-[220px]"
-                >
-                  <div className="aspect-square overflow-hidden bg-[var(--color-surface)]">
-                    <img
-                      src={category.image}
-                      alt={category.name}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              {isLoading
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <Skeleton
+                      key={index}
+                      className="h-[300px] w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
                     />
-                  </div>
-                  <div className="p-3">
-                    <h3 className="line-clamp-1 text-sm font-bold text-[var(--color-text)]">{category.name}</h3>
-                    <p className="mt-1 text-xs text-[var(--color-muted)]">{category.count} products</p>
-                  </div>
-                </Link>
-              ))}
+                  ))
+                : dealProducts.map((product) => (
+                    <div
+                      key={product.id}
+                      className="w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                    >
+                      <ProductCard product={product} compact />
+                    </div>
+                  ))}
             </div>
 
             <button
               className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollFragrances(1)}
-              aria-label="Next fragrances"
+              onClick={() => scrollDeals(1)}
+              aria-label="Next deals"
             >
               <ChevronRight className="h-5 w-5 stroke-[2.4]" />
             </button>
@@ -719,17 +742,15 @@ function SectionHeader({ eyebrow, title, linkText }: { eyebrow: string; title: s
   );
 }
 
-function DealTripleSlider({
+function CategoryTripleSlider({
   activeIndex,
-  error,
+  categories,
   loading,
-  products,
   setActiveIndex,
 }: {
   activeIndex: number;
-  error: boolean;
+  categories: CategorySlide[];
   loading: boolean;
-  products: Product[];
   setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const navigate = useNavigate();
@@ -744,18 +765,10 @@ function DealTripleSlider({
     return <Skeleton className="h-[260px] rounded-[28px] sm:h-[310px]" />;
   }
 
-  if (error) {
+  if (!categories.length) {
     return (
       <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center text-sm text-[var(--color-muted)]">
-        Product deals could not be loaded right now.
-      </div>
-    );
-  }
-
-  if (!products.length) {
-    return (
-      <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center text-sm text-[var(--color-muted)]">
-        No deals available right now.
+        Categories could not be loaded right now.
       </div>
     );
   }
@@ -776,13 +789,13 @@ function DealTripleSlider({
       <button
         className={cn("absolute left-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(-1)}
-        aria-label="Previous deal"
+        aria-label="Previous category"
       >
         <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
       </button>
 
       <motion.div
-        className="relative h-[326px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[374px] lg:h-[404px]"
+        className="relative h-[276px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[324px] lg:h-[354px]"
         onClickCapture={(event) => {
           if (lastDragDistanceRef.current > clickThreshold) {
             event.preventDefault();
@@ -791,14 +804,13 @@ function DealTripleSlider({
         }}
       >
         {positions.map((position) => {
-          const product = products[wrapIndex(activeIndex + position, products.length)];
+          const category = categories[wrapIndex(activeIndex + position, categories.length)];
           const isCenter = position === 0;
-          const price = Math.max(product.price - product.discount, 0);
           const cardX = position === -1 ? "-108%" : position === 1 ? "8%" : "-50%";
 
           return (
             <motion.article
-              key={product.id}
+              key={category.name}
               onPointerDown={(event) => {
                 if ((event.target as HTMLElement).closest("button")) return;
 
@@ -833,7 +845,7 @@ function DealTripleSlider({
 
                 if ((event.target as HTMLElement).closest("button")) return;
                 if (dragDistance <= clickThreshold) {
-                  navigate(`/products/${product.id}`);
+                  navigate(category.to);
                 }
               }}
               onPointerCancel={resetDrag}
@@ -856,56 +868,40 @@ function DealTripleSlider({
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 flex h-[312px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y flex-col overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#fff8e8] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[358px] sm:w-[62vw] sm:max-w-[460px] lg:h-[388px] lg:w-[43vw] lg:max-w-[620px]",
+                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#efe6d4] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
                 isCenter
                   ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
                   : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
               )}
             >
-              <div className="relative min-h-0 flex-1 overflow-hidden bg-[#efe6d4]">
+              <div className="relative h-full overflow-hidden bg-[#efe6d4]">
                 <motion.img
-                  src={productImage(product)}
-                  alt=""
-                  aria-hidden="true"
+                  src={category.image}
+                  alt={category.name}
                   draggable={false}
                   loading="lazy"
                   animate={{ scale: isCenter ? 1.01 : 1 }}
                   transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                  className="pointer-events-none h-full w-full object-contain object-center"
+                  className="pointer-events-none h-full w-full object-cover object-center"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+                <div className="absolute bottom-4 left-4 right-4 max-w-[75%] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
+                  <p className="line-clamp-1 text-xs font-bold uppercase tracking-wide">{category.name}</p>
+                  <h3 className="mt-1 line-clamp-2 text-xl font-extrabold leading-tight sm:text-2xl">
+                    {category.subcategory}
+                  </h3>
+                </div>
                 <Button
                   type="button"
-                  className="absolute bottom-4 left-4 h-10 rounded-full bg-[#f0c353] px-4 text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:px-5"
+                  className="absolute right-4 top-4 h-8 rounded-full bg-[#f0c353] px-3 text-xs font-bold text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:h-9 sm:px-4 sm:text-sm"
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
-                    navigate(`/products/${product.id}`);
+                    navigate(category.to);
                   }}
                 >
-                  Explore <ChevronRight className="ml-1.5 h-4 w-4" />
+                  Explore <ChevronRight className="ml-1 h-3.5 w-3.5" />
                 </Button>
-              </div>
-              <div className="shrink-0 border-t border-[#edca78]/55 bg-[#fff8e8] p-3 sm:p-5">
-                <div className="grid gap-2 sm:gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#c17c00]">
-                      {product.isdealoftheday ? "Deal of the Day" : "Limited Offer"}
-                    </p>
-                    <h3 className="mt-1 hidden line-clamp-2 text-base font-extrabold leading-snug text-[var(--color-text)] sm:block sm:text-xl sm:leading-tight">
-                      {product.name}
-                    </h3>
-                  </div>
-                  <div className="hidden shrink-0 items-end gap-2 sm:flex sm:justify-end">
-                    <span className="text-lg font-extrabold text-[var(--color-text)] sm:text-2xl">
-                      Rs. {price.toLocaleString("en-IN")}
-                    </span>
-                    {product.discount > 0 && (
-                      <span className="pb-1 text-sm text-[var(--color-muted)] line-through">
-                        Rs. {product.price.toLocaleString("en-IN")}
-                      </span>
-                    )}
-                  </div>
-                </div>
               </div>
             </motion.article>
           );
@@ -915,23 +911,23 @@ function DealTripleSlider({
       <button
         className={cn("absolute right-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(1)}
-        aria-label="Next deal"
+        aria-label="Next category"
       >
         <ChevronRight className="h-5 w-5 stroke-[2.4]" />
       </button>
 
       <div className="mt-2 flex justify-center gap-2">
-        {products.map((product, index) => (
+        {categories.map((category, index) => (
           <button
-            key={product.id}
+            key={category.name}
             className={cn(
               "h-2.5 rounded-full transition-all",
-              wrapIndex(activeIndex, products.length) === index
+              wrapIndex(activeIndex, categories.length) === index
                 ? "w-9 bg-[var(--color-secondary)]"
                 : "w-2.5 bg-[var(--color-border)]"
             )}
             onClick={() => setActiveIndex(index)}
-            aria-label={`Show deal ${index + 1}`}
+            aria-label={`Show category ${index + 1}`}
           />
         ))}
       </div>

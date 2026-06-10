@@ -17,6 +17,7 @@ export interface PaymentOrderItem {
 export interface PaymentRequest {
   mode: "phonepe";
   order: PaymentOrderItem[];
+  returnUrl?: string;
   transaction: {
     amount: number;
     mobilenumber: string;

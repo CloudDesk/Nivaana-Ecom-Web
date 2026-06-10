@@ -16,7 +16,9 @@ import {
   buildPromotionEvaluationCartItems,
   cartPromotionSignature,
   clearSelectedCartPromotion,
+  getAppliedPromotionSummary,
   getPromotionCartTotals,
+  isFreeShippingAppliedPromotion,
   productUnitPrice,
   readSelectedCartPromotion,
   saveSelectedCartPromotion,
@@ -49,8 +51,8 @@ const uniquePromotions = (promotions: ApplicablePromotion[]) => {
 
 const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.promotion_id || 0);
 
-const appliedPromotionDiscount = (promotions: AppliedPromotion[]) =>
-  promotions.reduce((sum, promotion) => sum + Number(promotion.discount_amount || 0), 0);
+const isFreeShippingOffer = (promotion: ApplicablePromotion) =>
+  promotion.type === "FREE_SHIPPING" || promotion.action?.type === "FREE_SHIPPING";
 
 const Cart: React.FC = () => {
   const queryClient = useQueryClient();
@@ -257,18 +259,38 @@ const Cart: React.FC = () => {
     } satisfies CurrentEvaluation;
   }, [activeEvaluationsQuery.data, cartTotals.total, promotionOffersQuery.data]);
 
-  const backendAppliedPromotions = backendEvaluation?.applied_promotions ?? [];
+  const backendAppliedPromotions = useMemo(
+    () => backendEvaluation?.applied_promotions ?? [],
+    [backendEvaluation?.applied_promotions]
+  );
   const backendAppliedIds = useMemo(
     () => new Set(backendAppliedPromotions.map(appliedPromotionId).filter((id) => id > 0)),
     [backendAppliedPromotions]
   );
   const selectedPromotionApplies = Boolean(selectedPromotion && selectedPromotion.cartSignature === cartSignature);
-  const backendPromotionDiscount = backendEvaluation
-    ? Number(backendEvaluation.total_discount ?? Math.max(backendEvaluation.original_total - backendEvaluation.discounted_total, 0)) ||
-      appliedPromotionDiscount(backendAppliedPromotions)
-    : 0;
-  const promotionDiscount = backendPromotionDiscount || (selectedPromotionApplies ? selectedPromotion?.totalDiscount ?? 0 : 0);
-  const payableTotal = Math.max(cartTotals.total - promotionDiscount, 0);
+  const appliedPromotionsForTotals =
+    backendAppliedPromotions.length > 0
+      ? backendAppliedPromotions
+      : selectedPromotionApplies
+        ? selectedPromotion?.appliedPromotions ?? []
+        : [];
+  const fallbackPromotionDiscount =
+    backendEvaluation && backendAppliedPromotions.length === 0
+      ? Number(backendEvaluation.total_discount ?? Math.max(backendEvaluation.original_total - backendEvaluation.discounted_total, 0))
+      : selectedPromotionApplies
+        ? selectedPromotion?.totalDiscount ?? 0
+        : 0;
+  const promotionSummary = getAppliedPromotionSummary(
+    cartTotals,
+    appliedPromotionsForTotals,
+    fallbackPromotionDiscount
+  );
+  const promotionDiscount = promotionSummary.normalDiscount;
+  const payableTotal = promotionSummary.payableTotal;
+  const selectedNormalPromotionApplied = Boolean(
+    selectedPromotionApplies && selectedPromotion?.appliedPromotions?.some((promotion) => !isFreeShippingAppliedPromotion(promotion))
+  );
+  const hasNormalPromotionApplied = selectedNormalPromotionApplied || promotionSummary.normalPromotions.length > 0;
 
   const promotionCandidates = useMemo(() => {
     const offers = promotionOffersQuery.data?.data;
@@ -281,14 +303,14 @@ const Cart: React.FC = () => {
         ...offers.autoAppliedPromotions,
         ...offers.stackablePromotions,
       ].filter((promotion): promotion is ApplicablePromotion => Boolean(promotion && promotionId(promotion) > 0))
-    ).slice(0, 3);
+    );
   }, [promotionOffersQuery.data]);
 
   useEffect(() => {
     if (!session?.user.id || !backendEvaluation || backendAppliedPromotions.length === 0 || !cartSignature) return;
 
     const primaryPromotion = backendAppliedPromotions.find(
-      (promotion) => !promotion.is_auto && appliedPromotionId(promotion) > 0
+      (promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion) && appliedPromotionId(promotion) > 0
     );
 
     if (!primaryPromotion) {
@@ -367,14 +389,19 @@ const Cart: React.FC = () => {
       if (!session?.user.id) return;
 
       const evaluation = response.data;
+      const evaluationSummary = getAppliedPromotionSummary(
+        cartTotals,
+        evaluation.applied_promotions ?? [],
+        Number(evaluation.total_discount || 0)
+      );
       const nextPromotion: SelectedCartPromotion = {
         userId: session.user.id,
         promotionId: promotionId(promotion),
         promotionName: promotion.name,
         evaluationId: evaluation.evaluation_id,
         cartSignature,
-        totalDiscount: Number(evaluation.total_discount || 0),
-        discountedTotal: Number(evaluation.discounted_total || payableTotal),
+        totalDiscount: evaluationSummary.normalDiscount,
+        discountedTotal: evaluationSummary.payableTotal,
         appliedPromotions: evaluation.applied_promotions ?? [],
         expiresAt: evaluation.expires_at,
         savedAt: Date.now(),
@@ -411,7 +438,7 @@ const Cart: React.FC = () => {
       const promotionIds = Array.from(
         new Set(
           (backendAppliedPromotions.length > 0 ? backendAppliedPromotions : selectedPromotion?.appliedPromotions ?? [])
-            .filter((promotion) => !promotion.is_auto)
+            .filter((promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion))
             .map(appliedPromotionId)
             .filter((id) => id > 0)
         )
@@ -645,7 +672,7 @@ const Cart: React.FC = () => {
               <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryLine label="Items total" value={formatCurrency(cartTotals.subtotal)} />
-                <SummaryLine label="Shipping" value={cartTotals.shipping === 0 ? "Free" : formatCurrency(cartTotals.shipping)} />
+                <SummaryLine label="Shipping" value={promotionSummary.effectiveShipping === 0 ? "Free" : formatCurrency(promotionSummary.effectiveShipping)} />
                 {promotionDiscount > 0 && <SummaryLine label="Promotion" value={`-${formatCurrency(promotionDiscount)}`} />}
                 <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
                   <span>Total</span>
@@ -660,7 +687,7 @@ const Cart: React.FC = () => {
                     Offers
                   </div>
 
-                  {selectedPromotionApplies && selectedPromotion && (
+                  {selectedPromotionApplies && selectedPromotion && selectedNormalPromotionApplied && (
                     <div className="mt-3 rounded-[var(--radius-sm)] border border-green-200 bg-green-50 p-3">
                       <div className="flex items-start gap-2">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-700" />
@@ -690,19 +717,23 @@ const Cart: React.FC = () => {
                     </div>
                   ) : promotionCandidates.length > 0 ? (
                     <div className="mt-3 space-y-2">
-                      {promotionCandidates.map((promotion) => (
-                        <PromotionOffer
-                          key={promotionId(promotion)}
-                          promotion={promotion}
-                          isPending={applyPromotionMutation.isPending}
-                          isApplied={
-                            backendAppliedIds.has(promotionId(promotion)) ||
-                            (selectedPromotionApplies && selectedPromotion?.promotionId === promotionId(promotion)) ||
-                            promotion.promotionState === "applied"
-                          }
-                          onApply={() => applyPromotionMutation.mutate(promotion)}
-                        />
-                      ))}
+                      {promotionCandidates.map((promotion) => {
+                        const freeShippingOffer = isFreeShippingOffer(promotion);
+                        const isApplied =
+                          backendAppliedIds.has(promotionId(promotion)) ||
+                          (selectedPromotionApplies && selectedPromotion?.promotionId === promotionId(promotion)) ||
+                          promotion.promotionState === "applied";
+                        return (
+                          <PromotionOffer
+                            key={promotionId(promotion)}
+                            promotion={promotion}
+                            isPending={applyPromotionMutation.isPending}
+                            isApplied={isApplied}
+                            isDisabled={hasNormalPromotionApplied && !isApplied && !freeShippingOffer}
+                            onApply={() => applyPromotionMutation.mutate(promotion)}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-[var(--color-muted)]">No offers apply to this cart right now.</p>
@@ -728,11 +759,13 @@ function PromotionOffer({
   promotion,
   isPending,
   isApplied,
+  isDisabled,
   onApply,
 }: {
   promotion: ApplicablePromotion;
   isPending: boolean;
   isApplied: boolean;
+  isDisabled: boolean;
   onApply: () => void;
 }) {
   const discountValue = Number(promotion.discount_value || promotion.discountInfo?.discountAmount || 0);
@@ -750,7 +783,7 @@ function PromotionOffer({
         </div>
         <Button
           className="h-9 gap-1.5 px-3 text-xs"
-          disabled={isPending || isApplied}
+          disabled={isPending || isApplied || isDisabled}
           variant={isApplied ? "secondary" : "primary"}
           onClick={onApply}
         >

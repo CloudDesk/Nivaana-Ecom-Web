@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, ReceiptText, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -122,11 +122,14 @@ const findMatchingTransaction = (order: OrderSummary, transactions: TransactionR
 
 const Payments: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [session] = useState(() => sessionService.getSession());
   const [statusData, setStatusData] = useState<PaymentResponseData | null>(null);
   const [expandedPaymentKey, setExpandedPaymentKey] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const userId = session?.user.id;
+  const returnedPaymentStatus = searchParams.get("payment");
+  const returnedMerchantTransactionId = searchParams.get("merchantTransactionId");
 
   const ordersQuery = useQuery({
     queryKey: ["payments", userId],
@@ -172,7 +175,7 @@ const Payments: React.FC = () => {
     },
     onSuccess: (response) => {
       setStatusData(response);
-      setMessage("");
+      setMessage(isSuccessfulPayment(response) ? "" : getStatusText(response));
 
       if (isSuccessfulPayment(response)) {
         if (session?.user.id) {
@@ -188,6 +191,17 @@ const Payments: React.FC = () => {
       setMessage(error instanceof Error ? error.message : "Could not check payment status.");
     },
   });
+
+  useEffect(() => {
+    if (!returnedMerchantTransactionId || statusMutation.isPending || statusData) return;
+
+    setMessage(
+      returnedPaymentStatus === "failure"
+        ? "Payment was not completed. Checking the latest status..."
+        : "Checking payment status..."
+    );
+    statusMutation.mutate(returnedMerchantTransactionId);
+  }, [returnedMerchantTransactionId, returnedPaymentStatus, statusData, statusMutation]);
 
   if (!session) {
     return (
@@ -220,7 +234,7 @@ const Payments: React.FC = () => {
         {(message || statusData) && (
           <div
             className={`mt-6 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
-              message ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
+              message || (statusData && !isSuccessfulPayment(statusData)) ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
             }`}
           >
             {message || `Payment status: ${getStatusText(statusData)}`}

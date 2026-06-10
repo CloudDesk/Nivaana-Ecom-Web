@@ -42,7 +42,11 @@ export interface PromotionalAssetContent {
   link_text?: string;
   source_type?: "manual" | "product_filter" | "ratings";
   display_limit?: number;
+  product_id?: number;
+  product_name?: string;
   product_filter?: {
+    product_id?: number;
+    product_name?: string;
     require_deal_flag?: boolean;
     include_discounted?: boolean;
     sort_by?: string;

@@ -48,6 +48,15 @@ export interface SelectedCartPromotion {
   savedAt: number;
 }
 
+export interface PromotionDiscountSummary {
+  normalPromotions: AppliedPromotion[];
+  freeShippingPromotions: AppliedPromotion[];
+  normalDiscount: number;
+  freeShippingApplied: boolean;
+  effectiveShipping: number;
+  payableTotal: number;
+}
+
 export type PromotionEvaluationCartItem = PromotionCartData["items"][number] & {
   cart_record_id: string;
 };
@@ -115,6 +124,43 @@ export const cartPromotionSignature = (rows: PromotionCartRow[]) =>
     .sort((left, right) => left.productid - right.productid)
     .map((row) => `${row.productid}:${row.quantity}:${row.price}:${row.discount}`)
     .join("|");
+
+export const isFreeShippingAppliedPromotion = (promotion?: AppliedPromotion | null) =>
+  Boolean(
+    promotion &&
+      (promotion.is_free_shipping ||
+        promotion.promotion_type === "FREE_SHIPPING" ||
+        promotion.is_shipping_discount ||
+        promotion.shipping_info)
+  );
+
+export const getAppliedPromotionSummary = (
+  totals: CartPromotionTotals,
+  appliedPromotions: AppliedPromotion[],
+  fallbackDiscount = 0
+): PromotionDiscountSummary => {
+  const freeShippingPromotions = appliedPromotions.filter(isFreeShippingAppliedPromotion);
+  const normalPromotions = appliedPromotions.filter((promotion) => !isFreeShippingAppliedPromotion(promotion));
+  const normalDiscountFromPromotions = normalPromotions.reduce(
+    (sum, promotion) => sum + Number(promotion.discount_amount || 0),
+    0
+  );
+  const normalDiscount = Math.min(
+    Math.max(normalDiscountFromPromotions || fallbackDiscount || 0, 0),
+    totals.subtotal
+  );
+  const freeShippingApplied = freeShippingPromotions.length > 0;
+  const effectiveShipping = freeShippingApplied ? 0 : totals.shipping;
+
+  return {
+    normalPromotions,
+    freeShippingPromotions,
+    normalDiscount,
+    freeShippingApplied,
+    effectiveShipping,
+    payableTotal: Math.max(totals.subtotal + effectiveShipping - normalDiscount, 0),
+  };
+};
 
 export const readSelectedCartPromotion = (userId?: number | null): SelectedCartPromotion | null => {
   if (!userId) return null;
