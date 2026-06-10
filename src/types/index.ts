@@ -35,6 +35,53 @@ export interface BannerItem {
   ctaLink: string;
 }
 
+export interface PromotionalAssetContent {
+  section_key?: string;
+  section_title?: string;
+  section_eyebrow?: string;
+  link_text?: string;
+  source_type?: "manual" | "product_filter" | "ratings";
+  display_limit?: number;
+  product_filter?: {
+    require_deal_flag?: boolean;
+    include_discounted?: boolean;
+    sort_by?: string;
+    limit?: number;
+  };
+  brand_names?: string[];
+  eyebrow?: string;
+  subtitle?: string;
+  body_text?: string;
+  desktop_image_url?: string;
+  mobile_image_url?: string;
+  poster_image_url?: string;
+  desktop_video_url?: string;
+  mobile_video_url?: string;
+  cta_text?: string;
+  cta_url?: string;
+  fit?: "cover" | "contain";
+}
+
+export interface PromotionalAsset {
+  id: number;
+  type: "banner" | "featured_ad" | "popup" | "carousel";
+  placement: string;
+  title: string;
+  content: PromotionalAssetContent;
+  priority: number;
+  is_active: boolean;
+  schedule_start?: string | null;
+  schedule_end?: string | null;
+  version: number;
+  createddate?: number;
+  modifieddate?: number;
+}
+
+export interface HomepagePromotionalConfig {
+  placements: string[];
+  sections: Record<string, PromotionalAsset[]>;
+}
+
 export interface Rating {
   id: number;
   userid: number | null;

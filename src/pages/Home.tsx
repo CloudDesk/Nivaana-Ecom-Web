@@ -13,8 +13,9 @@ import { Skeleton } from "../components/ui/skeleton";
 import { theme } from "../config/theme.config";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
+import { promotionalAssetService } from "../services/promotionalAssetService";
 import { ratingService } from "../services/ratingService";
-import type { Product, Rating } from "../types";
+import type { Product, PromotionalAsset, PromotionalAssetContent, Rating } from "../types";
 import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
 import heroTwo from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import fallbackProduct from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
@@ -23,38 +24,62 @@ import heroVideoTwo from "../assets/I_need_a_video_with_insence_st.mp4";
 import heroVideoThree from "../assets/I_need_togenrate_a_video_for_t.mp4";
 import heroVideoFour from "../assets/Need_to_genarate_a_video_in_la.mp4";
 
-const heroSlides = [
+type HeroSlide = {
+  eyebrow: string;
+  title: string;
+  text: string;
+  video: string;
+  image: string;
+  poster: string;
+  fit: "cover" | "contain";
+  ctaText: string;
+  ctaUrl: string;
+};
+
+const heroSlides: HeroSlide[] = [
   {
     eyebrow: "Up to 35% Off",
     title: "Discover Your Perfect Ritual",
     text: "Premium incense, oils, and fresheners curated for calm homes, focused workdays, and sacred everyday moments.",
     video: heroVideoOne,
+    image: "",
     poster: heroOne,
     fit: "cover",
+    ctaText: "Shop Now",
+    ctaUrl: "/products",
   },
   {
     eyebrow: "New Fragrance Edits",
     title: "A Room That Feels Like Stillness",
     text: "Layer warm woods, florals, and clean aromatics across your home with Nivaana's signature blends.",
     video: heroVideoTwo,
+    image: "",
     poster: heroTwo,
     fit: "cover",
+    ctaText: "Shop Now",
+    ctaUrl: "/products",
   },
   {
     eyebrow: "Deal of the Day",
     title: "Bring Home Daily Serenity",
     text: "Shop limited-time offers across incense sticks, car fresheners, fragrance sachets, and wellness blends.",
     video: heroVideoThree,
+    image: "",
     poster: heroOne,
     fit: "contain",
+    ctaText: "Shop Now",
+    ctaUrl: "/products",
   },
   {
     eyebrow: "Luxury Home Rituals",
     title: "Let Fragrance Move Through The Space",
     text: "A cinematic Nivaana edit for incense, candles, oils, and quiet moments that make a room feel complete.",
     video: heroVideoFour,
+    image: "",
     poster: heroTwo,
     fit: "cover",
+    ctaText: "Shop Now",
+    ctaUrl: "/products",
   },
 ];
 
@@ -91,6 +116,34 @@ const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
 const heroContainer = "mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-14";
 const homeSection = "py-7 sm:py-8 lg:py-10";
 
+const placements = {
+  hero: "ecom_web_homepage_hero",
+  deals: "ecom_web_homepage_deal_of_day",
+  categories: "ecom_web_homepage_fragrance_categories",
+  bestSellers: "ecom_web_homepage_best_sellers",
+  newArrivals: "ecom_web_homepage_new_arrivals",
+  reviews: "ecom_web_homepage_reviews",
+  marquee: "ecom_web_homepage_brand_marquee",
+} as const;
+
+const firstSectionContent = (sections: Record<string, PromotionalAsset[]> | undefined, key: string): PromotionalAssetContent =>
+  sections?.[key]?.[0]?.content || {};
+
+const configuredHeroSlides = (assets?: PromotionalAsset[]): HeroSlide[] =>
+  (assets || [])
+    .filter((asset) => asset.content?.desktop_video_url || asset.content?.desktop_image_url || asset.content?.poster_image_url)
+    .map((asset) => ({
+      eyebrow: asset.content.eyebrow || asset.content.section_eyebrow || "",
+      title: asset.title || "Nivaana",
+      text: asset.content.body_text || asset.content.subtitle || "",
+      video: asset.content.desktop_video_url || "",
+      image: asset.content.desktop_image_url || asset.content.poster_image_url || "",
+      poster: asset.content.poster_image_url || asset.content.desktop_image_url || heroOne,
+      fit: asset.content.fit === "contain" ? "contain" : "cover",
+      ctaText: asset.content.cta_text || "Shop Now",
+      ctaUrl: asset.content.cta_url || "/products",
+    }));
+
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeDeal, setActiveDeal] = useState(0);
@@ -113,7 +166,25 @@ const Home: React.FC = () => {
     queryFn: () => ratingService.getRatings(1, 12),
   });
 
+  const homepageConfigQuery = useQuery({
+    queryKey: ["homepage-promotional-config"],
+    queryFn: () => promotionalAssetService.getHomepageConfig(),
+    staleTime: 1000 * 60 * 5,
+  });
+
   const products = useMemo(() => data?.data ?? [], [data?.data]);
+  const homepageSections = homepageConfigQuery.data?.data.sections;
+  const heroSlidesFromConfig = useMemo(
+    () => configuredHeroSlides(homepageSections?.[placements.hero]),
+    [homepageSections]
+  );
+  const visibleHeroSlides = heroSlidesFromConfig.length ? heroSlidesFromConfig : heroSlides;
+  const dealConfig = firstSectionContent(homepageSections, placements.deals);
+  const categoryConfig = firstSectionContent(homepageSections, placements.categories);
+  const bestSellerConfig = firstSectionContent(homepageSections, placements.bestSellers);
+  const newArrivalConfig = firstSectionContent(homepageSections, placements.newArrivals);
+  const reviewConfig = firstSectionContent(homepageSections, placements.reviews);
+  const marqueeConfig = firstSectionContent(homepageSections, placements.marquee);
   const customerReviews = useMemo(
     () =>
       (ratingsQuery.data?.data ?? [])
@@ -123,18 +194,24 @@ const Home: React.FC = () => {
   );
 
   const dealProducts = useMemo(() => {
-    const deals = products.filter((product) => product.isdealoftheday || product.discount > 0);
-    return (deals.length ? deals : products).slice(0, 4);
-  }, [products]);
+    const filter = dealConfig.product_filter;
+    const requireDealFlag = filter?.require_deal_flag ?? true;
+    const includeDiscounted = filter?.include_discounted ?? true;
+    const limit = filter?.limit || dealConfig.display_limit || 4;
+    const deals = products.filter((product) =>
+      (requireDealFlag && product.isdealoftheday) || (includeDiscounted && product.discount > 0)
+    );
+    return (deals.length ? deals : products).slice(0, limit);
+  }, [dealConfig.display_limit, dealConfig.product_filter, products]);
 
   const bestSellers = useMemo(
-    () => [...products].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0)).slice(0, 8),
-    [products]
+    () => [...products].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0)).slice(0, bestSellerConfig.display_limit || bestSellerConfig.product_filter?.limit || 8),
+    [bestSellerConfig.display_limit, bestSellerConfig.product_filter?.limit, products]
   );
 
   const newArrivals = useMemo(
-    () => [...products].sort((a, b) => b.createddate - a.createddate).slice(0, 10),
-    [products]
+    () => [...products].sort((a, b) => b.createddate - a.createddate).slice(0, newArrivalConfig.display_limit || newArrivalConfig.product_filter?.limit || 10),
+    [newArrivalConfig.display_limit, newArrivalConfig.product_filter?.limit, products]
   );
 
   const categories = useMemo(() => {
@@ -147,7 +224,7 @@ const Home: React.FC = () => {
             .filter(Boolean)
         )
       )
-    ).slice(0, 6);
+    ).slice(0, categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6);
 
     if (fragranceTypes.length) {
       return fragranceTypes.map((fragrance, index) => {
@@ -169,7 +246,7 @@ const Home: React.FC = () => {
 
     const fromApi = Array.from(new Set(products.map((product) => product.subcategory || product.category)))
       .filter(Boolean)
-      .slice(0, 6);
+      .slice(0, categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6);
 
     return (fromApi.length ? fromApi : categoryFallbacks).map((category, index) => ({
       name: formatLabel(category),
@@ -177,12 +254,12 @@ const Home: React.FC = () => {
       count: products.filter((product) => (product.subcategory || product.category) === category).length || index + 3,
       to: `/products?subcategory=${encodeURIComponent(String(category))}`,
     }));
-  }, [products]);
+  }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
 
-  const slide = heroSlides[activeSlide];
+  const slide = visibleHeroSlides[wrapIndex(activeSlide, visibleHeroSlides.length)];
 
   const moveHeroSlide = (direction: number) => {
-    setActiveSlide((current) => wrapIndex(current + direction, heroSlides.length));
+    setActiveSlide((current) => wrapIndex(current + direction, visibleHeroSlides.length));
   };
 
   const moveReview = (direction: number) => {
@@ -274,7 +351,7 @@ const Home: React.FC = () => {
                 animate={{ x: `-${activeSlide * 100}%` }}
                 transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
               >
-                {heroSlides.map((item, index) => (
+                {visibleHeroSlides.map((item, index) => (
                   <div key={item.title} className="relative h-full min-w-full overflow-hidden">
                     <img
                       src={item.poster}
@@ -282,20 +359,32 @@ const Home: React.FC = () => {
                       aria-hidden="true"
                       className="absolute inset-0 h-full w-full scale-105 object-cover blur-2xl"
                     />
-                    <video
-                      poster={item.poster}
-                      src={item.video}
-                      aria-hidden="true"
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      preload={index === 0 ? "auto" : "metadata"}
-                      className={cn(
-                        "absolute inset-0 h-full w-full",
-                        item.fit === "cover" ? "object-cover" : "object-contain"
-                      )}
-                    />
+                    {item.video ? (
+                      <video
+                        poster={item.poster}
+                        src={item.video}
+                        aria-hidden="true"
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        preload={index === 0 ? "auto" : "metadata"}
+                        className={cn(
+                          "absolute inset-0 h-full w-full",
+                          item.fit === "cover" ? "object-cover" : "object-contain"
+                        )}
+                      />
+                    ) : (
+                      <img
+                        src={item.image || item.poster}
+                        alt=""
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute inset-0 h-full w-full",
+                          item.fit === "cover" ? "object-cover" : "object-contain"
+                        )}
+                      />
+                    )}
                     <div className="absolute inset-0" style={{ background: theme.overlays.hero }} />
                   </div>
                 ))}
@@ -319,9 +408,9 @@ const Home: React.FC = () => {
                       <p className="mt-3 max-w-lg text-sm leading-6 text-white/86 sm:text-base sm:leading-7 lg:mx-auto">
                         {slide.text}
                       </p>
-                      <Link to="/products" className="mt-5 inline-flex sm:mt-6">
+                      <Link to={slide.ctaUrl || "/products"} className="mt-5 inline-flex sm:mt-6">
                         <Button className="min-h-9 rounded-full bg-[var(--color-text)] px-6 text-white hover:bg-[var(--color-secondary)] sm:px-8">
-                          Shop Now
+                          {slide.ctaText || "Shop Now"}
                         </Button>
                       </Link>
                     </motion.div>
@@ -331,7 +420,7 @@ const Home: React.FC = () => {
 
               <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between sm:left-10 sm:right-10 lg:left-14 lg:right-14">
                 <div className="flex items-center gap-4">
-                  {heroSlides.map((item, index) => (
+                  {visibleHeroSlides.map((item, index) => (
                     <button
                       key={item.title}
                       className={cn(
@@ -369,7 +458,11 @@ const Home: React.FC = () => {
 
       <section className="bg-[var(--color-surface)] pb-0 pt-3 sm:pt-4 lg:pt-5">
         <div className={homeContainer}>
-          <SectionHeader eyebrow="Deal of the day" title="Limited-time Nivaana picks" linkText="Shop deals" />
+          <SectionHeader
+            eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
+            title={dealConfig.section_title || "Limited-time Nivaana picks"}
+            linkText={dealConfig.link_text || "Shop deals"}
+          />
           <DealTripleSlider
             activeIndex={activeDeal}
             error={isError}
@@ -384,8 +477,8 @@ const Home: React.FC = () => {
         <div className={homeContainer}>
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Shop by fragrance</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">Fragrance for every space</h2>
+              <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">{categoryConfig.section_eyebrow || "Shop by fragrance"}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">{categoryConfig.section_title || "Fragrance for every space"}</h2>
             </div>
             <Link to="/products" className="hidden text-sm font-bold text-[var(--color-secondary)] hover:underline sm:inline-flex">
               View all
@@ -440,14 +533,22 @@ const Home: React.FC = () => {
 
       <section className={cn(homeSection, "bg-[var(--color-surface)]")}>
         <div className={homeContainer}>
-          <SectionHeader eyebrow="Best sellers" title="Loved across daily rituals" linkText="View products" />
+          <SectionHeader
+            eyebrow={bestSellerConfig.section_eyebrow || "Best sellers"}
+            title={bestSellerConfig.section_title || "Loved across daily rituals"}
+            linkText={bestSellerConfig.link_text || "View products"}
+          />
           <ProductGrid products={bestSellers} loading={isLoading} error={isError} />
         </div>
       </section>
 
       <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
         <div className={homeContainer}>
-          <SectionHeader eyebrow="New arrivals" title="Freshly added to Nivaana" linkText="Browse new" />
+          <SectionHeader
+            eyebrow={newArrivalConfig.section_eyebrow || "New arrivals"}
+            title={newArrivalConfig.section_title || "Freshly added to Nivaana"}
+            linkText={newArrivalConfig.link_text || "Browse new"}
+          />
 
           <div className="relative lg:px-16">
             <button
@@ -521,7 +622,10 @@ const Home: React.FC = () => {
       {activeCustomerReview && (
       <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
         <div className={homeContainer}>
-            <SectionHeader eyebrow="Customer reviews" title="What our customers say" />
+            <SectionHeader
+              eyebrow={reviewConfig.section_eyebrow || "Customer reviews"}
+              title={reviewConfig.section_title || "What our customers say"}
+            />
             <div className="md:hidden">
               <div className="relative mx-auto max-w-[340px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white px-5 pb-9 pt-6 text-center shadow-[var(--shadow-card)]">
                 <div className="mb-3 flex justify-center gap-1 text-[var(--color-text)]">
@@ -589,7 +693,7 @@ const Home: React.FC = () => {
 
       <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)] py-5">
         <div className="flex w-max animate-[marquee_26s_linear_infinite] gap-10 whitespace-nowrap text-sm font-bold tracking-[0.2em] text-[var(--color-secondary)] hover:[animation-play-state:paused]">
-          {[...brandPartners, ...brandPartners, ...brandPartners].map((brand, index) => (
+          {[...(marqueeConfig.brand_names?.length ? marqueeConfig.brand_names : brandPartners), ...(marqueeConfig.brand_names?.length ? marqueeConfig.brand_names : brandPartners), ...(marqueeConfig.brand_names?.length ? marqueeConfig.brand_names : brandPartners)].map((brand, index) => (
             <span key={`${brand}-${index}`}>{brand}</span>
           ))}
         </div>
