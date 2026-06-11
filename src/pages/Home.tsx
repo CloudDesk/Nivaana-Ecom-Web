@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
@@ -84,12 +84,15 @@ const heroSlides: HeroSlide[] = [
 ];
 
 const categoryFallbacks = [
-  "Incense",
-  "Car Fresheners",
-  "Fragrance Blends",
-  "Havan Cups",
-  "Fragrance Sachets",
-  "Home Decor",
+  { label: "Incense", to: "/products?category=incense" },
+  { label: "Home Fragrance", to: "/products?category=home_fragrance" },
+  { label: "Car & Room Fresheners", to: "/products?category=car_room_fresheners" },
+  { label: "Personal Care", to: "/products?category=personal_care" },
+  { label: "Perfumes", to: "/products?category=perfumes" },
+  { label: "Daily Rituals", to: "/products?category=daily_rituals" },
+  { label: "Gift Collections", to: "/products?category=gift_collections" },
+  { label: "Essential Oils", to: "/products?subcategory=essential_oils" },
+  { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends" },
 ];
 
 const brandPartners = ["NIVAANA", "KRAFTELLA", "AUORA", "AROMAHPURE", "RITUAL EDITS"];
@@ -98,6 +101,13 @@ type CategorySlide = {
   id: string;
   name: string;
   subcategory: string;
+  image: string;
+  to: string;
+};
+
+type FlavorSlide = {
+  id: string;
+  name: string;
   image: string;
   to: string;
 };
@@ -123,6 +133,9 @@ const carouselArrowClass =
 const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
 const heroContainer = "mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-14";
 const homeSection = "py-7 sm:py-8 lg:py-10";
+const heroSlideIntervalMs = 8000;
+const heroTimerRadius = 10;
+const heroTimerCircumference = 2 * Math.PI * heroTimerRadius;
 
 const placements = {
   hero: "ecom_web_homepage_hero",
@@ -157,16 +170,22 @@ const Home: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState(0);
   const [activeReview, setActiveReview] = useState(0);
   const dealsScrollerRef = useRef<HTMLDivElement | null>(null);
+  const flavorsScrollerRef = useRef<HTMLDivElement | null>(null);
+  const bestSellersScrollerRef = useRef<HTMLDivElement | null>(null);
   const newArrivalsScrollerRef = useRef<HTMLDivElement | null>(null);
   const heroSwipeRef = useRef({ startX: 0, startY: 0, swiping: false, tracking: false });
   const heroSwipeDistanceRef = useRef(0);
   const suppressHeroClickRef = useRef(false);
-  const dealsDragRef = useRef({ startX: 0, scrollLeft: 0, dragging: false });
+  const dealsDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
   const dealsDragDistanceRef = useRef(0);
-  const newArrivalsDragRef = useRef({ startX: 0, scrollLeft: 0, dragging: false });
+  const flavorsDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
+  const flavorsDragDistanceRef = useRef(0);
+  const bestSellersDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
+  const bestSellersDragDistanceRef = useRef(0);
+  const newArrivalsDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
   const newArrivalsDragDistanceRef = useRef(0);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["home-products"],
     queryFn: () => platformProductService.getProducts(1, 24),
   });
@@ -224,6 +243,30 @@ const Home: React.FC = () => {
     [newArrivalConfig.display_limit, newArrivalConfig.product_filter?.limit, products]
   );
 
+  const flavors = useMemo<FlavorSlide[]>(() => {
+    const flavorMap = new Map<string, FlavorSlide>();
+
+    products.forEach((product) => {
+      product.fragnancetype
+        ?.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .forEach((flavor) => {
+          const key = flavor.toLowerCase();
+          if (flavorMap.has(key)) return;
+
+          flavorMap.set(key, {
+            id: key,
+            name: formatLabel(flavor),
+            image: productImage(product),
+            to: `/products?subsubcategory=${encodeURIComponent(flavor)}`,
+          });
+        });
+    });
+
+    return Array.from(flavorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
+
   const categories = useMemo(() => {
     const limit = categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6;
     const categoryMap = new Map<string, CategorySlide>();
@@ -253,15 +296,25 @@ const Home: React.FC = () => {
     if (fromApi.length) return fromApi;
 
     return categoryFallbacks.slice(0, limit).map((category) => ({
-      id: `fallback:${category.toLowerCase()}`,
+      id: `fallback:${category.label.toLowerCase()}`,
       name: "Nivaana",
-      subcategory: formatLabel(category),
+      subcategory: category.label,
       image: fallbackProduct,
-      to: `/products?subcategory=${encodeURIComponent(category)}`,
+      to: category.to,
     }));
   }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
 
   const slide = visibleHeroSlides[wrapIndex(activeSlide, visibleHeroSlides.length)];
+
+  useEffect(() => {
+    if (visibleHeroSlides.length <= 1) return;
+
+    const timer = window.setTimeout(() => {
+      setActiveSlide((current) => wrapIndex(current + 1, visibleHeroSlides.length));
+    }, heroSlideIntervalMs);
+
+    return () => window.clearTimeout(timer);
+  }, [activeSlide, visibleHeroSlides.length]);
 
   const moveHeroSlide = (direction: number) => {
     setActiveSlide((current) => wrapIndex(current + direction, visibleHeroSlides.length));
@@ -274,6 +327,26 @@ const Home: React.FC = () => {
 
   const scrollDeals = (direction: number) => {
     const scroller = dealsScrollerRef.current;
+    if (!scroller) return;
+
+    scroller.scrollBy({
+      left: direction * Math.max(scroller.clientWidth * 0.9, 320),
+      behavior: "smooth",
+    });
+  };
+
+  const scrollFlavors = (direction: number) => {
+    const scroller = flavorsScrollerRef.current;
+    if (!scroller) return;
+
+    scroller.scrollBy({
+      left: direction * Math.max(scroller.clientWidth * 0.9, 320),
+      behavior: "smooth",
+    });
+  };
+
+  const scrollBestSellers = (direction: number) => {
+    const scroller = bestSellersScrollerRef.current;
     if (!scroller) return;
 
     scroller.scrollBy({
@@ -302,7 +375,7 @@ const Home: React.FC = () => {
         <div className={heroContainer}>
           <div className="relative w-full overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-card)] sm:rounded-[28px] lg:rounded-[34px]">
             <div
-              className="relative h-[calc(100svh-9.5rem)] min-h-[380px] max-h-[620px] touch-pan-y select-none sm:h-[calc(100svh-11rem)] sm:min-h-[460px] md:min-h-[520px] lg:h-[calc(100svh-12.5rem)] lg:min-h-[560px] lg:max-h-[704px]"
+              className="relative h-[58svh] min-h-[350px] max-h-[300px] touch-pan-y select-none sm:h-[calc(100svh-11rem)] sm:min-h-[460px] sm:max-h-[620px] md:min-h-[520px] lg:h-[calc(100svh-12.5rem)] lg:min-h-[560px] lg:max-h-[704px]"
               onClickCapture={(event) => {
                 if (suppressHeroClickRef.current) {
                   event.preventDefault();
@@ -432,12 +505,44 @@ const Home: React.FC = () => {
                     <button
                       key={item.title}
                       className={cn(
-                        "h-3 w-3 rounded-full border-2 border-white transition",
-                        activeSlide === index ? "bg-white ring-2 ring-white/50" : "bg-[var(--color-text)]"
+                        "relative grid rounded-full transition",
+                        activeSlide === index
+                          ? "h-8 w-8 place-items-center"
+                          : "h-3 w-3 bg-[#0b2341] hover:bg-[#f0c353]"
                       )}
                       onClick={() => setActiveSlide(index)}
                       aria-label={`Show ${item.title}`}
-                    />
+                    >
+                      {activeSlide === index && (
+                        <>
+                          <svg className="h-8 w-8 -rotate-90" viewBox="0 0 32 32" aria-hidden="true">
+                            <circle
+                              cx="16"
+                              cy="16"
+                              r={heroTimerRadius}
+                              fill="none"
+                              stroke="#f0c353"
+                              strokeWidth="3"
+                            />
+                            <motion.circle
+                              key={`hero-timer-${activeSlide}`}
+                              cx="16"
+                              cy="16"
+                              r={heroTimerRadius}
+                              fill="none"
+                              stroke="#0b2341"
+                              strokeLinecap="round"
+                              strokeWidth="3"
+                              strokeDasharray={heroTimerCircumference}
+                              initial={{ strokeDashoffset: heroTimerCircumference }}
+                              animate={{ strokeDashoffset: 0 }}
+                              transition={{ duration: heroSlideIntervalMs / 1000, ease: "linear" }}
+                            />
+                          </svg>
+                          <span className="absolute h-2.5 w-2.5 rounded-full bg-[#f0c353] shadow-[0_0_0_3px_rgba(255,255,255,0.95)]" />
+                        </>
+                      )}
+                    </button>
                   ))}
                 </div>
                 <div className="hidden gap-2 lg:flex">
@@ -481,6 +586,7 @@ const Home: React.FC = () => {
             eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
             title={dealConfig.section_title || "Limited-time Nivaana picks"}
             linkText={dealConfig.link_text || "Shop deals"}
+            linkTo="/products?collection=deals"
           />
 
           <div className="relative lg:px-16">
@@ -494,7 +600,7 @@ const Home: React.FC = () => {
 
             <div
               ref={dealsScrollerRef}
-              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
               onClickCapture={(event) => {
                 if (dealsDragDistanceRef.current > 8) {
                   event.preventDefault();
@@ -502,42 +608,57 @@ const Home: React.FC = () => {
                 }
               }}
               onPointerDown={(event) => {
+                if (event.pointerType === "touch") return;
                 if (event.button !== 0) return;
                 dealsDragRef.current = {
                   startX: event.clientX,
+                  startY: event.clientY,
                   scrollLeft: event.currentTarget.scrollLeft,
                   dragging: true,
+                  horizontal: false,
                 };
                 dealsDragDistanceRef.current = 0;
               }}
               onPointerMove={(event) => {
+                if (event.pointerType === "touch") return;
                 if (!dealsDragRef.current.dragging) return;
 
-                const distance = event.clientX - dealsDragRef.current.startX;
-                dealsDragDistanceRef.current = Math.abs(distance);
-                event.currentTarget.scrollLeft = dealsDragRef.current.scrollLeft - distance;
+                const distanceX = event.clientX - dealsDragRef.current.startX;
+                const distanceY = event.clientY - dealsDragRef.current.startY;
+                const absX = Math.abs(distanceX);
+                const absY = Math.abs(distanceY);
+
+                if (!dealsDragRef.current.horizontal) {
+                  if (absY > 8 && absY > absX) {
+                    dealsDragRef.current.dragging = false;
+                    return;
+                  }
+                  if (absX <= 8 || absX <= absY * 1.15) return;
+                  dealsDragRef.current.horizontal = true;
+                }
+
+                dealsDragDistanceRef.current = absX;
+                event.preventDefault();
+                event.currentTarget.scrollLeft = dealsDragRef.current.scrollLeft - distanceX;
               }}
               onPointerUp={() => {
                 dealsDragRef.current.dragging = false;
+                dealsDragRef.current.horizontal = false;
               }}
               onPointerCancel={() => {
                 dealsDragRef.current.dragging = false;
+                dealsDragRef.current.horizontal = false;
               }}
             >
               {isLoading
                 ? Array.from({ length: 6 }).map((_, index) => (
                     <Skeleton
                       key={index}
-                      className="h-[300px] w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                      className="h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
                     />
                   ))
                 : dealProducts.map((product) => (
-                    <div
-                      key={product.id}
-                      className="w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
-                    >
-                      <ProductCard product={product} compact />
-                    </div>
+                    <DealCard key={product.id} product={product} />
                   ))}
             </div>
 
@@ -552,14 +673,191 @@ const Home: React.FC = () => {
         </div>
       </section>
 
+      <section className="bg-[var(--color-surface)] pb-6 pt-0 sm:pb-7 lg:pb-8">
+        <div className={homeContainer}>
+          <SectionHeader
+            eyebrow="Flavours"
+            title="Shop by fragrance mood"
+            linkText="View all flavours"
+          />
+
+          <div className="relative lg:px-16">
+            <button
+              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              onClick={() => scrollFlavors(-1)}
+              aria-label="Previous flavours"
+            >
+              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+            </button>
+
+            <div
+              ref={flavorsScrollerRef}
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              onClickCapture={(event) => {
+                if (flavorsDragDistanceRef.current > 8) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onPointerDown={(event) => {
+                if (event.pointerType === "touch") return;
+                if (event.button !== 0) return;
+                flavorsDragRef.current = {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  scrollLeft: event.currentTarget.scrollLeft,
+                  dragging: true,
+                  horizontal: false,
+                };
+                flavorsDragDistanceRef.current = 0;
+              }}
+              onPointerMove={(event) => {
+                if (event.pointerType === "touch") return;
+                if (!flavorsDragRef.current.dragging) return;
+
+                const distanceX = event.clientX - flavorsDragRef.current.startX;
+                const distanceY = event.clientY - flavorsDragRef.current.startY;
+                const absX = Math.abs(distanceX);
+                const absY = Math.abs(distanceY);
+
+                if (!flavorsDragRef.current.horizontal) {
+                  if (absY > 8 && absY > absX) {
+                    flavorsDragRef.current.dragging = false;
+                    return;
+                  }
+                  if (absX <= 8 || absX <= absY * 1.15) return;
+                  flavorsDragRef.current.horizontal = true;
+                }
+
+                flavorsDragDistanceRef.current = absX;
+                event.preventDefault();
+                event.currentTarget.scrollLeft = flavorsDragRef.current.scrollLeft - distanceX;
+              }}
+              onPointerUp={() => {
+                flavorsDragRef.current.dragging = false;
+                flavorsDragRef.current.horizontal = false;
+              }}
+              onPointerCancel={() => {
+                flavorsDragRef.current.dragging = false;
+                flavorsDragRef.current.horizontal = false;
+              }}
+            >
+              {isLoading
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <Skeleton
+                      key={index}
+                      className="h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
+                    />
+                  ))
+                : flavors.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
+            </div>
+
+            <button
+              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              onClick={() => scrollFlavors(1)}
+              aria-label="Next flavours"
+            >
+              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section className={cn(homeSection, "bg-[var(--color-surface)]")}>
         <div className={homeContainer}>
           <SectionHeader
             eyebrow={bestSellerConfig.section_eyebrow || "Best sellers"}
             title={bestSellerConfig.section_title || "Loved across daily rituals"}
             linkText={bestSellerConfig.link_text || "View products"}
+            linkTo="/best-sellers"
           />
-          <ProductGrid products={bestSellers} loading={isLoading} error={isError} />
+
+          <div className="relative lg:px-16">
+            <button
+              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              onClick={() => scrollBestSellers(-1)}
+              aria-label="Previous best sellers"
+            >
+              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+            </button>
+
+            <div
+              ref={bestSellersScrollerRef}
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              onClickCapture={(event) => {
+                if (bestSellersDragDistanceRef.current > 8) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onPointerDown={(event) => {
+                if (event.pointerType === "touch") return;
+                if (event.button !== 0) return;
+                bestSellersDragRef.current = {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  scrollLeft: event.currentTarget.scrollLeft,
+                  dragging: true,
+                  horizontal: false,
+                };
+                bestSellersDragDistanceRef.current = 0;
+              }}
+              onPointerMove={(event) => {
+                if (event.pointerType === "touch") return;
+                if (!bestSellersDragRef.current.dragging) return;
+
+                const distanceX = event.clientX - bestSellersDragRef.current.startX;
+                const distanceY = event.clientY - bestSellersDragRef.current.startY;
+                const absX = Math.abs(distanceX);
+                const absY = Math.abs(distanceY);
+
+                if (!bestSellersDragRef.current.horizontal) {
+                  if (absY > 8 && absY > absX) {
+                    bestSellersDragRef.current.dragging = false;
+                    return;
+                  }
+                  if (absX <= 8 || absX <= absY * 1.15) return;
+                  bestSellersDragRef.current.horizontal = true;
+                }
+
+                bestSellersDragDistanceRef.current = absX;
+                event.preventDefault();
+                event.currentTarget.scrollLeft = bestSellersDragRef.current.scrollLeft - distanceX;
+              }}
+              onPointerUp={() => {
+                bestSellersDragRef.current.dragging = false;
+                bestSellersDragRef.current.horizontal = false;
+              }}
+              onPointerCancel={() => {
+                bestSellersDragRef.current.dragging = false;
+                bestSellersDragRef.current.horizontal = false;
+              }}
+            >
+              {isLoading
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <Skeleton
+                      key={index}
+                      className="h-[300px] w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                    />
+                  ))
+                : bestSellers.map((product) => (
+                    <div
+                      key={product.id}
+                      className="w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                    >
+                      <ProductCard product={product} compact />
+                    </div>
+                  ))}
+            </div>
+
+            <button
+              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              onClick={() => scrollBestSellers(1)}
+              aria-label="Next best sellers"
+            >
+              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -582,7 +880,7 @@ const Home: React.FC = () => {
 
             <div
               ref={newArrivalsScrollerRef}
-              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-pan-x active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
               onClickCapture={(event) => {
                 if (newArrivalsDragDistanceRef.current > 8) {
                   event.preventDefault();
@@ -590,26 +888,46 @@ const Home: React.FC = () => {
                 }
               }}
               onPointerDown={(event) => {
+                if (event.pointerType === "touch") return;
                 if (event.button !== 0) return;
                 newArrivalsDragRef.current = {
                   startX: event.clientX,
+                  startY: event.clientY,
                   scrollLeft: event.currentTarget.scrollLeft,
                   dragging: true,
+                  horizontal: false,
                 };
                 newArrivalsDragDistanceRef.current = 0;
               }}
               onPointerMove={(event) => {
+                if (event.pointerType === "touch") return;
                 if (!newArrivalsDragRef.current.dragging) return;
 
-                const distance = event.clientX - newArrivalsDragRef.current.startX;
-                newArrivalsDragDistanceRef.current = Math.abs(distance);
-                event.currentTarget.scrollLeft = newArrivalsDragRef.current.scrollLeft - distance;
+                const distanceX = event.clientX - newArrivalsDragRef.current.startX;
+                const distanceY = event.clientY - newArrivalsDragRef.current.startY;
+                const absX = Math.abs(distanceX);
+                const absY = Math.abs(distanceY);
+
+                if (!newArrivalsDragRef.current.horizontal) {
+                  if (absY > 8 && absY > absX) {
+                    newArrivalsDragRef.current.dragging = false;
+                    return;
+                  }
+                  if (absX <= 8 || absX <= absY * 1.15) return;
+                  newArrivalsDragRef.current.horizontal = true;
+                }
+
+                newArrivalsDragDistanceRef.current = absX;
+                event.preventDefault();
+                event.currentTarget.scrollLeft = newArrivalsDragRef.current.scrollLeft - distanceX;
               }}
               onPointerUp={() => {
                 newArrivalsDragRef.current.dragging = false;
+                newArrivalsDragRef.current.horizontal = false;
               }}
               onPointerCancel={() => {
                 newArrivalsDragRef.current.dragging = false;
+                newArrivalsDragRef.current.horizontal = false;
               }}
             >
               {isLoading
@@ -724,7 +1042,7 @@ const Home: React.FC = () => {
   );
 };
 
-function SectionHeader({ eyebrow, title, linkText }: { eyebrow: string; title: string; linkText?: string }) {
+function SectionHeader({ eyebrow, title, linkText, linkTo = "/products" }: { eyebrow: string; title: string; linkText?: string; linkTo?: string }) {
   return (
     <div className="mb-3 flex items-end justify-between gap-4">
       <div>
@@ -732,7 +1050,7 @@ function SectionHeader({ eyebrow, title, linkText }: { eyebrow: string; title: s
         <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">{title}</h2>
       </div>
       {linkText && (
-        <Link to="/products" className="inline-flex shrink-0 text-sm font-bold text-[var(--color-secondary)] hover:underline">
+        <Link to={linkTo} className="inline-flex shrink-0 text-sm font-bold text-[var(--color-secondary)] hover:underline">
           {linkText}
         </Link>
       )}
@@ -754,6 +1072,7 @@ function CategoryTripleSlider({
   const navigate = useNavigate();
   const dragStartRef = useRef<number | null>(null);
   const lastDragDistanceRef = useRef(0);
+  const suppressClickRef = useRef(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const clickThreshold = 8;
@@ -795,7 +1114,8 @@ function CategoryTripleSlider({
       <motion.div
         className="relative h-[276px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[324px] lg:h-[354px] lg:overflow-visible"
         onClickCapture={(event) => {
-          if (lastDragDistanceRef.current > clickThreshold) {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
             event.preventDefault();
             event.stopPropagation();
           }
@@ -829,6 +1149,7 @@ function CategoryTripleSlider({
                 const dragDistance = Math.abs(distance);
 
                 lastDragDistanceRef.current = dragDistance;
+                suppressClickRef.current = dragDistance > clickThreshold;
                 resetDrag();
 
                 if (distance < -swipeThreshold) {
@@ -932,31 +1253,48 @@ function CategoryTripleSlider({
   );
 }
 
-function ProductGrid({ products, loading, error }: { products: Product[]; loading: boolean; error: boolean }) {
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-[280px] sm:h-[360px]" />
-        ))}
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center text-sm text-[var(--color-muted)]">
-        Product data could not be loaded right now.
-      </div>
-    );
-  }
-
+function DealCard({ product }: { product: Product }) {
   return (
-    <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
-      ))}
-    </div>
+    <Link
+      to="/products?collection=deals"
+      className="group relative h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)] sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
+      aria-label={`View deals for ${product.name}`}
+    >
+      <img
+        src={productImage(product)}
+        alt={product.name}
+        loading="lazy"
+        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+      />
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-5 pb-5 pt-16">
+        <h3 className="line-clamp-2 text-xl font-extrabold leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+          {product.name}
+        </h3>
+      </div>
+    </Link>
+  );
+}
+
+function FlavorCard({ flavor }: { flavor: FlavorSlide }) {
+  return (
+    <Link
+      to={flavor.to}
+      className="group relative h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)] sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
+      aria-label={`Shop ${flavor.name} products`}
+    >
+      <img
+        src={flavor.image}
+        alt={flavor.name}
+        loading="lazy"
+        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+      />
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-5 pb-5 pt-16">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#f0c353]">Flavour</p>
+        <h3 className="mt-1 line-clamp-2 text-2xl font-extrabold leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+          {flavor.name}
+        </h3>
+      </div>
+    </Link>
   );
 }
 

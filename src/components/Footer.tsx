@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
-import logo from '../assets/Logo.png';
+import logoIcon from '../assets/Nivaana_Sun_Gold.png';
 
 const quickLinks = [
   { label: 'Home', to: '/' },
@@ -31,13 +31,16 @@ const Footer: React.FC = () => {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-6">
           {/* Company Info */}
           <div className="col-span-1 md:col-span-2">
-            <div className="mb-3 flex items-center">
-              <img 
-                src={logo} 
-                alt="Nivaana Logo" 
-                className="mr-4 h-14 w-auto md:h-16"
-              />
-            </div>
+            <Link to="/" className="navbar-brand-logo footer-brand-logo mb-3" aria-label="Nivaana home">
+              <img src={logoIcon} alt="" className="navbar-brand-icon footer-brand-icon" loading="eager" />
+              <span className="navbar-brand-copy">
+                <span className="navbar-brand-name">
+                  <span className="navbar-brand-initial">N</span>ivaana
+                  <span className="navbar-brand-tm">TM</span>
+                </span>
+                <span className="navbar-brand-tagline">Breath in Bliss!!</span>
+              </span>
+            </Link>
             <div className="mb-4 max-w-md">
               <h2 className="text-base font-bold text-[#f0c353] md:text-lg">Follow us On</h2>
             </div>

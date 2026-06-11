@@ -21,7 +21,7 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Gilroy', 'Sans-serif'],
+        sans: ['Google Sans']
       },
     },
   },

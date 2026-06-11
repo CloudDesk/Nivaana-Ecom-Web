@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import logo from "../assets/Logo.png";
+import logoIcon from "../assets/Nivaana_Sun_Gold.png";
 import { theme } from "../config/theme.config";
 import { cn } from "../lib/utils";
 import { cartService } from "../services/cartService";
@@ -20,33 +20,89 @@ import { platformProductService } from "../services/productPlatformService";
 import { getUserDisplayName, sessionService } from "../services/sessionService";
 import { Button } from "./ui/button";
 
-const categoryGroups = [
+type CategoryLink = {
+  label: string;
+  to: string;
+  children?: CategoryLink[];
+};
+
+type CategoryGroup = {
+  heading: string;
+  to: string;
+  links: CategoryLink[];
+};
+
+const categoryGroups: CategoryGroup[] = [
   {
-    heading: "Home Fragrance",
+    heading: "Incense",
+    to: "/products?category=incense",
     links: [
-      { label: "All Home Fragrance", to: "/products?category=home_fragrance" },
-      { label: "Incense Sticks", to: "/products?subcategory=incense" },
-      { label: "Car & Room Fresheners", to: "/products?subcategory=car_%26_room_fresheners" },
-      { label: "Fragrance Sachets", to: "/products?subcategory=fragrance_sachets" },
+      { label: "Incense Sticks", to: "/products?subcategory=incense_sticks" },
+      { label: "Dhoops", to: "/products?subcategory=dhoops" },
+      { label: "Cones", to: "/products?subcategory=cones" },
       { label: "Havan Cups", to: "/products?subcategory=havan_cups" },
     ],
   },
   {
-    heading: "Aromatherapy",
+    heading: "Home Fragrance",
+    to: "/products?category=home_fragrance",
     links: [
-      { label: "All Aromatherapy", to: "/products?category=aromatherapy_%26_wellness" },
-      { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends" },
       { label: "Essential Oils", to: "/products?subcategory=essential_oils" },
-      { label: "Wellness Rituals", to: "/products?category=aromatherapy_%26_wellness" },
+      { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends" },
+      { label: "Wardrobe Sachets", to: "/products?subcategory=wardrobe_sachets" },
     ],
   },
   {
-    heading: "Collections",
+    heading: "Car & Room Fresheners",
+    to: "/products?category=car_room_fresheners",
     links: [
-      { label: "Best Sellers", to: "/products?collection=best-sellers" },
-      { label: "New Arrivals", to: "/products?collection=new-arrivals" },
-      { label: "Deal of the Day", to: "/products?collection=deals" },
-      { label: "Gift Sets", to: "/products?collection=gift-sets" },
+      { label: "Premium Room Mist", to: "/products?subcategory=premium_room_mist" },
+      { label: "Diffuser Oils", to: "/products?subcategory=diffuser_oils" },
+      { label: "Diffuser Oil Refill Pack for Machines", to: "/products?subcategory=diffuser_oil_refill_pack_for_machines" },
+      {
+        label: "Diffuser Machines",
+        to: "/products?subcategory=diffuser_machines",
+        children: [
+          { label: "For Car", to: "/products?subcategory=diffuser_machines&subsubcategory=for_car" },
+          { label: "For Home", to: "/products?subcategory=diffuser_machines&subsubcategory=for_home" },
+          { label: "For Hotels & Commercial Places", to: "/products?subcategory=diffuser_machines&subsubcategory=for_hotels_commercial_places" },
+        ],
+      },
+    ],
+  },
+  {
+    heading: "Personal Care",
+    to: "/products?category=personal_care",
+    links: [
+      { label: "Soaps", to: "/products?subcategory=soaps" },
+      { label: "Facewash", to: "/products?subcategory=facewash" },
+      { label: "Floor Cleaner Concentrates", to: "/products?subcategory=floor_cleaner_concentrates" },
+      { label: "Handwash", to: "/products?subcategory=handwash" },
+    ],
+  },
+  {
+    heading: "Perfumes",
+    to: "/products?category=perfumes",
+    links: [
+      { label: "Pocket Perfumes", to: "/products?subcategory=pocket_perfumes" },
+      { label: "Daily Collection", to: "/products?subcategory=daily_collection" },
+      { label: "Luxury Collection", to: "/products?subcategory=luxury_collection" },
+    ],
+  },
+  {
+    heading: "Daily Rituals",
+    to: "/products?category=daily_rituals",
+    links: [
+      { label: "Fresh Mornings", to: "/products?subcategory=fresh_mornings" },
+      { label: "Relaxation & Calm", to: "/products?subcategory=relaxation_calm" },
+      { label: "Dusky Evenings & Night", to: "/products?subcategory=dusky_evenings_night" },
+    ],
+  },
+  {
+    heading: "Gift Collections",
+    to: "/products?category=gift_collections",
+    links: [
+      { label: "Gift Collections", to: "/products?category=gift_collections" },
     ],
   },
 ];
@@ -61,12 +117,10 @@ const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [, setStoreVersion] = useState(0);
   const categoryCloseTimer = React.useRef<number | null>(null);
-  const lastScrollYRef = React.useRef(0);
   const scrollTickingRef = React.useRef(false);
   const session = sessionService.getSession();
 
@@ -95,8 +149,6 @@ const Navbar: React.FC = () => {
   const cartCount = session ? countDistinctProducts(cartQuery.data?.data ?? []) : guestCartCount;
   const wishlistCount = session ? countDistinctProducts(wishlistQuery.data?.data ?? []) : guestWishlistCount;
   const accountLabel = session ? getUserDisplayName(session.user) : "Account";
-  const isProductDetailsPage = /^\/products\/\d+/.test(location.pathname);
-
   const searchSuggestions = (productResponse?.data ?? [])
     .filter((product) => {
       const query = searchTerm.trim().toLowerCase();
@@ -105,6 +157,7 @@ const Navbar: React.FC = () => {
         product.name,
         product.category,
         product.subcategory,
+        product.subsubcategory,
         product.fragnancetype,
         product.brand,
         product.puc,
@@ -121,32 +174,16 @@ const Navbar: React.FC = () => {
       scrollTickingRef.current = true;
       window.requestAnimationFrame(() => {
         const currentScrollY = window.scrollY;
-        const scrollDelta = currentScrollY - lastScrollYRef.current;
-
         setIsScrolled(currentScrollY > 16);
 
-        if (currentScrollY < 80 || scrollDelta < -6) {
-          setIsHeaderHidden(false);
-        } else if (scrollDelta > 6 && !isMobileMenuOpen && !isSearchOpen && !isCategoriesOpen) {
-          setIsHeaderHidden(true);
-        }
-
-        lastScrollYRef.current = currentScrollY;
         scrollTickingRef.current = false;
       });
     };
 
-    lastScrollYRef.current = window.scrollY;
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [isCategoriesOpen, isMobileMenuOpen, isSearchOpen]);
-
-  useEffect(() => {
-    if (isMobileMenuOpen || isSearchOpen || isCategoriesOpen) {
-      setIsHeaderHidden(false);
-    }
-  }, [isCategoriesOpen, isMobileMenuOpen, isSearchOpen]);
+  }, []);
 
   useEffect(() => {
     const refresh = () => setStoreVersion((version) => version + 1);
@@ -162,8 +199,6 @@ const Navbar: React.FC = () => {
     setIsMobileMenuOpen(false);
     setIsCategoriesOpen(false);
     setIsSearchOpen(false);
-    setIsHeaderHidden(false);
-    lastScrollYRef.current = window.scrollY;
   }, [location.hash, location.pathname, location.search]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -243,20 +278,18 @@ const Navbar: React.FC = () => {
   return (
     <header
       className={cn(
-        "z-50 transition-transform duration-300 ease-out",
-        isProductDetailsPage ? "relative" : "sticky top-0",
-        isHeaderHidden && "-translate-y-full"
+        "fixed inset-x-0 top-0 z-50 w-full max-w-full bg-white [transform:none]"
       )}
     >
       <motion.nav
         className={cn(
-          "border-b transition duration-300",
+          "w-full border-b transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300",
           isScrolled
             ? "border-[var(--color-border)] bg-white/95 shadow-[var(--shadow-header)] backdrop-blur"
             : "border-white/40 bg-white/80 backdrop-blur-md"
         )}
       >
-        <div className={cn(theme.layout.container, "flex h-[4.5rem] items-center justify-between gap-4 lg:h-24")}>
+        <div className={cn(theme.layout.container, "flex h-[4.5rem] items-center justify-between gap-2 lg:h-24 lg:gap-4")}>
           <button
             className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[var(--color-border)] text-[var(--color-secondary)] lg:hidden"
             onClick={() => {
@@ -269,8 +302,15 @@ const Navbar: React.FC = () => {
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
 
-          <Link to="/" className="flex shrink-0 items-center" aria-label="Nivaana home">
-            <img src={logo} alt="Nivaana" className="h-14 w-auto lg:h-20" loading="eager" />
+          <Link to="/" className="navbar-brand-logo mr-auto" aria-label="Nivaana home">
+            <img src={logoIcon} alt="" className="navbar-brand-icon" loading="eager" />
+            <span className="navbar-brand-copy">
+              <span className="navbar-brand-name">
+                <span className="navbar-brand-initial">N</span>ivaana
+                <span className="navbar-brand-tm">TM</span>
+              </span>
+              <span className="navbar-brand-tagline">Breath in Bliss!!</span>
+            </span>
           </Link>
 
           <div className="hidden items-center gap-3 lg:flex">
@@ -298,7 +338,7 @@ const Navbar: React.FC = () => {
                 aria-expanded={isCategoriesOpen}
                 aria-haspopup="true"
               >
-                Products <ChevronDown className={cn("h-5 w-5 transition", isCategoriesOpen && "rotate-180")} />
+                Product Categories <ChevronDown className={cn("h-5 w-5 transition", isCategoriesOpen && "rotate-180")} />
               </button>
             </div>
             <Link
@@ -307,18 +347,18 @@ const Navbar: React.FC = () => {
             >
               Deals
             </Link>
-            <Link
+            {/* <Link
               to="/about"
               className={desktopNavLinkClass}
             >
               About
-            </Link>
-            <Link
+            </Link> */}
+            {/* <Link
               to="/#contact"
               className={desktopNavLinkClass}
             >
               Contact
-            </Link>
+            </Link> */}
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
@@ -404,21 +444,38 @@ const Navbar: React.FC = () => {
             onMouseEnter={openCategoriesMenu}
             onMouseLeave={closeCategoriesMenu}
           >
-            <div className={cn(theme.layout.container, "grid grid-cols-3 gap-12 py-10")}>
+            <div className={cn(theme.layout.container, "grid grid-cols-4 gap-x-10 gap-y-9 py-10 xl:grid-cols-7")}>
               {categoryGroups.map((group) => (
                 <div key={group.heading}>
-                  <h2 className="mb-5 text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)]">
+                  <Link
+                    to={group.to}
+                    className="mb-5 block text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)] transition hover:text-[var(--color-text)]"
+                  >
                     {group.heading}
-                  </h2>
+                  </Link>
                   <div className="space-y-3">
                     {group.links.map((item) => (
-                      <Link
-                        key={item.label}
-                        to={item.to}
-                        className="block text-base font-medium text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
-                      >
-                        {item.label}
-                      </Link>
+                      <div key={item.label}>
+                        <Link
+                          to={item.to}
+                          className="block text-base font-medium leading-snug text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
+                        >
+                          {item.label}
+                        </Link>
+                        {item.children && (
+                          <div className="mt-2 space-y-2 border-l border-[var(--color-border)] pl-3">
+                            {item.children.map((child) => (
+                              <Link
+                                key={child.label}
+                                to={child.to}
+                                className="block text-sm font-medium leading-snug text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
+                              >
+                                {child.label}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -445,23 +502,40 @@ const Navbar: React.FC = () => {
               </Link>
               <details className="rounded-[var(--radius-sm)] px-3 py-3">
                 <summary className="cursor-pointer text-base font-semibold text-[var(--color-secondary)]">
-                  Products
+                  Product Categories
                 </summary>
                 <div className="mt-4 space-y-5">
                   {categoryGroups.map((group) => (
                     <div key={group.heading}>
-                      <h2 className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[var(--color-muted)]">
+                      <Link
+                        to={group.to}
+                        className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
+                      >
                         {group.heading}
-                      </h2>
+                      </Link>
                       <div className="space-y-1">
                         {group.links.map((item) => (
-                          <Link
-                            key={item.label}
-                            to={item.to}
-                            className="block rounded-[var(--radius-sm)] px-2 py-2 text-base text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
-                          >
-                            {item.label}
-                          </Link>
+                          <div key={item.label}>
+                            <Link
+                              to={item.to}
+                              className="block rounded-[var(--radius-sm)] px-2 py-2 text-base text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
+                            >
+                              {item.label}
+                            </Link>
+                            {item.children && (
+                              <div className="ml-3 space-y-1 border-l border-[var(--color-border)] pl-3">
+                                {item.children.map((child) => (
+                                  <Link
+                                    key={child.label}
+                                    to={child.to}
+                                    className="block rounded-[var(--radius-sm)] px-2 py-2 text-sm text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
+                                  >
+                                    {child.label}
+                                  </Link>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -474,18 +548,18 @@ const Navbar: React.FC = () => {
               >
                 Deals
               </Link>
-              <Link
+              {/* <Link
                 to="/about"
                 className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
                 About
-              </Link>
-              <Link
+              </Link> */}
+              {/* <Link
                 to="/#contact"
                 className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
               >
                 Contact
-              </Link>
+              </Link> */}
               <Link
                 to={session ? "/account" : "/login"}
                 className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
@@ -521,7 +595,7 @@ function Badge({ count }: { count: number }) {
   if (count <= 0) return null;
 
   return (
-    <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-primary)] px-1 text-[10px] font-bold text-[var(--color-secondary)]">
+    <span className="absolute -right-1 top-0 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-primary)] px-1 text-[10px] font-bold text-[var(--color-secondary)]">
       {count > 99 ? "99+" : count}
     </span>
   );

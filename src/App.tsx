@@ -30,12 +30,13 @@ function App() {
     <Router>
       <ScrollToTop />
       <ToastProvider />
-      <div className="min-h-screen flex flex-col">
+      <div className="flex min-h-screen max-w-full flex-col">
         <Navbar />
-        <main className="flex-grow">
+        <main className="flex-grow pt-[4.5rem] lg:pt-24">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/products" element={<Products />} />
+            <Route path="/best-sellers" element={<Products defaultCollection="best-sellers" />} />
             <Route path="/products/:productId" element={<ProductDetails />} />
             <Route path="/login" element={<GuestOnlyRoute><Login /></GuestOnlyRoute>} />
             <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />

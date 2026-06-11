@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --font-app: "Google Sans";
     --color-primary: #ffd200;
     --color-secondary: #485470;
     --color-background: #ffffff;
@@ -24,13 +25,25 @@
   }
 
   html {
-    font-family: Gilroy, Sans-serif;
+    font-family: var(--font-app) !important;
     scroll-behavior: smooth;
+    max-width: 100%;
+    overflow-x: hidden;
   }
   
   body {
     @apply bg-white text-[var(--color-text)] antialiased;
+    font-family: var(--font-app) !important;
+    max-width: 100%;
     overflow-x: hidden;
+  }
+
+  #root {
+    max-width: 100%;
+  }
+
+  body :where(*:not(.navbar-brand-logo):not(.navbar-brand-logo *)) {
+    font-family: var(--font-app) !important;
   }
 
   img {
@@ -41,11 +54,120 @@
   input,
   textarea,
   select {
-    font: inherit;
+    font-family: var(--font-app) !important;
   }
 }
 
 @layer components {
+  .navbar-brand-logo {
+    @apply flex h-14 shrink-0 items-center gap-2.5 px-1 py-1 transition hover:brightness-110 lg:h-20 lg:gap-3;
+  }
+
+  .navbar-brand-icon {
+    @apply h-10 w-10 shrink-0 object-contain lg:h-14 lg:w-14;
+  }
+
+  .navbar-brand-copy {
+    @apply flex min-w-0 flex-col items-start leading-none;
+  }
+
+  .navbar-brand-name {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    color: #ffd200;
+    font-family: "Questal Bold" !important;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1;
+  }
+
+  .navbar-brand-initial {
+    font-size: 1.18em;
+    line-height: 1;
+  }
+
+  .navbar-brand-tm {
+    margin-left: 0.14rem;
+    transform: translateY(-0.18rem);
+    font-family: "Questal Bold" !important;
+    font-size: 0.34em;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .navbar-brand-tagline {
+    @apply mt-0.5 whitespace-nowrap text-[0.46rem] font-bold lg:text-[0.5rem];
+    color: #ffd200;
+    font-family: "Questal Bold" !important;
+    letter-spacing: 0;
+    max-width: 100%;
+  }
+
+  @media (max-width: 420px) {
+    .navbar-brand-logo {
+      @apply h-12 gap-1.5 px-0.5 py-1;
+    }
+
+    .navbar-brand-icon {
+      @apply h-8 w-8;
+    }
+
+    .navbar-brand-name {
+      font-size: 0.9rem;
+    }
+
+    .navbar-brand-tagline {
+      margin-top: 0.12rem;
+      font-size: 0.34rem;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .navbar-brand-logo {
+      @apply gap-1 p-1;
+    }
+
+    .navbar-brand-icon {
+      @apply h-7 w-7;
+    }
+
+    .navbar-brand-name {
+      font-size: 0.78rem;
+    }
+
+    .navbar-brand-tagline {
+      font-size: 0.3rem;
+    }
+  }
+
+  .footer-brand-logo {
+    @apply inline-flex h-auto gap-2 px-0 py-0 hover:brightness-100;
+  }
+
+  .footer-brand-icon {
+    @apply h-9 w-9 md:h-11 md:w-11;
+  }
+
+  @media (max-width: 420px) {
+    .footer-brand-logo {
+      @apply gap-2;
+    }
+
+    .footer-brand-icon {
+      @apply h-9 w-9;
+    }
+
+    .footer-brand-logo .navbar-brand-name {
+      font-size: 1rem;
+    }
+
+    .footer-brand-logo .navbar-brand-tagline {
+      font-size: 0.38rem;
+    }
+  }
+
   .btn-primary {
     @apply bg-primary-gold text-primary-blue px-6 py-3 rounded-lg font-semibold hover:bg-primary-gold/90 transition-all duration-200 shadow-md hover:shadow-lg;
   }

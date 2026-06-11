@@ -1,47 +1,118 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
 import type { Product } from "../types";
 import { platformProductService } from "../services/productPlatformService";
 
-const normalize = (value?: string | null) => (value || "").toLowerCase();
+const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
+
+const normalizeFilterKey = (value?: string | null) =>
+  normalize(value)
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "_");
+
+const filterKeyVariants = (value?: string | null) => {
+  const key = normalizeFilterKey(value);
+  if (!key) return new Set<string>();
+
+  return new Set([key, key.replace(/(^|_)and(_|$)/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_")]);
+};
+
+const filterAliases: Record<string, string[]> = {
+  aromatherapy_wellness: ["aromatherapy_&_wellness"],
+  bath: ["soaps", "facewash", "handwash"],
+  car_room_fresheners: ["car_&_room_fresheners"],
+  dhoops: ["premium_dhoop_sticks"],
+  diffuser_oil_refill_pack_for_machines: ["diffuser_oils"],
+  floor_cleaner_concentrates: ["bath"],
+  fragrance_sachets: ["wardrobe_sachets"],
+  havan_cups: ["premium_havan_cups"],
+  incense_sticks: ["premium_incense_sticks"],
+  premium_room_mist: ["room_fresheners", "car_fresheners"],
+  wardrobe_sachets: ["fragrance_sachets"],
+};
+
+const filterQueryVariants = (value?: string | null) => {
+  const keys = new Set(filterKeyVariants(value));
+
+  [...keys].forEach((key) => {
+    filterAliases[key]?.forEach((alias) => {
+      filterKeyVariants(alias).forEach((aliasKey) => keys.add(aliasKey));
+    });
+  });
+
+  return keys;
+};
+
+const filterValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
+  Boolean(filterValue) &&
+  [...filterKeyVariants(productValue)].some((productKey) => filterQueryVariants(filterValue).has(productKey));
+
+const listValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
+  Boolean(filterValue) &&
+  normalize(productValue)
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .some((value) => filterValueMatches(value, filterValue));
 
 const formatFilterLabel = (value: string) =>
   value.replace(/_/g, " ").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
 interface FilterPill {
   label: string;
-  param: "category" | "subcategory";
+  param: "category" | "subcategory" | "subsubcategory";
   value: string;
 }
 
-const Products: React.FC = () => {
+interface ProductsProps {
+  defaultCollection?: string;
+}
+
+const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activeCategoryPillRef = useRef<HTMLButtonElement | null>(null);
+  const activeDetailPillRef = useRef<HTMLButtonElement | null>(null);
 
   const category = searchParams.get("category");
   const subcategory = searchParams.get("subcategory");
-  const collection = searchParams.get("collection");
+  const subsubcategory = searchParams.get("subsubcategory");
+  const collection = searchParams.get("collection") || defaultCollection;
   const search = searchParams.get("search");
 
   const filteredProducts = useMemo(() => {
     let result = products;
 
     if (category) {
-      result = result.filter((product) => normalize(product.category) === normalize(category));
+      result = result.filter(
+        (product) =>
+          filterValueMatches(product.category, category) ||
+          filterValueMatches(product.subcategory, category) ||
+          filterValueMatches(product.subsubcategory, category)
+      );
     }
 
     if (subcategory) {
       result = result.filter(
         (product) =>
-          normalize(product.subcategory) === normalize(subcategory) ||
-          normalize(product.fragnancetype) === normalize(subcategory) ||
-          normalize(product.fragnancetype)
-            .split(",")
-            .map((value) => value.trim())
-            .includes(normalize(subcategory))
+          filterValueMatches(product.subcategory, subcategory) ||
+          filterValueMatches(product.subsubcategory, subcategory) ||
+          filterValueMatches(product.fragnancetype, subcategory) ||
+          listValueMatches(product.fragnancetype, subcategory)
+      );
+    }
+
+    if (subsubcategory) {
+      result = result.filter(
+        (product) =>
+          filterValueMatches(product.subsubcategory, subsubcategory) ||
+          filterValueMatches(product.fragnancetype, subsubcategory) ||
+          listValueMatches(product.fragnancetype, subsubcategory)
       );
     }
 
@@ -70,6 +141,7 @@ const Products: React.FC = () => {
           product.fulldescription,
           product.category,
           product.subcategory,
+          product.subsubcategory,
           product.fragnancetype,
           product.brand,
           product.pack,
@@ -81,14 +153,63 @@ const Products: React.FC = () => {
     }
 
     return result;
-  }, [category, collection, products, search, subcategory]);
+  }, [category, collection, products, search, subcategory, subsubcategory]);
 
-  const categoryOptions = useMemo<FilterPill[]>(() => {
+  const addFilterOption = (map: Map<string, FilterPill>, param: FilterPill["param"], value?: string | null) => {
+    const cleanedValue = value?.trim();
+    if (!cleanedValue) return;
+
+    const key = `${param}:${normalizeFilterKey(cleanedValue)}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        label: formatFilterLabel(cleanedValue),
+        param,
+        value: cleanedValue,
+      });
+    }
+  };
+
+  const topCategoryOptions = useMemo<FilterPill[]>(() => {
+    const options = new Map<string, FilterPill>();
+
+    products.forEach((product) => {
+      addFilterOption(options, "category", product.category);
+      addFilterOption(options, "category", product.subcategory);
+    });
+
+    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [products]);
+
+  const childCategoryOptions = useMemo<FilterPill[]>(() => {
+    if (!category) return [];
+
+    const options = new Map<string, FilterPill>();
+    const categoryProducts = products.filter(
+      (product) =>
+        filterValueMatches(product.category, category) ||
+        filterValueMatches(product.subcategory, category) ||
+        filterValueMatches(product.subsubcategory, category)
+    );
+
+    categoryProducts.forEach((product) => {
+      if (!filterValueMatches(product.subcategory, category)) {
+        addFilterOption(options, "subcategory", product.subcategory);
+      }
+
+      if (!filterValueMatches(product.subsubcategory, category)) {
+        addFilterOption(options, "subsubcategory", product.subsubcategory);
+      }
+    });
+
+    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [category, products]);
+
+  const allCategoryOptions = useMemo<FilterPill[]>(() => {
     const addOption = (map: Map<string, FilterPill>, param: FilterPill["param"], value?: string | null) => {
       const cleanedValue = value?.trim();
       if (!cleanedValue) return;
 
-      const key = `${param}:${normalize(cleanedValue)}`;
+      const key = `${param}:${normalizeFilterKey(cleanedValue)}`;
       if (!map.has(key)) {
         map.set(key, {
           label: formatFilterLabel(cleanedValue),
@@ -103,13 +224,14 @@ const Products: React.FC = () => {
     products.forEach((product) => {
       addOption(options, "category", product.category);
       addOption(options, "subcategory", product.subcategory);
+      addOption(options, "subsubcategory", product.subsubcategory);
     });
 
     return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [products]);
 
   const variantOptions = useMemo<FilterPill[]>(() => {
-    const categoryKeys = new Set(categoryOptions.map((option) => normalize(option.value)));
+    const categoryKeys = new Set(allCategoryOptions.flatMap((option) => [...filterKeyVariants(option.value)]));
     const options = new Map<string, FilterPill>();
 
     products.forEach((product) => {
@@ -118,13 +240,13 @@ const Products: React.FC = () => {
         .map((value) => value.trim())
         .filter(Boolean)
         .forEach((value) => {
-          if (categoryKeys.has(normalize(value))) return;
+          if (categoryKeys.has(normalizeFilterKey(value))) return;
 
-          const key = normalize(value);
+          const key = normalizeFilterKey(value);
           if (!options.has(key)) {
             options.set(key, {
               label: formatFilterLabel(value),
-              param: "subcategory",
+              param: "subsubcategory",
               value,
             });
           }
@@ -132,23 +254,50 @@ const Products: React.FC = () => {
     });
 
     return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [categoryOptions, products]);
+  }, [allCategoryOptions, products]);
 
   const pageTitle = useMemo(() => {
+    if (subsubcategory) return formatFilterLabel(subsubcategory);
     if (subcategory) return formatFilterLabel(subcategory);
     if (category) return formatFilterLabel(category);
     if (collection) return formatFilterLabel(collection);
     if (search) return search;
     return "Our Products";
-  }, [category, collection, search, subcategory]);
+  }, [category, collection, search, subcategory, subsubcategory]);
 
   const showAllProducts = () => {
     setSearchParams({});
   };
 
   const selectCategory = (option: FilterPill) => {
-    setSearchParams({ [option.param]: option.value });
+    if (option.param === "category") {
+      setSearchParams({ category: option.value });
+      return;
+    }
+
+    const nextParams: Record<string, string> = { [option.param]: option.value };
+    if (category) nextParams.category = category;
+
+    setSearchParams(nextParams);
   };
+
+  useEffect(() => {
+    const centerPill = (activePill: HTMLButtonElement | null) => {
+      const scroller = activePill?.parentElement;
+      if (!activePill || !scroller) return;
+
+      scroller.scrollTo({
+        left: activePill.offsetLeft - scroller.clientWidth / 2 + activePill.clientWidth / 2,
+        behavior: "smooth",
+      });
+    };
+
+    centerPill(activeCategoryPillRef.current);
+    centerPill(activeDetailPillRef.current);
+
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+  }, [category, collection, search, subcategory, subsubcategory, topCategoryOptions, childCategoryOptions, variantOptions]);
 
   // Fetch products on component mount
   useEffect(() => {
@@ -156,7 +305,7 @@ const Products: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await platformProductService.getProducts();
+        const response = await platformProductService.getProducts(1, 1000);
         if (response.success) {
           setProducts(response.data);
         } else {
@@ -186,31 +335,30 @@ const Products: React.FC = () => {
             home decor
             {search ? ` matching "${search}"` : ""}
           </p>
-          {categoryOptions.length > 0 && (
+          {topCategoryOptions.length > 0 && (
             <div className="mt-5 space-y-3">
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                 <button
                   type="button"
                   onClick={showAllProducts}
+                  ref={!category && !subcategory && !subsubcategory && !collection && !search ? activeCategoryPillRef : undefined}
                   className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    !category && !subcategory && !collection && !search
+                    !category && !subcategory && !subsubcategory && !collection && !search
                       ? "border-primary-gold bg-primary-gold text-primary-blue"
                       : "border-[var(--color-border)] bg-white text-secondary-medium-gray hover:border-primary-gold hover:text-primary-blue"
                   }`}
                 >
                   All
                 </button>
-                {categoryOptions.map((option) => {
-                  const isActive =
-                    option.param === "category"
-                      ? normalize(category) === normalize(option.value)
-                      : normalize(subcategory) === normalize(option.value);
+                {topCategoryOptions.map((option) => {
+                  const isActive = filterValueMatches(option.value, category);
 
                   return (
                     <button
                       key={`${option.param}-${option.value}`}
                       type="button"
                       onClick={() => selectCategory(option)}
+                      ref={isActive ? activeCategoryPillRef : undefined}
                       className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                         isActive
                           ? "border-primary-gold bg-primary-gold text-primary-blue"
@@ -222,16 +370,43 @@ const Products: React.FC = () => {
                   );
                 })}
               </div>
-              {variantOptions.length > 0 && (
+              {category && childCategoryOptions.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  {childCategoryOptions.map((option) => {
+                    const isActive =
+                      option.param === "subcategory"
+                        ? filterValueMatches(option.value, subcategory)
+                        : filterValueMatches(option.value, subsubcategory);
+
+                    return (
+                      <button
+                        key={`child-${option.param}-${option.value}`}
+                        type="button"
+                        onClick={() => selectCategory(option)}
+                        ref={isActive ? activeDetailPillRef : undefined}
+                        className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                          isActive
+                            ? "border-primary-gold bg-primary-gold text-primary-blue"
+                            : "border-[var(--color-border)] bg-white text-secondary-medium-gray hover:border-primary-gold hover:text-primary-blue"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {!category && variantOptions.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   {variantOptions.map((option) => {
-                    const isActive = normalize(subcategory) === normalize(option.value);
+                    const isActive = filterValueMatches(option.value, subsubcategory);
 
                     return (
                       <button
                         key={`variant-${option.value}`}
                         type="button"
                         onClick={() => selectCategory(option)}
+                        ref={isActive ? activeDetailPillRef : undefined}
                         className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                           isActive
                             ? "border-primary-gold bg-primary-gold text-primary-blue"

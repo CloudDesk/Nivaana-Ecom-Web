@@ -19,6 +19,7 @@ export interface Product {
   isdealoftheday: boolean;
   category: string;
   subcategory: string;
+  subsubcategory?: string | null;
   large: string[] | null;
   medium: string[] | null;
   small: string[] | null;

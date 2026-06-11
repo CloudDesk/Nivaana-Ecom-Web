@@ -1,7 +1,7 @@
 export const fontConfig = {
-  heading: "Gilroy",
-  body: "Gilroy",
-  button: "Gilroy",
+  heading: "Google Sans",
+  body: "Google Sans",
+  button: "Google Sans",
   className: "font-sans",
 };
 

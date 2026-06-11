@@ -56,11 +56,11 @@ const isWarningMessage = (message: string) =>
   /out of stock|available stock|only \d+ item|currently available|quantity/i.test(message);
 
 const categoryRail = [
-  { label: "Incense", to: "/products?subcategory=incense", icon: Flame },
-  { label: "Car Fresheners", to: "/products?subcategory=car_%26_room_fresheners", icon: Car },
+  { label: "Incense", to: "/products?category=incense", icon: Flame },
+  { label: "Car & Room Fresheners", to: "/products?category=car_room_fresheners", icon: Car },
   { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends", icon: Flower2 },
   { label: "Home Fragrance", to: "/products?category=home_fragrance", icon: Home },
-  { label: "Daily Rituals", to: "/products?collection=best-sellers", icon: HeartHandshake },
+  { label: "Daily Rituals", to: "/products?category=daily_rituals", icon: HeartHandshake },
 ];
 
 const splitDescriptionPoints = (product: Product) => {
