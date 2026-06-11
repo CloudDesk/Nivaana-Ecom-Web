@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   CheckCircle2,
   CreditCard,
   Home,
@@ -9,6 +10,9 @@ import {
   MapPin,
   PackageCheck,
   Pencil,
+  Plus,
+  ShieldCheck,
+  ShoppingBag,
   Trash2,
   WalletCards,
 } from "lucide-react";
@@ -578,21 +582,33 @@ const Checkout: React.FC = () => {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:py-10">
-      <section className="mx-auto max-w-6xl">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
+      <section className="mx-auto max-w-5xl">
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)]">Checkout</p>
-            <h1 className="mt-2 text-3xl font-bold text-[var(--color-text)]">Complete your order</h1>
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Checkout</p>
+            <h1 className="text-[22px] font-semibold text-[var(--color-text)]">Complete your order</h1>
           </div>
-          <Link to="/cart" className="text-sm font-semibold text-[var(--color-secondary)]">
+          <Link
+            to="/cart"
+            className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-4 text-sm font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
+          >
+            <ArrowLeft className="h-4 w-4" />
             Back to cart
           </Link>
         </div>
 
+        <div className="mb-8 flex items-center">
+          <CheckoutStep label="Cart" state="done" value="1" />
+          <div className="mx-3 h-px w-10 bg-[var(--color-border)] sm:w-16" />
+          <CheckoutStep label="Checkout" state="active" value="2" />
+          <div className="mx-3 h-px w-10 bg-[var(--color-border)] sm:w-16" />
+          <CheckoutStep label="Confirmation" state="idle" value="3" />
+        </div>
+
         {(statusMessage || errorMessage) && (
           <div
-            className={`mt-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
+            className={`mb-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
               errorMessage ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
             }`}
           >
@@ -600,20 +616,18 @@ const Checkout: React.FC = () => {
           </div>
         )}
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
-          <div className="space-y-6">
-            <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
-                    <MapPin className="h-5 w-5" />
-                  </span>
-                  <h2 className="text-lg font-bold text-[var(--color-text)]">Delivery Address</h2>
-                </div>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-4">
+            <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+                  <MapPin className="h-4 w-4 text-[var(--color-muted)]" />
+                  Delivery address
+                </h2>
                 {addresses.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    className="px-3"
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-secondary)] transition hover:text-[var(--color-text)]"
                     onClick={() => {
                       if (showAddressForm) {
                         setShowAddressForm(false);
@@ -625,23 +639,24 @@ const Checkout: React.FC = () => {
                       }
                     }}
                   >
+                    {!showAddressForm && <Plus className="h-3.5 w-3.5" />}
                     {showAddressForm ? "Hide" : "Add"}
-                  </Button>
+                  </button>
                 )}
               </div>
 
               {addressesQuery.isLoading ? (
-                <p className="mt-5 text-sm text-[var(--color-muted)]">Loading addresses...</p>
+                <p className="text-sm text-[var(--color-muted)]">Loading addresses...</p>
               ) : addresses.length > 0 ? (
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {addresses.map((address) => (
                     <div
                       key={address.id}
                       onClick={() => setSelectedAddressId(address.id)}
-                      className={`relative min-h-36 rounded-[var(--radius-sm)] border p-4 pr-24 text-left transition ${
+                      className={`relative min-h-32 cursor-pointer rounded-[var(--radius-sm)] border p-4 pr-12 text-left transition ${
                         selectedAddressId === address.id
-                          ? "border-[var(--color-secondary)] bg-[var(--color-surface)]"
-                          : "border-[var(--color-border)] bg-white hover:border-[var(--color-secondary)]/50"
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
+                          : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)]"
                       }`}
                       role="button"
                       tabIndex={0}
@@ -652,10 +667,19 @@ const Checkout: React.FC = () => {
                         }
                       }}
                     >
+                      <span
+                        className={`absolute right-3 top-3 grid h-4 w-4 place-items-center rounded-full border ${
+                          selectedAddressId === address.id
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                            : "border-[var(--color-border)]"
+                        }`}
+                      >
+                        {selectedAddressId === address.id && <CheckCircle2 className="h-2.5 w-2.5" />}
+                      </span>
                       <button
                         type="button"
                         aria-label={`Edit address for ${address.name}`}
-                        className="absolute right-12 top-3 grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)] disabled:opacity-50"
+                        className="absolute bottom-3 left-4 inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)] disabled:opacity-50"
                         disabled={updateAddressMutation.isPending || deleteAddressMutation.isPending}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -667,12 +691,13 @@ const Checkout: React.FC = () => {
                           setStatusMessage("");
                         }}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-3 w-3" />
+                        Edit
                       </button>
                       <button
                         type="button"
                         aria-label={`Delete address for ${address.name}`}
-                        className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        className="absolute bottom-3 left-20 inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                         disabled={deleteAddressMutation.isPending}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -681,16 +706,17 @@ const Checkout: React.FC = () => {
                           }
                         }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
+                        Delete
                       </button>
-                      <span className="flex items-start gap-3">
-                        <Home className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-secondary)]" />
+                      <span className="flex items-start gap-2 pb-8">
+                        <Home className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-muted)]" />
                         <span className="min-w-0">
-                          <span className="block text-sm font-bold text-[var(--color-text)]">{address.name}</span>
-                          <span className="mt-1 block text-sm leading-6 text-[var(--color-muted)]">
+                          <span className="block text-sm font-semibold text-[var(--color-text)]">{address.name}</span>
+                          <span className="mt-1 block text-xs leading-5 text-[var(--color-muted)]">
                             {address.doornumber}, {address.address}, {address.city}, {address.state} - {address.pincode}
                           </span>
-                          <span className="mt-2 block text-xs font-semibold text-[var(--color-secondary)]">
+                          <span className="mt-2 block text-xs text-[var(--color-muted)]">
                             {address.mobilenumber}
                           </span>
                         </span>
@@ -718,15 +744,13 @@ const Checkout: React.FC = () => {
               )}
             </section>
 
-            <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-              <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
-                  <WalletCards className="h-5 w-5" />
-                </span>
-                <h2 className="text-lg font-bold text-[var(--color-text)]">Payment</h2>
-              </div>
+            <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+                <WalletCards className="h-4 w-4 text-[var(--color-muted)]" />
+                Payment method
+              </h2>
 
-              <div className="mt-5 grid gap-3">
+              <div className="mt-4 grid gap-2">
                 <PaymentOption
                   checked
                   icon={<CreditCard className="h-5 w-5" />}
@@ -738,12 +762,15 @@ const Checkout: React.FC = () => {
             </section>
           </div>
 
-          <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-            <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>
-            <div className="mt-5 space-y-4">
+          <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 lg:sticky lg:top-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+              <ShoppingBag className="h-4 w-4 text-[var(--color-muted)]" />
+              Order summary
+            </h2>
+            <div className="mt-4 space-y-3">
               {enrichedItems.map(({ item, product, quantity }) => (
-                <div key={item.id} className="flex gap-3">
-                  <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]">
+                <div key={item.id} className="flex items-center gap-3">
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                     <img
                       src={productImage(product)}
                       alt={product?.name || "Product image"}
@@ -754,24 +781,24 @@ const Checkout: React.FC = () => {
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm font-bold text-[var(--color-text)]">
+                    <p className="line-clamp-2 text-xs font-semibold text-[var(--color-text)]">
                       {product?.name || `Product #${item.productid}`}
                     </p>
-                    <p className="mt-1 text-xs text-[var(--color-muted)]">Qty {quantity}</p>
+                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">Qty: {quantity}</p>
                     {(checkoutStockIssueMap.has(item.productid) || checkoutBackendIssueMap.has(item.productid)) && (
                       <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600">
                         {checkoutBackendIssueMap.get(item.productid) || checkoutStockIssueMap.get(item.productid)}
                       </p>
                     )}
                   </div>
-                  <p className="text-sm font-bold text-[var(--color-secondary)]">
+                  <p className="shrink-0 text-xs font-semibold text-[var(--color-text)]">
                     {formatCurrency(productUnitPrice(product) * quantity)}
                   </p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 space-y-3 border-t border-[var(--color-border)] pt-5 text-sm">
+            <div className="mt-5 space-y-2 border-t border-[var(--color-border)] pt-4 text-sm">
               <SummaryLine label="Items total" value={formatCurrency(mrpTotal)} />
               <SummaryLine label="Product discount" value={`-${formatCurrency(productDiscount)}`} />
               <SummaryLine label="Shipping" value={shipping === 0 ? "Free" : formatCurrency(shipping)} />
@@ -787,14 +814,14 @@ const Checkout: React.FC = () => {
                   }
                 />
               )}
-              <div className="flex justify-between border-t border-[var(--color-border)] pt-4 text-base font-bold text-[var(--color-text)]">
+              <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-semibold text-[var(--color-text)]">
                 <span>Total</span>
                 <span>{formatCurrency(checkoutTotal)}</span>
               </div>
             </div>
 
             <Button
-              className="mt-6 w-full gap-2"
+              className="mt-5 w-full gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-secondary)] hover:text-white"
               disabled={
                 !selectedAddress ||
                 paymentMutation.isPending ||
@@ -808,8 +835,12 @@ const Checkout: React.FC = () => {
               onClick={() => paymentMutation.mutate()}
             >
               {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              Pay Now
+              Pay {formatCurrency(checkoutTotal)} securely
             </Button>
+            <p className="mt-3 flex items-center justify-center gap-1 text-[11px] text-[var(--color-muted)]">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              256-bit SSL encrypted checkout
+            </p>
           </aside>
         </div>
       </section>
@@ -1079,27 +1110,59 @@ function PaymentOption({
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-24 items-center gap-4 rounded-[var(--radius-sm)] border p-4 text-left transition ${
+      className={`flex items-center gap-3 rounded-[var(--radius-sm)] border px-3.5 py-3 text-left transition ${
         checked
-          ? "border-[var(--color-secondary)] bg-[var(--color-surface)]"
-          : "border-[var(--color-border)] bg-white hover:border-[var(--color-secondary)]/50"
+          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
+          : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)]"
       }`}
     >
-      <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
-        {icon}
+      <span
+        className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
+          checked
+            ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+            : "border-[var(--color-muted)]"
+        }`}
+      >
+        {checked && <CheckCircle2 className="h-2.5 w-2.5" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold text-[var(--color-text)]">{title}</span>
-        <span className="mt-1 block text-xs text-[var(--color-muted)]">{detail}</span>
+        <span className="block text-sm font-semibold text-[var(--color-text)]">{title}</span>
+        <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">{detail}</span>
       </span>
-      {checked && <CheckCircle2 className="h-5 w-5 text-[var(--color-success)]" />}
+      <span className="text-[var(--color-muted)]">{icon}</span>
     </button>
+  );
+}
+
+function CheckoutStep({ label, state, value }: { label: string; state: "done" | "active" | "idle"; value: string }) {
+  const isDone = state === "done";
+  const isActive = state === "active";
+
+  return (
+    <div
+      className={`flex items-center gap-2 text-xs ${
+        isDone ? "text-green-700" : isActive ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-muted)]"
+      }`}
+    >
+      <span
+        className={`grid h-[22px] w-[22px] place-items-center rounded-full border text-[11px] font-semibold ${
+          isDone
+            ? "border-green-200 bg-green-50 text-green-700"
+            : isActive
+              ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-secondary)]"
+              : "border-[var(--color-border)] text-[var(--color-muted)]"
+        }`}
+      >
+        {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : value}
+      </span>
+      <span>{label}</span>
+    </div>
   );
 }
 
 function SummaryLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-4 text-[var(--color-muted)]">
+    <div className="flex justify-between gap-4 text-[13px] text-[var(--color-muted)]">
       <span>{label}</span>
       <span className="font-semibold text-[var(--color-text)]">{value}</span>
     </div>
