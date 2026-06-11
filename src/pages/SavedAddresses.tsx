@@ -58,6 +58,21 @@ const addressToPayload = (address: Address): AddressPayload => ({
   isdefaultaddress: Boolean(address.isdefaultaddress),
 });
 
+const notificationDisplayMs = 4200;
+const notificationFadeMs = 350;
+
+const addressErrorMessage = (error: unknown, fallback: string) => {
+  const apiError = error as { message?: string; data?: { message?: string; details?: string } };
+  const message = apiError.data?.message || apiError.message || "";
+  const details = apiError.data?.details || "";
+
+  if (/referenced table|foreign key|field reference/i.test(`${message} ${details}`)) {
+    return "This address is linked to an order and cannot be deleted.";
+  }
+
+  return message || fallback;
+};
+
 const SavedAddresses: React.FC = () => {
   const queryClient = useQueryClient();
   const [session] = useState(() => sessionService.getSession());
@@ -71,6 +86,7 @@ const SavedAddresses: React.FC = () => {
   );
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [notificationVisible, setNotificationVisible] = useState(false);
 
   const addressesQuery = useQuery({
     queryKey: ["addresses", userId],
@@ -91,6 +107,25 @@ const SavedAddresses: React.FC = () => {
       setShowAddressForm(true);
     }
   }, [addresses.length, addressesQuery.isLoading]);
+
+  useEffect(() => {
+    if (!statusMessage && !errorMessage) {
+      setNotificationVisible(false);
+      return;
+    }
+
+    setNotificationVisible(true);
+    const fadeTimer = window.setTimeout(() => setNotificationVisible(false), notificationDisplayMs);
+    const clearTimer = window.setTimeout(() => {
+      setStatusMessage("");
+      setErrorMessage("");
+    }, notificationDisplayMs + notificationFadeMs);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [statusMessage, errorMessage]);
 
   const resetForm = () => {
     if (userId) {
@@ -131,8 +166,16 @@ const SavedAddresses: React.FC = () => {
   });
 
   const deleteAddressMutation = useMutation({
-    mutationFn: (addressId: number) => addressService.remove(addressId),
-    onSuccess: (_, addressId) => {
+    mutationFn: (address: Address) => {
+      const addressId = Number(address.id);
+      if (!Number.isFinite(addressId)) {
+        throw new Error("Could not delete this address because its id is missing.");
+      }
+
+      return addressService.remove(addressId);
+    },
+    onSuccess: (_, address) => {
+      const addressId = Number(address.id);
       queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
       if (editingAddressId === addressId) {
         resetForm();
@@ -140,8 +183,8 @@ const SavedAddresses: React.FC = () => {
       setStatusMessage("Address deleted.");
       setErrorMessage("");
     },
-    onError: () => {
-      setErrorMessage("Could not delete this address. Please try again.");
+    onError: (error) => {
+      setErrorMessage(addressErrorMessage(error, "Could not delete this address. Please try again."));
       setStatusMessage("");
     },
   });
@@ -215,7 +258,9 @@ const SavedAddresses: React.FC = () => {
 
         {(statusMessage || errorMessage) && (
           <div
-            className={`mt-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
+            className={`mt-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold transition duration-300 ${
+              notificationVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+            } ${
               errorMessage ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
             }`}
           >
@@ -245,7 +290,7 @@ const SavedAddresses: React.FC = () => {
                   }}
                   onDelete={() => {
                     if (window.confirm("Delete this address?")) {
-                      deleteAddressMutation.mutate(address.id);
+                      deleteAddressMutation.mutate(address);
                     }
                   }}
                 />
