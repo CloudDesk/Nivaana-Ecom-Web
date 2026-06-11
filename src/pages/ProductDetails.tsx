@@ -870,11 +870,11 @@ function ProductInsights({ product, hasReviews }: { product: Product; hasReviews
             "Keep away from direct heat, children, and pets unless product instructions say otherwise.",
             "Use regularly in your preferred room, car, or ritual space for a consistent fragrance experience.",
           ].map((step, index) => (
-            <div key={step} className="min-w-0 break-words">
-              <span className="mb-2 block text-sm font-extrabold text-[var(--color-secondary)]">
+            <div key={step} className="flex min-w-0 items-start gap-3 break-words">
+              <span className="w-5 shrink-0 text-sm font-extrabold text-[var(--color-secondary)] sm:w-6">
                 {index + 1}
               </span>
-              {step}
+              <span className="min-w-0 flex-1">{step}</span>
             </div>
           ))}
         </div>

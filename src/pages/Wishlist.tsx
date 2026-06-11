@@ -183,15 +183,17 @@ const Wishlist: React.FC = () => {
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Button
-                        className="h-9"
+                        className="h-9 w-9 px-0 sm:w-auto sm:px-4"
                         disabled={moveToCart.isPending || cannotAddToCart}
                         onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
+                        aria-label={`Add ${product?.name || `product ${item.productid}`} to cart`}
                       >
-                        <ShoppingBag className="mr-2 h-4 w-4" /> Add to Cart
+                        <ShoppingBag className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">Add to Cart</span>
                       </Button>
                       <Button
                         variant="ghost"
-                        className="h-9 px-3"
+                        className="h-9 w-9 px-0 sm:px-3"
                         disabled={remove.isPending}
                         onClick={() => remove.mutate(apiId ?? item.productid)}
                         aria-label="Remove from wishlist"

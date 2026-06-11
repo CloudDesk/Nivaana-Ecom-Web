@@ -561,10 +561,10 @@ const Cart: React.FC = () => {
           <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
             <div className="space-y-4">
               {enriched.map(({ apiId, item, product, quantity }) => (
-                <article key={`${item.productid}-${apiId ?? "guest"}`} className="flex gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)]">
+                <article key={`${item.productid}-${apiId ?? "guest"}`} className="relative flex gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)] sm:gap-4">
                   <Link
                     to={`/products/${item.productid}`}
-                    className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]"
+                    className="h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)] sm:h-24 sm:w-24"
                     aria-label={`View ${product?.name || `product ${item.productid}`}`}
                   >
                     <img
@@ -576,10 +576,10 @@ const Cart: React.FC = () => {
                       }}
                     />
                   </Link>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 pr-16 sm:pr-20">
                     <Link
                       to={`/products/${item.productid}`}
-                      className="line-clamp-2 text-base font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)]"
+                      className="line-clamp-2 text-sm font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)] sm:text-base"
                     >
                       {product?.name || `Product #${item.productid}`}
                     </Link>
@@ -592,44 +592,51 @@ const Cart: React.FC = () => {
                             : stockLimitMessage(getAvailableStock(product)))}
                       </p>
                     )}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        className="h-9 px-3"
-                        disabled={mutation.isPending || isOutOfStock(product) || quantity >= getAvailableStock(product)}
-                        onClick={() =>
-                          updateQuantity({
-                            apiId,
-                            product,
-                            productid: item.productid,
-                            quantity,
-                            nextQuantity: quantity - 1,
-                            iswishlist: item.iswishlist,
-                          })
-                        }
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-9 px-3"
-                        disabled={mutation.isPending}
-                        onClick={() =>
-                          updateQuantity({
-                            apiId,
-                            product,
-                            productid: item.productid,
-                            quantity,
-                            nextQuantity: quantity + 1,
-                            iswishlist: item.iswishlist,
-                          })
-                        }
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
+                    <div className="mt-3 flex flex-nowrap items-center gap-2">
+                      <div className="inline-flex h-9 items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
+                        <button
+                          type="button"
+                          className="grid h-9 w-9 place-items-center text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                          disabled={mutation.isPending}
+                          onClick={() =>
+                            updateQuantity({
+                              apiId,
+                              product,
+                              productid: item.productid,
+                              quantity,
+                              nextQuantity: quantity - 1,
+                              iswishlist: item.iswishlist,
+                            })
+                          }
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <span className="min-w-8 border-x border-[var(--color-border)] px-2 text-center text-sm font-semibold text-[var(--color-text)]">
+                          {quantity}
+                        </span>
+                        <button
+                          type="button"
+                          className="grid h-9 w-9 place-items-center text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                          disabled={mutation.isPending || isOutOfStock(product) || quantity >= getAvailableStock(product)}
+                          onClick={() =>
+                            updateQuantity({
+                              apiId,
+                              product,
+                              productid: item.productid,
+                              quantity,
+                              nextQuantity: quantity + 1,
+                              iswishlist: item.iswishlist,
+                            })
+                          }
+                          aria-label="Increase quantity"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
                       <Button
                         variant="secondary"
-                        className="h-9 gap-2 px-3 text-xs sm:text-sm"
+                        className="h-9 w-9 px-0"
                         disabled={moveToWishlist.isPending || mutation.isPending}
                         aria-label={`Save ${product?.name || `product ${item.productid}`} for later`}
                         onClick={() =>
@@ -641,11 +648,10 @@ const Cart: React.FC = () => {
                         }
                       >
                         <Heart className="h-4 w-4" />
-                        <span>Save for later</span>
                       </Button>
                       <Button
                         variant="ghost"
-                        className="h-9 px-3"
+                        className="h-9 w-9 px-0"
                         disabled={mutation.isPending}
                         onClick={() =>
                           updateQuantity({
@@ -662,7 +668,7 @@ const Cart: React.FC = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="text-right text-sm font-bold text-[var(--color-secondary)]">
+                  <div className="absolute right-4 top-4 text-right text-sm font-bold text-[var(--color-secondary)]">
                     {formatCurrency(productUnitPrice(product))}
                   </div>
                 </article>
