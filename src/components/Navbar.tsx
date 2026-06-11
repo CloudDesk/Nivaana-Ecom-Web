@@ -52,6 +52,8 @@ const categoryGroups = [
 ];
 
 const countDistinctProducts = (items: Array<{ productid: number }>) => new Set(items.map((item) => item.productid)).size;
+const desktopNavLinkClass =
+  "group relative inline-flex h-12 items-center px-5 text-lg font-semibold text-[var(--color-text)] transition-colors after:absolute after:bottom-1 after:left-5 after:right-5 after:h-0.5 after:origin-left after:scale-x-0 after:rounded-full after:bg-[var(--color-secondary)] after:transition-transform after:duration-200 hover:text-[var(--color-secondary)] hover:after:scale-x-100";
 
 const Navbar: React.FC = () => {
   const location = useLocation();
@@ -274,7 +276,7 @@ const Navbar: React.FC = () => {
           <div className="hidden items-center gap-3 lg:flex">
             <Link
               to="/"
-              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className={desktopNavLinkClass}
             >
               Home
             </Link>
@@ -282,8 +284,9 @@ const Navbar: React.FC = () => {
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-12 items-center gap-2 rounded-[var(--radius-sm)] px-5 text-lg font-semibold transition hover:bg-[var(--color-surface)]",
-                  isCategoriesOpen ? "text-[var(--color-secondary)]" : "text-[var(--color-text)]"
+                  desktopNavLinkClass,
+                  "gap-2",
+                  isCategoriesOpen && "text-[var(--color-secondary)] after:scale-x-100"
                 )}
                 onClick={() => navigate("/products")}
                 onFocus={openCategoriesMenu}
@@ -300,19 +303,19 @@ const Navbar: React.FC = () => {
             </div>
             <Link
               to="/products?collection=deals"
-              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className={desktopNavLinkClass}
             >
               Deals
             </Link>
             <Link
               to="/about"
-              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className={desktopNavLinkClass}
             >
               About
             </Link>
             <Link
               to="/#contact"
-              className="inline-flex h-12 items-center rounded-[var(--radius-sm)] px-5 text-lg font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+              className={desktopNavLinkClass}
             >
               Contact
             </Link>

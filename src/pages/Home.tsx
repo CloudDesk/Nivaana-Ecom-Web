@@ -783,7 +783,7 @@ function CategoryTripleSlider({
 
   const positions = [-1, 0, 1];
   return (
-    <div className="relative -mx-4 overflow-visible px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-24 lg:pb-0 lg:pt-1">
+    <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:overflow-visible lg:px-24 lg:pb-0 lg:pt-1">
       <button
         className={cn("absolute left-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
         onClick={() => move(-1)}
@@ -793,7 +793,7 @@ function CategoryTripleSlider({
       </button>
 
       <motion.div
-        className="relative h-[276px] cursor-grab select-none overflow-visible touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[324px] lg:h-[354px]"
+        className="relative h-[276px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[324px] lg:h-[354px] lg:overflow-visible"
         onClickCapture={(event) => {
           if (lastDragDistanceRef.current > clickThreshold) {
             event.preventDefault();
@@ -865,7 +865,7 @@ function CategoryTripleSlider({
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y overflow-hidden rounded-[22px] border border-[#eadfc9] bg-[#efe6d4] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
+                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y overflow-hidden rounded-[22px] bg-[#efe6d4] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
                 isCenter
                   ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
                   : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
