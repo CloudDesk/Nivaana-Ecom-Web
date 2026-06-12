@@ -172,6 +172,7 @@ const ProductDetails: React.FC = () => {
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
   const [, setGuestStoreVersion] = useState(0);
   const thumbnailScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const mainImageSwipeRef = React.useRef({ startX: 0, startY: 0, tracking: false });
 
   const productQuery = useQuery({
     queryKey: ["product", id],
@@ -282,6 +283,15 @@ const ProductDetails: React.FC = () => {
       behavior: "smooth",
     });
   };
+
+  const moveMainImage = (direction: number) => {
+    if (images.length <= 1) return;
+    setSelectedImage((currentIndex) => (currentIndex + direction + images.length) % images.length);
+  };
+
+  useEffect(() => {
+    setSelectedImage(0);
+  }, [product?.id]);
 
   const relatedProducts = useMemo(
     () =>
@@ -525,12 +535,50 @@ const ProductDetails: React.FC = () => {
         </div>
 
         <div className="mx-auto grid w-full min-w-0 max-w-[1480px] grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,0.7fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(620px,0.75fr)]">
-          <div className="min-w-0 self-start lg:sticky lg:top-4">
-            <div className="min-w-0 overflow-hidden rounded-3xl bg-[var(--color-surface)]">
+          <div className="min-w-0 self-start lg:sticky lg:top-28">
+            <div
+              className="min-w-0 touch-pan-y select-none overflow-hidden rounded-3xl bg-[var(--color-surface)]"
+              onPointerDown={(event) => {
+                if (images.length <= 1) return;
+
+                mainImageSwipeRef.current = {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  tracking: true,
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!mainImageSwipeRef.current.tracking) return;
+
+                const distanceX = event.clientX - mainImageSwipeRef.current.startX;
+                const distanceY = event.clientY - mainImageSwipeRef.current.startY;
+
+                if (Math.abs(distanceX) > 10 && Math.abs(distanceX) > Math.abs(distanceY) * 1.2) {
+                  event.preventDefault();
+                }
+              }}
+              onPointerUp={(event) => {
+                if (!mainImageSwipeRef.current.tracking) return;
+
+                const distanceX = event.clientX - mainImageSwipeRef.current.startX;
+                const distanceY = event.clientY - mainImageSwipeRef.current.startY;
+
+                mainImageSwipeRef.current.tracking = false;
+
+                if (Math.abs(distanceX) > 56 && Math.abs(distanceX) > Math.abs(distanceY) * 1.25) {
+                  moveMainImage(distanceX < 0 ? 1 : -1);
+                }
+              }}
+              onPointerCancel={() => {
+                mainImageSwipeRef.current.tracking = false;
+              }}
+            >
               <img
                 src={activeImage}
                 alt={product.name}
-                className="block h-[360px] w-full max-w-full rounded-3xl object-cover sm:h-[520px] lg:h-[calc(100vh-148px)]"
+                draggable={false}
+                className="block h-[360px] w-full max-w-full rounded-3xl object-cover sm:h-[520px] lg:h-[calc(100vh-176px)]"
                 onError={(event) => {
                   event.currentTarget.src = fallbackProduct;
                 }}

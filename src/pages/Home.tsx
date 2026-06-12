@@ -545,24 +545,6 @@ const Home: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div className="hidden gap-2 lg:flex">
-                  <Button
-                    variant="icon"
-                    className={carouselArrowClass}
-                    aria-label="Previous hero slide"
-                    onClick={() => moveHeroSlide(-1)}
-                  >
-                    <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
-                  </Button>
-                  <Button
-                    variant="icon"
-                    className={carouselArrowClass}
-                    aria-label="Next hero slide"
-                    onClick={() => moveHeroSlide(1)}
-                  >
-                    <ChevronRight className="h-5 w-5 stroke-[2.4]" />
-                  </Button>
-                </div>
               </div>
             </div>
           </div>
@@ -1101,6 +1083,7 @@ function CategoryTripleSlider({
   };
 
   const positions = [-1, 0, 1];
+  const sideCardScale = 0.88;
   return (
     <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:overflow-visible lg:px-24 lg:pb-0 lg:pt-1">
       <button
@@ -1171,9 +1154,9 @@ function CategoryTripleSlider({
               initial={false}
               animate={{
                 x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
-                y: isCenter ? 0 : 10,
+                y: 0,
                 rotateY: 0,
-                scale: isCenter ? 1 : 0.94,
+                scale: isCenter ? 1 : sideCardScale,
                 opacity: 1,
               }}
               transition={
@@ -1186,7 +1169,7 @@ function CategoryTripleSlider({
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] cursor-pointer touch-pan-y overflow-hidden rounded-[22px] bg-[#efe6d4] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
+                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] origin-center cursor-pointer touch-pan-y overflow-hidden rounded-[22px] bg-[#efe6d4] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
                 isCenter
                   ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
                   : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
