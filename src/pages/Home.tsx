@@ -490,7 +490,7 @@ const Home: React.FC = () => {
                         {slide.text}
                       </p>
                       <Link to={slide.ctaUrl || "/products"} className="mt-4 inline-flex sm:mt-5">
-                        <Button className="min-h-8 rounded-full bg-[var(--color-text)] px-5 text-sm text-white hover:bg-[var(--color-secondary)] sm:min-h-9 sm:px-6">
+                        <Button className="min-h-8 rounded-full !bg-[var(--color-text)] px-5 text-sm !text-white hover:!bg-[var(--color-secondary)] sm:min-h-9 sm:px-6">
                           {slide.ctaText || "Shop Now"}
                         </Button>
                       </Link>
@@ -507,8 +507,8 @@ const Home: React.FC = () => {
                       className={cn(
                         "relative grid rounded-full transition",
                         activeSlide === index
-                          ? "h-8 w-8 place-items-center"
-                          : "h-3 w-3 bg-[#0b2341] hover:bg-[#f0c353]"
+                          ? "h-8 w-8 place-items-center bg-transparent hover:bg-transparent"
+                          : "h-3 w-3 bg-[#f0c353] hover:bg-[#f0c353]/85"
                       )}
                       onClick={() => setActiveSlide(index)}
                       aria-label={`Show ${item.title}`}
@@ -521,7 +521,7 @@ const Home: React.FC = () => {
                               cy="16"
                               r={heroTimerRadius}
                               fill="none"
-                              stroke="#f0c353"
+                              stroke="rgba(11,35,65,0.24)"
                               strokeWidth="3"
                             />
                             <motion.circle
@@ -539,7 +539,7 @@ const Home: React.FC = () => {
                               transition={{ duration: heroSlideIntervalMs / 1000, ease: "linear" }}
                             />
                           </svg>
-                          <span className="absolute h-2.5 w-2.5 rounded-full bg-[#f0c353] shadow-[0_0_0_3px_rgba(255,255,255,0.95)]" />
+                          <span className="absolute h-2.5 w-2.5 rounded-full bg-[#f0c353]" />
                         </>
                       )}
                     </button>

@@ -11,13 +11,13 @@ export interface ButtonProps
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--color-primary)] text-[var(--color-secondary)] shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-hover)] hover:-translate-y-0.5",
+    "bg-[var(--color-primary)] text-[var(--color-text)] shadow-[var(--shadow-card)] hover:bg-[var(--color-primary)] hover:text-[var(--color-text)] hover:shadow-[var(--shadow-hover)] hover:-translate-y-0.5",
   secondary:
-    "border border-[var(--color-secondary)] bg-white text-[var(--color-secondary)] hover:bg-[var(--color-secondary)] hover:text-white",
+    "border border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-primary)] hover:text-[var(--color-text)]",
   ghost:
-    "bg-transparent text-[var(--color-secondary)] hover:bg-[var(--color-surface)]",
+    "bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-primary)] hover:text-[var(--color-text)]",
   icon:
-    "grid aspect-square w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm hover:bg-[var(--color-primary)]",
+    "grid aspect-square w-10 place-items-center rounded-full bg-white/90 text-[var(--color-text)] shadow-sm hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]",
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(

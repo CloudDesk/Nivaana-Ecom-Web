@@ -8,9 +8,11 @@ import { promotionService, type ApplicablePromotion, type AppliedPromotion, type
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/Toast";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import type { ApiResponse, CartItem, Product } from "../types";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
+import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import {
   buildPromotionCartData,
   buildPromotionEvaluationCartItems,
@@ -58,8 +60,6 @@ const Cart: React.FC = () => {
   const queryClient = useQueryClient();
   const session = sessionService.getSession();
   const [, setGuestVersion] = useState(0);
-  const [actionMessage, setActionMessage] = useState("");
-  const [actionError, setActionError] = useState("");
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(session?.user.id)
@@ -93,9 +93,6 @@ const Cart: React.FC = () => {
     { previousCart?: ApiResponse<CartItem[]> } | undefined
   >({
     mutationFn: ({ id, productid, userid, quantity, iswishlist }) => {
-      setActionMessage("");
-      setActionError("");
-
       if (!session) {
         guestStoreService.updateCartQuantity(productid, quantity);
         return Promise.resolve();
@@ -152,20 +149,20 @@ const Cart: React.FC = () => {
 
       return { previousCart };
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+      toast.success("Cart updated.");
+    },
     onError: (_error, _variables, context) => {
       if (session && context?.previousCart) {
         queryClient.setQueryData(["cart", session.user.id], context.previousCart);
       }
-      setActionError("Could not update cart. Please try again.");
+      toast.error("Could not update cart. Please try again.");
     },
   });
 
   const moveToWishlist = useMutation<unknown, Error, { id?: number; productid: number; quantity: number }>({
     mutationFn: ({ id, productid, quantity }) => {
-      setActionMessage("");
-      setActionError("");
-
       if (!session) {
         guestStoreService.addToWishlist(productid);
         guestStoreService.removeFromCart(productid);
@@ -186,9 +183,9 @@ const Cart: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      setActionMessage("Item saved for later.");
+      toast.success("Item saved for later.");
     },
-    onError: () => setActionError("Could not save item for later. Please try again."),
+    onError: (error) => toast.error(friendlyNotificationMessage(error.message || "Could not save item for later. Please try again.")),
   });
 
   const products = productsQuery.data?.data ?? [];
@@ -359,7 +356,6 @@ const Cart: React.FC = () => {
     if (selectedPromotion.cartSignature !== cartSignature) {
       clearSelectedCartPromotion(session.user.id);
       setSelectedPromotion(null);
-      setActionMessage("");
     }
   }, [cartSignature, selectedPromotion, session?.user.id]);
 
@@ -409,20 +405,17 @@ const Cart: React.FC = () => {
 
       saveSelectedCartPromotion(nextPromotion);
       setSelectedPromotion(nextPromotion);
-      setActionMessage(`${promotion.name} applied.`);
-      setActionError("");
+      toast.success(`${promotion.name} applied.`);
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Could not apply this promotion. Please try another offer.";
 
       if (message.toLowerCase().includes("already applied")) {
-        setActionMessage("Promotion is already applied.");
-        setActionError("");
+        toast.warning("Promotion is already applied.");
         return;
       }
 
-      setActionError(message);
-      setActionMessage("");
+      toast.error(friendlyNotificationMessage(message));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session?.user.id] });
@@ -453,12 +446,10 @@ const Cart: React.FC = () => {
     onSuccess: () => {
       clearSelectedCartPromotion(session?.user.id);
       setSelectedPromotion(null);
-      setActionMessage("Promotion removed.");
-      setActionError("");
+      toast.success("Promotion removed.");
     },
     onError: (error) => {
-      setActionError(error instanceof Error ? error.message : "Could not remove this promotion. Please try again.");
-      setActionMessage("");
+      toast.error(friendlyNotificationMessage(error instanceof Error ? error.message : "Could not remove this promotion. Please try again."));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session?.user.id] });
@@ -485,8 +476,6 @@ const Cart: React.FC = () => {
     nextQuantity: number;
     iswishlist?: boolean;
   }) => {
-    setActionMessage("");
-    setActionError("");
     setItemErrors((current) => {
       const next = { ...current };
       delete next[productid];
@@ -499,16 +488,19 @@ const Cart: React.FC = () => {
       if (isOutOfStock(product)) {
         setItemErrors((current) => ({
           ...current,
-          [productid]: "This item is currently out of stock. Move it to wishlist or remove it from cart.",
+          [productid]: "This item is out of stock. Save it for later or remove it from your cart.",
         }));
+        toast.warning("This item is out of stock. Save it for later or remove it from your cart.");
         return;
       }
 
       if (nextQuantity > availableStock) {
+        const message = stockLimitMessage(availableStock);
         setItemErrors((current) => ({
           ...current,
-          [productid]: stockLimitMessage(availableStock),
+          [productid]: message,
         }));
+        toast.warning(message);
         return;
       }
     }
@@ -525,7 +517,15 @@ const Cart: React.FC = () => {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-6xl">
-        <h1 className="text-3xl font-bold text-[var(--color-text)]">Cart</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-3xl font-bold text-[var(--color-text)]">Cart</h1>
+          <Link
+            to="/wishlist"
+            className="inline-flex min-h-10 shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-[var(--color-text)] shadow-sm md:hidden"
+          >
+            Go to Wishlist
+          </Link>
+        </div>
         <p className="mt-2 text-sm text-[var(--color-muted)]">
           {items.length} items in your cart{session ? "" : " as guest"}
         </p>
@@ -535,18 +535,6 @@ const Cart: React.FC = () => {
             <Link to="/login?redirect=/cart" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
           </div>
         )}
-        {(actionMessage || actionError) && (
-          <div
-            className={`mt-4 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
-              actionError
-                ? "border-red-200 text-red-600"
-                : "border-green-200 text-green-700"
-            }`}
-          >
-            {actionError || actionMessage}
-          </div>
-        )}
-
         {session && cartQuery.isLoading ? (
           <div className="mt-8 rounded-[var(--radius-md)] bg-white p-8 text-sm text-[var(--color-muted)]">Loading cart...</div>
         ) : items.length === 0 ? (
@@ -586,9 +574,9 @@ const Cart: React.FC = () => {
                     <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
                     {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
                       <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
-                        {itemErrors[item.productid] ||
+                          {itemErrors[item.productid] ||
                           (isOutOfStock(product)
-                            ? "This item is currently out of stock. Move it to wishlist or remove it from cart."
+                            ? "This item is out of stock. Save it for later or remove it from your cart."
                             : stockLimitMessage(getAvailableStock(product)))}
                       </p>
                     )}
@@ -596,7 +584,7 @@ const Cart: React.FC = () => {
                       <div className="inline-flex h-9 items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
                         <button
                           type="button"
-                          className="grid h-9 w-9 place-items-center text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                          className="grid h-9 w-9 place-items-center bg-white text-[var(--color-text)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
                           disabled={mutation.isPending}
                           onClick={() =>
                             updateQuantity({
@@ -617,7 +605,7 @@ const Cart: React.FC = () => {
                         </span>
                         <button
                           type="button"
-                          className="grid h-9 w-9 place-items-center text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                          className="grid h-9 w-9 place-items-center bg-white text-[var(--color-text)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
                           disabled={mutation.isPending || isOutOfStock(product) || quantity >= getAvailableStock(product)}
                           onClick={() =>
                             updateQuantity({
@@ -636,7 +624,7 @@ const Cart: React.FC = () => {
                       </div>
                       <Button
                         variant="secondary"
-                        className="h-9 w-9 px-0"
+                        className="h-9 w-9 !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15"
                         disabled={moveToWishlist.isPending || mutation.isPending}
                         aria-label={`Save ${product?.name || `product ${item.productid}`} for later`}
                         onClick={() =>
@@ -651,7 +639,7 @@ const Cart: React.FC = () => {
                       </Button>
                       <Button
                         variant="ghost"
-                        className="h-9 w-9 px-0"
+                        className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-red-600 hover:!border-red-200 hover:!bg-red-50"
                         disabled={mutation.isPending}
                         onClick={() =>
                           updateQuantity({
@@ -706,7 +694,7 @@ const Cart: React.FC = () => {
                       </div>
                       <Button
                         variant="ghost"
-                        className="mt-3 h-9 gap-2 px-3 text-xs"
+                        className="mt-3 h-9 gap-2 !border !border-green-200 !bg-white px-3 text-xs !text-green-800 hover:!bg-green-50"
                         disabled={removePromotionMutation.isPending}
                         onClick={removeSelectedPromotion}
                       >
@@ -788,7 +776,11 @@ function PromotionOffer({
           )}
         </div>
         <Button
-          className="h-9 gap-1.5 px-3 text-xs"
+          className={`h-9 gap-1.5 px-3 text-xs ${
+            isApplied
+              ? "!border !border-[var(--color-primary)] !bg-[var(--color-primary)]/25 !text-[var(--color-text)]"
+              : ""
+          }`}
           disabled={isPending || isApplied || isDisabled}
           variant={isApplied ? "secondary" : "primary"}
           onClick={onApply}

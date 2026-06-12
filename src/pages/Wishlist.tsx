@@ -7,9 +7,11 @@ import { platformProductService } from "../services/productPlatformService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
+import { toast } from "../components/Toast";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import type { Product } from "../types";
 import { isOutOfStock } from "../lib/stock";
+import { friendlyNotificationMessage } from "../lib/notificationMessages";
 
 const imageFor = (product?: { medium: string[] | null; small: string[] | null; large: string[] | null }) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
@@ -75,7 +77,9 @@ const Wishlist: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+      toast.success("Moved to cart.");
     },
+    onError: (error) => toast.error(friendlyNotificationMessage(error.message)),
   });
 
   const remove = useMutation<unknown, Error, number>({
@@ -104,7 +108,9 @@ const Wishlist: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+      toast.success("Removed from wishlist.");
     },
+    onError: (error) => toast.error(friendlyNotificationMessage(error.message)),
   });
 
   const products = productsQuery.data?.data ?? [];
@@ -178,12 +184,13 @@ const Wishlist: React.FC = () => {
                     )}
                     {outOfStock && (
                       <p className="mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
-                        This item is currently out of stock.
+                        <span className="sm:hidden">Out of Stock</span>
+                        <span className="hidden sm:inline">This item is currently out of stock.</span>
                       </p>
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Button
-                        className="h-9 w-9 px-0 sm:w-auto sm:px-4"
+                        className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15 sm:w-auto sm:px-4"
                         disabled={moveToCart.isPending || cannotAddToCart}
                         onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
                         aria-label={`Add ${product?.name || `product ${item.productid}`} to cart`}
@@ -193,7 +200,7 @@ const Wishlist: React.FC = () => {
                       </Button>
                       <Button
                         variant="ghost"
-                        className="h-9 w-9 px-0 sm:px-3"
+                        className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-red-600 hover:!border-red-200 hover:!bg-red-50 sm:px-3"
                         disabled={remove.isPending}
                         onClick={() => remove.mutate(apiId ?? item.productid)}
                         aria-label="Remove from wishlist"

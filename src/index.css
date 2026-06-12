@@ -56,6 +56,13 @@
   select {
     font-family: var(--font-app) !important;
   }
+
+  button {
+    background-color: var(--color-primary);
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
 }
 
 @layer components {
@@ -169,11 +176,11 @@
   }
 
   .btn-primary {
-    @apply bg-primary-gold text-primary-blue px-6 py-3 rounded-lg font-semibold hover:bg-primary-gold/90 transition-all duration-200 shadow-md hover:shadow-lg;
+    @apply bg-primary-gold text-[var(--color-text)] px-6 py-3 rounded-lg font-semibold hover:bg-primary-gold transition-all duration-200 shadow-md hover:shadow-lg;
   }
   
   .btn-secondary {
-    @apply border-2 border-primary-gold text-primary-gold px-6 py-3 rounded-lg font-semibold hover:bg-primary-gold hover:text-primary-blue transition-all duration-200;
+    @apply border-2 border-primary-gold bg-primary-gold text-[var(--color-text)] px-6 py-3 rounded-lg font-semibold hover:bg-primary-gold hover:text-[var(--color-text)] transition-all duration-200;
   }
   
   .card {

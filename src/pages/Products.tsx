@@ -344,8 +344,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
                   ref={!category && !subcategory && !subsubcategory && !collection && !search ? activeCategoryPillRef : undefined}
                   className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                     !category && !subcategory && !subsubcategory && !collection && !search
-                      ? "border-primary-gold bg-primary-gold text-primary-blue"
-                      : "border-[var(--color-border)] bg-white text-secondary-medium-gray hover:border-primary-gold hover:text-primary-blue"
+                      ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
+                      : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
                   }`}
                 >
                   All
@@ -361,8 +361,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
                       ref={isActive ? activeCategoryPillRef : undefined}
                       className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                         isActive
-                          ? "border-primary-gold bg-primary-gold text-primary-blue"
-                          : "border-[var(--color-border)] bg-white text-secondary-medium-gray hover:border-primary-gold hover:text-primary-blue"
+                          ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
+                          : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
                       }`}
                     >
                       {option.label}
@@ -386,8 +386,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
                         ref={isActive ? activeDetailPillRef : undefined}
                         className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                           isActive
-                            ? "border-primary-gold bg-primary-gold text-primary-blue"
-                            : "border-[var(--color-border)] bg-white text-secondary-medium-gray hover:border-primary-gold hover:text-primary-blue"
+                            ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
+                            : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
                         }`}
                       >
                         {option.label}
@@ -409,8 +409,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
                         ref={isActive ? activeDetailPillRef : undefined}
                         className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                           isActive
-                            ? "border-primary-gold bg-primary-gold text-primary-blue"
-                            : "border-[var(--color-border)] bg-white text-secondary-medium-gray hover:border-primary-gold hover:text-primary-blue"
+                            ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
+                            : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
                         }`}
                       >
                         {option.label}

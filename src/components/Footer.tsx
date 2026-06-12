@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import logoIcon from '../assets/Nivaana_Sun_Gold.png';
 
@@ -20,6 +20,15 @@ const policyLinks = [
 ];
 
 const Footer: React.FC = () => {
+  const location = useLocation();
+
+  const handleHomeClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (location.pathname === "/" && !location.search && !location.hash) {
+      event.preventDefault();
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    }
+  };
+
   return (
     <footer id="contact" className="relative isolate overflow-hidden bg-[#33405d] text-[#f0c353]">
       <div className="absolute inset-0 bg-[linear-gradient(135deg,#26324a_0%,#3f4d6c_52%,#53617f_100%)]" aria-hidden="true" />
@@ -31,7 +40,7 @@ const Footer: React.FC = () => {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-6">
           {/* Company Info */}
           <div className="col-span-1 md:col-span-2">
-            <Link to="/" className="navbar-brand-logo footer-brand-logo mb-3" aria-label="Nivaana home">
+            <Link to="/" onClick={handleHomeClick} className="navbar-brand-logo footer-brand-logo mb-3" aria-label="Nivaana home">
               <img src={logoIcon} alt="" className="navbar-brand-icon footer-brand-icon" loading="eager" />
               <span className="navbar-brand-copy">
                 <span className="navbar-brand-name">
@@ -66,7 +75,7 @@ const Footer: React.FC = () => {
           </div>
 
           {/* Quick Links */}
-          <FooterLinkGroup title="Quick Links" links={quickLinks} />
+          <FooterLinkGroup title="Quick Links" links={quickLinks} onHomeClick={handleHomeClick} />
 
           {/* Policies */}
           <FooterLinkGroup title="Policies" links={policyLinks} />
@@ -81,12 +90,24 @@ const Footer: React.FC = () => {
   );
 };
 
-function FooterLinkGroup({ title, links }: { title: string; links: { label: string; to: string }[] }) {
+function FooterLinkGroup({
+  title,
+  links,
+  onHomeClick,
+}: {
+  title: string;
+  links: { label: string; to: string }[];
+  onHomeClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
   const list = (
     <ul className="space-y-2 pb-3 pt-1 md:space-y-1.5 md:pb-0 md:pt-0">
       {links.map((link) => (
         <li key={link.to}>
-          <Link to={link.to} className="text-sm leading-5 text-[#ffe0a0] transition-colors duration-200 hover:text-[#f0c353]">
+          <Link
+            to={link.to}
+            onClick={link.to === "/" ? onHomeClick : undefined}
+            className="text-sm leading-5 text-[#ffe0a0] transition-colors duration-200 hover:text-[#f0c353]"
+          >
             {link.label}
           </Link>
         </li>

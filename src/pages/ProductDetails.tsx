@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import { toast } from "../components/Toast";
+import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
@@ -316,10 +317,12 @@ const ProductDetails: React.FC = () => {
       return;
     }
 
-    if (isWarningMessage(error.message)) {
-      toast.warning(error.message);
+    const message = friendlyNotificationMessage(error.message);
+
+    if (isWarningMessage(message)) {
+      toast.warning(message);
     } else {
-      toast.error(error.message);
+      toast.error(message);
     }
   };
 

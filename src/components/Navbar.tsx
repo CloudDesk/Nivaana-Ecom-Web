@@ -124,6 +124,17 @@ const Navbar: React.FC = () => {
   const scrollTickingRef = React.useRef(false);
   const session = sessionService.getSession();
 
+  const scrollHomeToTop = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  };
+
+  const handleHomeClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (location.pathname === "/" && !location.search && !location.hash) {
+      event.preventDefault();
+      scrollHomeToTop();
+    }
+  };
+
   const { data: productResponse } = useQuery({
     queryKey: ["navbar-search-products"],
     queryFn: () => platformProductService.getProducts(1, 50),
@@ -149,6 +160,9 @@ const Navbar: React.FC = () => {
   const cartCount = session ? countDistinctProducts(cartQuery.data?.data ?? []) : guestCartCount;
   const wishlistCount = session ? countDistinctProducts(wishlistQuery.data?.data ?? []) : guestWishlistCount;
   const accountLabel = session ? getUserDisplayName(session.user) : "Account";
+  const isWishlistRoute = location.pathname === "/wishlist";
+  const isAccountRoute = location.pathname === "/account" || location.pathname === "/login";
+  const isCartRoute = location.pathname === "/cart";
   const searchSuggestions = (productResponse?.data ?? [])
     .filter((product) => {
       const query = searchTerm.trim().toLowerCase();
@@ -253,7 +267,7 @@ const Navbar: React.FC = () => {
             <button
               key={product.id}
               type="button"
-              className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-[var(--color-surface)]"
+              className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition hover:bg-[var(--color-surface)]"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handleSuggestionClick(product.name)}
             >
@@ -302,7 +316,7 @@ const Navbar: React.FC = () => {
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
 
-          <Link to="/" className="navbar-brand-logo mr-auto" aria-label="Nivaana home">
+          <Link to="/" className="navbar-brand-logo" onClick={handleHomeClick} aria-label="Nivaana home">
             <img src={logoIcon} alt="" className="navbar-brand-icon" loading="eager" />
             <span className="navbar-brand-copy">
               <span className="navbar-brand-name">
@@ -313,10 +327,11 @@ const Navbar: React.FC = () => {
             </span>
           </Link>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          <div className="hidden items-center gap-3 lg:ml-40 lg:mr-auto lg:flex xl:ml-48 2xl:ml-52">
             <Link
               to="/"
               className={desktopNavLinkClass}
+              onClick={handleHomeClick}
             >
               Home
             </Link>
@@ -325,7 +340,7 @@ const Navbar: React.FC = () => {
                 type="button"
                 className={cn(
                   desktopNavLinkClass,
-                  "gap-2",
+                  "gap-2 bg-transparent hover:bg-transparent",
                   isCategoriesOpen && "text-[var(--color-secondary)] after:scale-x-100"
                 )}
                 onClick={() => navigate("/products")}
@@ -361,7 +376,7 @@ const Navbar: React.FC = () => {
             </Link> */}
           </div>
 
-          <div className="hidden items-center gap-3 md:flex">
+          <div className="hidden items-center gap-3 md:flex lg:pr-6 xl:pr-10">
             <form className="relative hidden xl:block" onSubmit={handleSearchSubmit}>
               {searchBox(
                 "h-12 w-64 rounded-full border border-[var(--color-border)] bg-white pl-12 pr-5 text-lg outline-none transition focus:border-[var(--color-secondary)]",
@@ -369,7 +384,14 @@ const Navbar: React.FC = () => {
               )}
             </form>
             <Link to="/wishlist">
-              <Button variant="icon" aria-label="Wishlist" className="relative w-12 min-h-12">
+              <Button
+                variant="icon"
+                aria-label="Wishlist"
+                className={cn(
+                  "relative w-12 min-h-12 bg-white/90 hover:bg-[var(--color-surface)]",
+                  isWishlistRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                )}
+              >
                 <Heart className="h-5 w-5" />
                 <Badge count={wishlistCount} />
               </Button>
@@ -378,14 +400,25 @@ const Navbar: React.FC = () => {
               <Button
                 variant={session ? "secondary" : "icon"}
                 aria-label={session ? `Account for ${accountLabel}` : "Account"}
-                className={cn("min-h-12", session ? "h-12 max-w-52 gap-2 rounded-full px-4" : "w-12")}
+                className={cn(
+                  "min-h-12",
+                  session ? "h-12 max-w-52 gap-2 rounded-full border-[var(--color-border)] bg-white px-4 hover:bg-[var(--color-surface)]" : "w-12 bg-white/90 hover:bg-[var(--color-surface)]",
+                  isAccountRoute && "border-[var(--color-primary)] bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                )}
               >
                 <UserRound className="h-5 w-5 shrink-0" />
                 {session && <span className="truncate text-sm font-bold">{accountLabel}</span>}
               </Button>
             </Link>
             <Link to="/cart">
-              <Button variant="icon" aria-label="Cart" className="relative w-12 min-h-12">
+              <Button
+                variant="icon"
+                aria-label="Cart"
+                className={cn(
+                  "relative w-12 min-h-12 bg-white/90 hover:bg-[var(--color-surface)]",
+                  isCartRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                )}
+              >
                 <ShoppingBag className="h-5 w-5" />
                 <Badge count={cartCount} />
               </Button>
@@ -405,10 +438,24 @@ const Navbar: React.FC = () => {
             >
               <Search className="h-5 w-5" />
             </button>
-            <Link to={session ? "/account" : "/login"} aria-label={session ? `Account for ${accountLabel}` : "Account"} className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
+            <Link
+              to={session ? "/account" : "/login"}
+              aria-label={session ? `Account for ${accountLabel}` : "Account"}
+              className={cn(
+                "grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-text)] shadow-sm transition hover:bg-[var(--color-surface)]",
+                isAccountRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+              )}
+            >
               <UserRound className="h-5 w-5" />
             </Link>
-            <Link to="/cart" aria-label="Cart" className="relative grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]">
+            <Link
+              to="/cart"
+              aria-label="Cart"
+              className={cn(
+                "relative grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-text)] shadow-sm transition hover:bg-[var(--color-surface)]",
+                isCartRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+              )}
+            >
               <ShoppingBag className="h-5 w-5" />
               <Badge count={cartCount} />
             </Link>
@@ -497,7 +544,7 @@ const Navbar: React.FC = () => {
               <form className="relative mb-3" onSubmit={handleSearchSubmit}>
                 {searchBox("h-12 w-full rounded-full border border-[var(--color-border)] pl-12 pr-5 text-base outline-none focus:border-[var(--color-secondary)]")}
               </form>
-              <Link to="/" className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]">
+              <Link to="/" onClick={handleHomeClick} className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]">
                 Home
               </Link>
               <details className="rounded-[var(--radius-sm)] px-3 py-3">

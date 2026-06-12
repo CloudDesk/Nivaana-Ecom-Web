@@ -11,6 +11,8 @@ import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { cn } from "../lib/utils";
 import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
+import { friendlyNotificationMessage } from "../lib/notificationMessages";
+import { toast } from "./Toast";
 
 interface ProductCardProps {
   product: Product;
@@ -35,7 +37,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
   const rating = product.averagerating ?? 4.7;
   const session = sessionService.getSession();
   const [, setStoreVersion] = useState(0);
-  const [stockMessage, setStockMessage] = useState("");
   const availableStock = getAvailableStock(product);
   const outOfStock = isOutOfStock(product);
   const lowStock = isLowStock(product);
@@ -130,20 +131,24 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
         iswishlist: mode === "cart" ? false : true,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_result, mode) => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
       queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      setStockMessage("");
+      if (mode === "cart") {
+        toast.success(isInCart ? "Cart quantity updated." : "Added to cart.");
+        return;
+      }
+
+      toast.success(isInWishlist ? "Removed from wishlist." : "Saved to wishlist.");
     },
     onError: (error) => {
       if (isAuthExpiredError(error)) {
         sessionService.clearSession();
-        setStockMessage("");
         navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
         return;
       }
 
-      setStockMessage(error.message);
+      toast.error(friendlyNotificationMessage(error.message));
     },
   });
 
@@ -185,8 +190,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
             "absolute right-2 top-2 grid place-items-center rounded-full shadow-sm transition sm:right-3 sm:top-3",
             compact ? "h-8 w-8" : "h-8 w-8 sm:h-10 sm:w-10",
             isInWishlist
-              ? "bg-[var(--color-primary)] text-[var(--color-secondary)] ring-2 ring-[var(--color-secondary)]"
-              : "bg-white/90 text-[var(--color-secondary)] hover:bg-[var(--color-primary)]"
+              ? "bg-[var(--color-primary)] text-[var(--color-text)] ring-2 ring-[var(--color-secondary)] hover:bg-[var(--color-primary)]"
+              : "bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-primary)]"
           )}
           aria-label={isInWishlist ? `${product.name} is in wishlist` : `Add ${product.name} to wishlist`}
           aria-pressed={isInWishlist}
@@ -195,7 +200,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
             addItem.mutate("wishlist");
           }}
         >
-          <Heart className={cn(compact ? "h-3.5 w-3.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4", isInWishlist && "fill-[var(--color-secondary)]")} />
+          <Heart className={cn(compact ? "h-3.5 w-3.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4", isInWishlist && "fill-[var(--color-text)]")} />
         </button>
       </div>
 
@@ -211,12 +216,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
         <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-8 text-xs leading-4" : "min-h-8 text-xs leading-4 sm:min-h-9 sm:text-sm sm:leading-[18px]")}>
           {product.name}
         </h3>
-
-        {stockMessage && !outOfStock && (
-          <p className={cn("mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 font-semibold text-red-600", compact ? "text-[11px]" : "text-xs")}>
-            {stockMessage}
-          </p>
-        )}
 
         <div className={cn("mt-auto flex items-end justify-between gap-2 pt-2 sm:gap-3", compact ? "" : "sm:pt-3")}>
           <div className="min-w-0 flex-1">
@@ -239,8 +238,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
                 "shrink-0 gap-2 transition-all",
                 !canAddToCart && "cursor-not-allowed opacity-60",
                 compact ? "h-9 min-h-9 px-3" : "h-9 w-9 min-w-9 px-0 sm:h-10 sm:w-10 sm:min-w-10",
-                isInCart && "bg-[var(--color-secondary)] text-white hover:bg-[var(--color-secondary)]/90",
-                outOfStock && "bg-[var(--color-surface)] text-[var(--color-muted)] shadow-none"
+                "bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-primary)] hover:text-[var(--color-text)]",
+                outOfStock && "shadow-none"
               )}
               onClick={(event) => {
                 event.stopPropagation();
