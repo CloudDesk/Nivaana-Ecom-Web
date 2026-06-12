@@ -627,17 +627,18 @@ const Checkout: React.FC = () => {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
       <section className="mx-auto max-w-5xl">
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="mb-8 flex items-start justify-between gap-3">
           <div>
             <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Checkout</p>
             <h1 className="text-[22px] font-semibold text-[var(--color-text)]">Complete your order</h1>
           </div>
           <Link
             to="/cart"
-            className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-4 text-sm font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
+            className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-2.5 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] sm:min-h-9 sm:gap-2 sm:px-4 sm:text-sm"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to cart
+            <span className="hidden sm:inline">Back to cart</span>
+            <span className="sm:hidden">Cart</span>
           </Link>
         </div>
 
@@ -672,7 +673,7 @@ const Checkout: React.FC = () => {
                 {addresses.length > 0 && (
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-secondary)] transition hover:text-[var(--color-text)]"
+                    className="inline-flex min-h-8 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-2.5 text-xs font-semibold text-[var(--color-muted)] transition hover:border-[var(--color-secondary)] hover:text-[var(--color-secondary)]"
                     onClick={() => {
                       if (showAddressForm) {
                         setShowAddressForm(false);
@@ -700,8 +701,8 @@ const Checkout: React.FC = () => {
                       onClick={() => setSelectedAddressId(address.id)}
                       className={`relative min-h-32 cursor-pointer rounded-[var(--radius-sm)] border p-4 pr-12 text-left transition ${
                         selectedAddressId === address.id
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
-                          : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)]"
+                          ? "border-[var(--color-secondary)] bg-white shadow-[0_12px_30px_rgba(17,24,39,0.08)] ring-1 ring-[var(--color-secondary)]/10"
+                          : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)] hover:shadow-[0_10px_24px_rgba(17,24,39,0.05)]"
                       }`}
                       role="button"
                       tabIndex={0}
@@ -715,7 +716,7 @@ const Checkout: React.FC = () => {
                       <span
                         className={`absolute right-3 top-3 grid h-4 w-4 place-items-center rounded-full border ${
                           selectedAddressId === address.id
-                            ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                            ? "border-[var(--color-secondary)] bg-[var(--color-secondary)] text-white"
                             : "border-[var(--color-border)]"
                         }`}
                       >
@@ -724,7 +725,7 @@ const Checkout: React.FC = () => {
                       <button
                         type="button"
                         aria-label={`Edit address for ${address.name}`}
-                        className="absolute bottom-3 left-4 inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)] disabled:opacity-50"
+                        className="absolute bottom-3 left-4 inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-2 py-1 text-[11px] font-semibold text-[var(--color-secondary)] transition hover:border-[var(--color-secondary)] hover:bg-[var(--color-surface)] disabled:opacity-50"
                         disabled={updateAddressMutation.isPending || deleteAddressMutation.isPending}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -742,7 +743,7 @@ const Checkout: React.FC = () => {
                       <button
                         type="button"
                         aria-label={`Delete address for ${address.name}`}
-                        className="absolute bottom-3 left-20 inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        className="absolute bottom-3 left-20 inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)] transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                         disabled={deleteAddressMutation.isPending}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -866,7 +867,7 @@ const Checkout: React.FC = () => {
             </div>
 
             <Button
-              className="mt-5 w-full gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-secondary)] hover:text-white"
+              className="mt-5 w-full gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-[var(--color-text)] shadow-[0_14px_30px_rgba(255,210,0,0.24)] hover:bg-[var(--color-secondary)] hover:text-white"
               disabled={
                 !selectedAddress ||
                 paymentMutation.isPending ||
@@ -983,7 +984,7 @@ function AddressForm({
 
   return (
     <form className="mt-5 border-t border-[var(--color-border)] pt-5" onSubmit={onSubmit}>
-      <div className="rounded-[var(--radius-sm)] bg-[var(--color-primary)]/10 p-5 sm:p-6">
+      <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-5 shadow-[0_10px_24px_rgba(17,24,39,0.04)] sm:p-6">
         <p className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
           {isEditing ? "Edit Address" : "Add New Address"}
         </p>
@@ -1059,7 +1060,7 @@ function AddressForm({
         </label>
 
         <div className="mt-6 flex flex-wrap items-center gap-5">
-          <Button className="h-12 min-w-48 shadow-none hover:shadow-none" disabled={isPending}>
+          <Button className="h-12 min-w-48 bg-[var(--color-secondary)] text-white shadow-none hover:bg-[var(--color-text)] hover:text-white hover:shadow-none" disabled={isPending}>
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isEditing ? "Update" : "Save"}
           </Button>
@@ -1157,14 +1158,14 @@ function PaymentOption({
       onClick={onClick}
       className={`flex items-center gap-3 rounded-[var(--radius-sm)] border px-3.5 py-3 text-left transition ${
         checked
-          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
+          ? "border-[var(--color-secondary)] bg-white shadow-[0_10px_24px_rgba(17,24,39,0.06)] ring-1 ring-[var(--color-secondary)]/10"
           : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)]"
       }`}
     >
       <span
         className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
           checked
-            ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+            ? "border-[var(--color-secondary)] bg-[var(--color-secondary)] text-white"
             : "border-[var(--color-muted)]"
         }`}
       >
@@ -1194,7 +1195,7 @@ function CheckoutStep({ label, state, value }: { label: string; state: "done" | 
           isDone
             ? "border-green-200 bg-green-50 text-green-700"
             : isActive
-              ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-secondary)]"
+              ? "border-[var(--color-secondary)] bg-white text-[var(--color-secondary)] shadow-[0_0_0_3px_rgba(255,210,0,0.2)]"
               : "border-[var(--color-border)] text-[var(--color-muted)]"
         }`}
       >

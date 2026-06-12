@@ -172,6 +172,7 @@ const ProductDetails: React.FC = () => {
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
   const [, setGuestStoreVersion] = useState(0);
   const thumbnailScrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const thumbnailButtonRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
   const mainImageSwipeRef = React.useRef({ startX: 0, startY: 0, tracking: false });
 
   const productQuery = useQuery({
@@ -292,6 +293,17 @@ const ProductDetails: React.FC = () => {
   useEffect(() => {
     setSelectedImage(0);
   }, [product?.id]);
+
+  useEffect(() => {
+    const activeThumbnail = thumbnailButtonRefs.current[selectedImage];
+    if (!activeThumbnail) return;
+
+    activeThumbnail.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [selectedImage]);
 
   const relatedProducts = useMemo(
     () =>
@@ -614,6 +626,9 @@ const ProductDetails: React.FC = () => {
                     <button
                       key={`${image}-${index}`}
                       type="button"
+                      ref={(element) => {
+                        thumbnailButtonRefs.current[index] = element;
+                      }}
                       onClick={() => setSelectedImage(index)}
                       className={cn(
                         "h-20 w-20 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white sm:h-24 sm:w-24",

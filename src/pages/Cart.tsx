@@ -37,6 +37,9 @@ const quantityFor = (quantity: unknown) => {
 
 const formatCurrency = (value: number) => `Rs. ${Math.max(value, 0).toLocaleString("en-IN")}`;
 
+const countDistinctProducts = (items: Array<{ productid: number }>) =>
+  new Set(items.map((item) => item.productid)).size;
+
 const promotionId = (promotion: ApplicablePromotion) =>
   promotion.promotion_id || Number((promotion as ApplicablePromotion & { id?: number }).id || 0);
 
@@ -78,6 +81,12 @@ const Cart: React.FC = () => {
   const cartQuery = useQuery({
     queryKey: ["cart", session?.user.id],
     queryFn: () => cartService.getCart(session!.user.id),
+    enabled: Boolean(session),
+  });
+
+  const wishlistQuery = useQuery({
+    queryKey: ["wishlist", session?.user.id],
+    queryFn: () => cartService.getWishlist(session!.user.id),
     enabled: Boolean(session),
   });
 
@@ -190,6 +199,8 @@ const Cart: React.FC = () => {
 
   const products = productsQuery.data?.data ?? [];
   const items = session ? cartQuery.data?.data ?? [] : guestStoreService.getCart();
+  const wishlistItems = session ? wishlistQuery.data?.data ?? [] : guestStoreService.getWishlist();
+  const wishlistCount = countDistinctProducts(wishlistItems);
   const enriched = items.map((item) => ({
     item,
     quantity: quantityFor(item.quantity),
@@ -521,9 +532,14 @@ const Cart: React.FC = () => {
           <h1 className="text-3xl font-bold text-[var(--color-text)]">Cart</h1>
           <Link
             to="/wishlist"
-            className="inline-flex min-h-10 shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-[var(--color-text)] shadow-sm md:hidden"
+            className="relative inline-flex min-h-10 shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-[var(--color-text)] shadow-sm md:hidden"
           >
             Go to Wishlist
+            {wishlistCount > 0 && (
+              <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-secondary)] px-1.5 text-[11px] font-bold leading-none text-white shadow-sm">
+                {wishlistCount > 99 ? "99+" : wishlistCount}
+              </span>
+            )}
           </Link>
         </div>
         <p className="mt-2 text-sm text-[var(--color-muted)]">
