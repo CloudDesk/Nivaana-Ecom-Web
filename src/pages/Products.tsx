@@ -174,7 +174,6 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
     products.forEach((product) => {
       addFilterOption(options, "category", product.category);
-      addFilterOption(options, "category", product.subcategory);
     });
 
     return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));

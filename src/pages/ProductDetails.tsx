@@ -922,13 +922,13 @@ function ProductInsights({ product, hasReviews }: { product: Product; hasReviews
         )}
       </nav>
 
-      <div id="overview" className="scroll-mt-6">
+      <div id="overview" className="scroll-mt-28 sm:scroll-mt-32 lg:scroll-mt-36">
         <p className="mt-4 break-words text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8">
           {product.fulldescription || product.shortdescription || "A premium Nivaana product made to add calm, freshness, and a refined ritual feel to everyday spaces."}
         </p>
       </div>
 
-      <div id="how-to-use" className="scroll-mt-6">
+      <div id="how-to-use" className="scroll-mt-28 sm:scroll-mt-32 lg:scroll-mt-36">
         <h2 className="text-base font-extrabold text-[var(--color-text)]">How to Use</h2>
         <div className="mt-4 grid min-w-0 gap-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8 lg:grid-cols-3">
           {[
@@ -965,7 +965,7 @@ function ProductReviewSection({
       : product.averagerating ?? 0;
 
   return (
-    <section id="reviews" className="mt-12 min-w-0 scroll-mt-6">
+    <section id="reviews" className="mt-12 min-w-0 scroll-mt-28 sm:scroll-mt-32 lg:scroll-mt-36">
       <div className="flex flex-col gap-5 border-b border-[var(--color-border)] pb-5 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Customer reviews</p>
