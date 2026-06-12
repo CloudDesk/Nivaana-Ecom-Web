@@ -19,6 +19,9 @@ import type { Product, PromotionalAsset, PromotionalAssetContent, Rating } from 
 import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
 import heroTwo from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import fallbackProduct from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
+import carFreshenerCategory from "../assets/Carfreshner.png";
+import fragranceBlendsCategory from "../assets/Fragranceandblends.png";
+import kitchenAccessoriesCategory from "../assets/kitchenaccessories.png";
 import heroVideoOne from "../assets/i_need_a_video_for_the_hero_co.mp4";
 import heroVideoTwo from "../assets/I_need_a_video_with_insence_st.mp4";
 import heroVideoThree from "../assets/I_need_togenrate_a_video_for_t.mp4";
@@ -91,6 +94,7 @@ const categoryFallbacks = [
   { label: "Perfumes", to: "/products?category=perfumes" },
   { label: "Daily Rituals", to: "/products?category=daily_rituals" },
   { label: "Gift Collections", to: "/products?category=gift_collections" },
+  { label: "Kitchen Accessories", to: "/products?category=kitchen_accessories" },
   { label: "Essential Oils", to: "/products?subcategory=essential_oils" },
   { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends" },
 ];
@@ -120,6 +124,28 @@ const usableImage = (images?: string[] | null) =>
 
 const productImage = (product?: Product) =>
   usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || fallbackProduct;
+
+const categoryCarouselImages: Record<string, string> = {
+  car_room_fresheners: carFreshenerCategory,
+  car_and_room_fresheners: carFreshenerCategory,
+  fragrance_blends: fragranceBlendsCategory,
+  fragrance_and_blends: fragranceBlendsCategory,
+  kitchen_accessories: kitchenAccessoriesCategory,
+};
+
+const categoryCarouselImage = (...values: Array<string | null | undefined>) =>
+  values
+    .map((value) => normalizeCategoryKey(value))
+    .map((key) => categoryCarouselImages[key])
+    .find(Boolean);
+
+const normalizeCategoryKey = (value?: string | null) =>
+  (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
 const wrapIndex = (index: number, length: number) => (index + length) % length;
 
@@ -286,20 +312,27 @@ const Home: React.FC = () => {
           id: key,
           name: formatLabel(category || subcategory),
           subcategory: formatLabel(subcategory || category),
-          image: productImage(product),
+          image: categoryCarouselImage(category, subcategory) || productImage(product),
           to: `/products?${params.toString()}`,
         });
       }
     });
 
-    const fromApi = Array.from(categoryMap.values()).slice(0, limit);
+    const fromApi = Array.from(categoryMap.values())
+      .sort((a, b) => {
+        const aHasUploadedImage = Boolean(categoryCarouselImage(a.name, a.subcategory));
+        const bHasUploadedImage = Boolean(categoryCarouselImage(b.name, b.subcategory));
+        if (aHasUploadedImage !== bHasUploadedImage) return aHasUploadedImage ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, limit);
     if (fromApi.length) return fromApi;
 
     return categoryFallbacks.slice(0, limit).map((category) => ({
       id: `fallback:${category.label.toLowerCase()}`,
       name: "Nivaana",
       subcategory: category.label,
-      image: fallbackProduct,
+      image: categoryCarouselImage(category.label) || fallbackProduct,
       to: category.to,
     }));
   }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
