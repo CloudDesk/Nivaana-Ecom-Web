@@ -8,9 +8,10 @@ import { promotionService, type ApplicablePromotion, type AppliedPromotion, type
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
-import { toast } from "../components/Toast";
+import { toast } from "../components/toastApi";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import type { ApiResponse, CartItem, Product } from "../types";
+import { getProductDisplayName } from "../lib/productDisplay";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import {
@@ -564,16 +565,19 @@ const Cart: React.FC = () => {
         ) : (
           <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
             <div className="space-y-4">
-              {enriched.map(({ apiId, item, product, quantity }) => (
+              {enriched.map(({ apiId, item, product, quantity }) => {
+                const displayName = getProductDisplayName(product, `Product #${item.productid}`);
+
+                return (
                 <article key={`${item.productid}-${apiId ?? "guest"}`} className="relative flex gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)] sm:gap-4">
                   <Link
                     to={`/products/${item.productid}`}
                     className="h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)] sm:h-24 sm:w-24"
-                    aria-label={`View ${product?.name || `product ${item.productid}`}`}
+                    aria-label={`View ${displayName}`}
                   >
                     <img
                       src={imageFor(product)}
-                      alt={product?.name || "Product image"}
+                      alt={displayName}
                       className="h-full w-full object-cover"
                       onError={(event) => {
                         event.currentTarget.src = fallbackProduct;
@@ -585,7 +589,7 @@ const Cart: React.FC = () => {
                       to={`/products/${item.productid}`}
                       className="line-clamp-2 text-sm font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)] sm:text-base"
                     >
-                      {product?.name || `Product #${item.productid}`}
+                      {displayName}
                     </Link>
                     <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
                     {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
@@ -642,7 +646,7 @@ const Cart: React.FC = () => {
                         variant="secondary"
                         className="h-9 w-9 !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15"
                         disabled={moveToWishlist.isPending || mutation.isPending}
-                        aria-label={`Save ${product?.name || `product ${item.productid}`} for later`}
+                        aria-label={`Save ${displayName} for later`}
                         onClick={() =>
                           moveToWishlist.mutate({
                             id: apiId,
@@ -676,7 +680,8 @@ const Cart: React.FC = () => {
                     {formatCurrency(productUnitPrice(product))}
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
             <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
               <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>

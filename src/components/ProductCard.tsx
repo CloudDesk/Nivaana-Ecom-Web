@@ -12,15 +12,14 @@ import { guestStoreService } from "../services/guestStoreService";
 import { cn } from "../lib/utils";
 import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
-import { toast } from "./Toast";
+import { getProductDisplayName } from "../lib/productDisplay";
+import { toast } from "./toastApi";
 
 interface ProductCardProps {
   product: Product;
   compact?: boolean;
+  imageFit?: "cover" | "contain";
 }
-
-const formatLabel = (value?: string | null) =>
-  value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "Nivaana";
 
 const getProductImage = (product: Product) =>
   product.medium?.[0] || product.small?.[0] || product.large?.[0] || fallbackProduct;
@@ -30,11 +29,12 @@ const getFinalPrice = (product: Product) => Math.max(product.price - product.dis
 const isAuthExpiredError = (error: Error) =>
   (error as Error & { statusCode?: number }).statusCode === 401 || /invalid or expired token|unauthorized/i.test(error.message);
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false, imageFit = "cover" }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const hasDiscount = product.discount > 0;
   const rating = product.averagerating ?? 4.7;
+  const displayName = getProductDisplayName(product);
   const session = sessionService.getSession();
   const [, setStoreVersion] = useState(0);
   const availableStock = getAvailableStock(product);
@@ -161,12 +161,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
       )}
       onClick={() => navigate(`/products/${product.id}`)}
     >
-      <div className={cn("relative overflow-hidden bg-[var(--color-surface)]", compact ? "aspect-[4/3.55]" : "aspect-[4/3.75]")}>
+      <div className={cn("relative overflow-hidden bg-[var(--color-surface)]", compact ? "aspect-[4/3.8]" : "aspect-[4/3.75]")}>
         <img
           src={getProductImage(product)}
-          alt={product.name}
+          alt={displayName}
           loading="lazy"
-          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          className={cn(
+            "h-full w-full transition duration-500",
+            imageFit === "contain" ? "object-contain" : "object-cover group-hover:scale-105"
+          )}
         />
         <div className="absolute left-2 top-2 flex max-w-[calc(100%-3rem)] flex-wrap gap-1.5 sm:left-3 sm:top-3 sm:gap-2">
           {outOfStock && (
@@ -188,42 +191,41 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
         <button
           className={cn(
             "absolute right-2 top-2 grid place-items-center rounded-full shadow-sm transition sm:right-3 sm:top-3",
-            compact ? "h-8 w-8" : "h-8 w-8 sm:h-10 sm:w-10",
+            compact ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-10 sm:w-10",
             isInWishlist
               ? "bg-[var(--color-primary)] text-[var(--color-text)] ring-2 ring-[var(--color-secondary)] hover:bg-[var(--color-primary)]"
               : "bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-primary)]"
           )}
-          aria-label={isInWishlist ? `${product.name} is in wishlist` : `Add ${product.name} to wishlist`}
+          aria-label={isInWishlist ? `${displayName} is in wishlist` : `Add ${displayName} to wishlist`}
           aria-pressed={isInWishlist}
           onClick={(event) => {
             event.stopPropagation();
             addItem.mutate("wishlist");
           }}
         >
-          <Heart className={cn(compact ? "h-3.5 w-3.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4", isInWishlist && "fill-[var(--color-text)]")} />
+          <Heart className={cn(compact ? "h-4 w-4" : "h-3.5 w-3.5 sm:h-4 sm:w-4", isInWishlist && "fill-[var(--color-text)]")} />
         </button>
       </div>
 
-      <div className={cn("flex flex-col", compact ? "flex-1 p-2.5" : "flex-1 p-2 sm:p-3")}>
-        <div className={cn("flex items-center justify-between gap-2 text-[var(--color-muted)]", compact ? "mb-1 text-[11px]" : "mb-1 text-[11px] sm:text-xs")}>
-          <span className="truncate">{formatLabel(product.subcategory)}</span>
+      <div className={cn("flex flex-col", compact ? "flex-1 p-3 sm:p-3.5" : "flex-1 p-2 sm:p-3")}>
+        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-10 text-sm leading-5 sm:min-h-11 sm:text-[15px] sm:leading-[22px]" : "min-h-8 text-xs leading-4 sm:min-h-9 sm:text-sm sm:leading-[18px]")}>
+          {displayName}
+        </h3>
+
+        <div className={cn("mt-2 flex items-center justify-end text-[var(--color-muted)]", compact ? "text-xs sm:text-[13px]" : "text-[11px] sm:text-xs")}>
           <span className="flex shrink-0 items-center gap-1">
-            <Star className="h-3.5 w-3.5 fill-[var(--color-primary)] text-[var(--color-primary)]" />
+            <Star className={cn("fill-[var(--color-primary)] text-[var(--color-primary)]", compact ? "h-4 w-4" : "h-3.5 w-3.5")} />
             {rating.toFixed(1)}
           </span>
         </div>
 
-        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-8 text-xs leading-4" : "min-h-8 text-xs leading-4 sm:min-h-9 sm:text-sm sm:leading-[18px]")}>
-          {product.name}
-        </h3>
-
-        <div className={cn("mt-auto flex items-end justify-between gap-2 pt-2 sm:gap-3", compact ? "" : "sm:pt-3")}>
+        <div className={cn("mt-auto flex items-end justify-between gap-2 pt-3 sm:gap-3", compact ? "" : "sm:pt-3")}>
           <div className="min-w-0 flex-1">
-            <div className={cn("font-bold leading-tight text-[var(--color-secondary)]", compact ? "text-base" : "text-base sm:text-lg")}>
+            <div className={cn("font-bold leading-tight text-[var(--color-secondary)]", compact ? "text-lg sm:text-xl" : "text-base sm:text-lg")}>
               Rs. {getFinalPrice(product).toLocaleString("en-IN")}
             </div>
             {hasDiscount && (
-              <div className={cn("mt-1 flex flex-wrap gap-x-1.5 leading-4 text-[var(--color-muted)]", compact ? "text-[10px]" : "text-[10px] sm:text-xs")}>
+              <div className={cn("mt-1 flex flex-wrap gap-x-1.5 leading-4 text-[var(--color-muted)]", compact ? "text-xs" : "text-[10px] sm:text-xs")}>
                 <span className="line-through">Rs. {product.price.toLocaleString("en-IN")}</span>
                 {!compact && <span className="text-[var(--color-danger)]">Save Rs. {product.discount}</span>}
               </div>
@@ -231,13 +233,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
           </div>
           <div className="flex shrink-0 flex-col items-end justify-end gap-2">
             <Button
-              aria-label={isInCart ? `${product.name} added to cart` : `Add ${product.name} to cart`}
+              aria-label={isInCart ? `${displayName} added to cart` : `Add ${displayName} to cart`}
               aria-pressed={isInCart}
               disabled={addItem.isPending || !canAddToCart}
               className={cn(
                 "shrink-0 gap-2 transition-all",
                 !canAddToCart && "cursor-not-allowed opacity-60",
-                compact ? "h-9 min-h-9 px-3" : "h-9 w-9 min-w-9 px-0 sm:h-10 sm:w-10 sm:min-w-10",
+                compact ? "h-10 min-h-10 w-10 min-w-10 px-0 sm:h-11 sm:w-11 sm:min-w-11" : "h-9 w-9 min-w-9 px-0 sm:h-10 sm:w-10 sm:min-w-10",
                 "bg-[var(--color-primary)] text-[var(--color-text)] hover:bg-[var(--color-primary)] hover:text-[var(--color-text)]",
                 outOfStock && "shadow-none"
               )}
@@ -246,7 +248,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false }) =
                 if (canAddToCart) addItem.mutate("cart");
               }}
             >
-              <ShoppingBag className={compact ? "h-3.5 w-3.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4"} />
+              <ShoppingBag className={compact ? "h-4 w-4" : "h-3.5 w-3.5 sm:h-4 sm:w-4"} />
             </Button>
           </div>
         </div>

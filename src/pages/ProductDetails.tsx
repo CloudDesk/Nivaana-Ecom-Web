@@ -1,17 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
-  Car,
   ChevronLeft,
   ChevronRight,
-  Flame,
-  Flower2,
   Gift,
-  Home,
   Heart,
-  HeartHandshake,
   IndianRupee,
   Leaf,
   Minus,
@@ -27,8 +23,21 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
+import CategoryNavigationRail from "../components/CategoryNavigationRail";
+import {
+  buildChildCategoryItems,
+  buildTopCategoryItems,
+  matchesProductCategory,
+  resolveActiveCategory,
+  resolveActiveChildKey,
+  resolveProductListingParams,
+  type CategoryNavChildItem,
+  type CategoryNavTopItem,
+} from "../components/categoryNavigationData";
+import CategoryShowcaseBanner from "../components/CategoryShowcaseBanner";
 import ProductCard from "../components/ProductCard";
-import { toast } from "../components/Toast";
+import RecentProductRail from "../components/RecentProductRail";
+import { toast } from "../components/toastApi";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -41,6 +50,8 @@ import { ratingService } from "../services/ratingService";
 import { sessionService } from "../services/sessionService";
 import type { Product, Rating } from "../types";
 import { cn } from "../lib/utils";
+import { getProductDisplayName } from "../lib/productDisplay";
+import { saveRecentlyViewedProductId } from "../lib/recentlyViewed";
 import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 
 const formatLabel = (value?: string | null) =>
@@ -49,20 +60,14 @@ const formatLabel = (value?: string | null) =>
 const finalPrice = (product: Product) => Math.max(product.price - product.discount, 0);
 const clampQuantity = (quantity: number, availableQuantity: number) =>
   Math.min(Math.max(quantity, 0), Math.max(availableQuantity, 0));
+const fiveCardProductRailItem =
+  "w-[72vw] min-w-[210px] max-w-[280px] flex-none snap-start sm:w-[38vw] sm:max-w-[320px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
 
 const isAuthExpiredError = (error: Error) =>
   (error as Error & { statusCode?: number }).statusCode === 401 || /invalid or expired token|unauthorized/i.test(error.message);
 
 const isWarningMessage = (message: string) =>
   /out of stock|available stock|only \d+ item|currently available|quantity/i.test(message);
-
-const categoryRail = [
-  { label: "Incense", to: "/products?category=incense", icon: Flame },
-  { label: "Car & Room Fresheners", to: "/products?category=car_room_fresheners", icon: Car },
-  { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends", icon: Flower2 },
-  { label: "Home Fragrance", to: "/products?category=home_fragrance", icon: Home },
-  { label: "Daily Rituals", to: "/products?category=daily_rituals", icon: HeartHandshake },
-];
 
 const splitDescriptionPoints = (product: Product) => {
   const source = product.fulldescription || product.shortdescription || product.name;
@@ -135,32 +140,6 @@ const quantityFor = (quantity: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const RECENTLY_VIEWED_PRODUCT_IDS = "nivaana-recently-viewed-product-ids";
-const MAX_RECENTLY_VIEWED_PRODUCTS = 12;
-
-const readRecentlyViewedProductIds = () => {
-  try {
-    const rawValue = window.localStorage.getItem(RECENTLY_VIEWED_PRODUCT_IDS);
-    const parsed = rawValue ? JSON.parse(rawValue) : [];
-
-    return Array.isArray(parsed)
-      ? parsed.map(Number).filter((value) => Number.isFinite(value) && value > 0)
-      : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveRecentlyViewedProductId = (productId: number) => {
-  const nextIds = [
-    productId,
-    ...readRecentlyViewedProductIds().filter((storedId) => storedId !== productId),
-  ].slice(0, MAX_RECENTLY_VIEWED_PRODUCTS);
-
-  window.localStorage.setItem(RECENTLY_VIEWED_PRODUCT_IDS, JSON.stringify(nextIds));
-  return nextIds;
-};
-
 const ProductDetails: React.FC = () => {
   const { productId } = useParams();
   const id = Number(productId);
@@ -171,9 +150,11 @@ const ProductDetails: React.FC = () => {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
   const [, setGuestStoreVersion] = useState(0);
+  const [mainImageDragOffset, setMainImageDragOffset] = useState(0);
   const thumbnailScrollerRef = React.useRef<HTMLDivElement | null>(null);
   const thumbnailButtonRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
   const mainImageSwipeRef = React.useRef({ startX: 0, startY: 0, tracking: false });
+  const mainImageWheelLockRef = React.useRef(false);
 
   const productQuery = useQuery({
     queryKey: ["product", id],
@@ -209,6 +190,12 @@ const ProductDetails: React.FC = () => {
     queryKey: ["related-products", productQuery.data?.category, id],
     enabled: Boolean(productQuery.data),
     queryFn: () => platformProductService.getProducts(1, 24),
+  });
+
+  const categoryNavProductsQuery = useQuery({
+    queryKey: ["category-navigation-products"],
+    queryFn: () => platformProductService.getProducts(1, 1000),
+    staleTime: 1000 * 60 * 10,
   });
 
   const publicPromotionsQuery = useQuery({
@@ -250,6 +237,12 @@ const ProductDetails: React.FC = () => {
   }, []);
 
   const product = productQuery.data;
+  const categoryNavProducts = useMemo(() => {
+    const catalogProducts = categoryNavProductsQuery.data?.data ?? [];
+    if (!product) return catalogProducts;
+    return [product, ...catalogProducts.filter((item) => item.id !== product.id)];
+  }, [categoryNavProductsQuery.data?.data, product]);
+  const displayName = getProductDisplayName(product);
   const images = useMemo(() => productImages(product), [product]);
   const activeImage = images[selectedImage] || fallbackProduct;
   const rating = product?.averagerating ?? 4.7;
@@ -269,6 +262,24 @@ const ProductDetails: React.FC = () => {
   const cartQuantity = quantityFor(cartItem?.quantity);
   const displayedQuantity = cartItem ? cartQuantity : 0;
   const maxQuantity = Math.max(availableStock, 0);
+  const productListingParams = useMemo(() => resolveProductListingParams(product), [product]);
+  const activeCategoryKey = useMemo(
+    () => productListingParams.category ?? resolveActiveCategory({ products: categoryNavProducts }),
+    [categoryNavProducts, productListingParams.category]
+  );
+  const categoryNavTopItems = useMemo(() => buildTopCategoryItems(), []);
+  const categoryNavChildItems = useMemo(
+    () => buildChildCategoryItems(categoryNavProducts, activeCategoryKey),
+    [activeCategoryKey, categoryNavProducts]
+  );
+  const activeCategoryChildKey = useMemo(
+    () =>
+      resolveActiveChildKey({
+        childItems: categoryNavChildItems,
+        product,
+      }),
+    [categoryNavChildItems, product]
+  );
 
   useEffect(() => {
     if (!product?.id) return;
@@ -290,6 +301,11 @@ const ProductDetails: React.FC = () => {
     setSelectedImage((currentIndex) => (currentIndex + direction + images.length) % images.length);
   };
 
+  const resetMainImageDrag = () => {
+    mainImageSwipeRef.current.tracking = false;
+    setMainImageDragOffset(0);
+  };
+
   useEffect(() => {
     setSelectedImage(0);
   }, [product?.id]);
@@ -309,9 +325,9 @@ const ProductDetails: React.FC = () => {
     () =>
       (relatedQuery.data?.data ?? [])
         .filter((item) => item.id !== product?.id)
-        .filter((item) => !product?.category || item.category === product.category)
+        .filter((item) => !activeCategoryKey || matchesProductCategory(item, activeCategoryKey))
         .slice(0, 5),
-    [product?.category, product?.id, relatedQuery.data?.data]
+    [activeCategoryKey, product?.id, relatedQuery.data?.data]
   );
   const availablePromotions = publicPromotionsQuery.data?.data ?? [];
   const productReviews = useMemo(
@@ -331,6 +347,14 @@ const ProductDetails: React.FC = () => {
       .filter((item): item is Product => Boolean(item))
       .slice(0, 10);
   }, [product?.id, recentlyViewedIds, recentlyViewedQuery.data?.data]);
+  const recentContextProducts = useMemo(() => {
+    const source = [product, ...relatedProducts, ...recentlyViewedProducts].filter(
+      (item, index, array): item is Product =>
+        Boolean(item) && array.findIndex((candidate) => candidate?.id === item?.id) === index
+    );
+
+    return source.slice(0, 4);
+  }, [product, relatedProducts, recentlyViewedProducts]);
 
   const handleMutationError = (error: Error) => {
     if (isAuthExpiredError(error)) {
@@ -531,25 +555,60 @@ const ProductDetails: React.FC = () => {
     "Free delivery checks at checkout",
     productLowStock ? "Low stock available" : "Secure payment",
   ];
+  const navigateToCategory = (item: CategoryNavTopItem) => {
+    navigate(`/products?category=${encodeURIComponent(item.value)}`);
+  };
+  const navigateToChildCategory = (item: CategoryNavChildItem) => {
+    const params = new URLSearchParams(item.queryParams);
+    navigate(`/products?${params.toString()}`);
+  };
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[var(--color-surface)] px-4 pb-8 pt-0 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[var(--color-surface)] px-4 pb-8 pt-0 sm:px-6 lg:px-8">
       <section className="min-w-0 w-full">
-        <CategoryBannerRail />
+        <CategoryNavigationRail
+          topItems={categoryNavTopItems}
+          childItems={categoryNavChildItems}
+          activeTopKey={activeCategoryKey}
+          activeChildKey={activeCategoryChildKey}
+          onTopSelect={navigateToCategory}
+          onChildSelect={navigateToChildCategory}
+          childRailRounded
+        />
         <PromotionRail items={promotionItems} />
 
         <div className="mb-5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--color-muted)]">
           <Link to="/" className="hover:text-[var(--color-secondary)]">Home</Link>
           <span>/</span>
           <Link to="/products" className="hover:text-[var(--color-secondary)]">Products</Link>
+          {activeCategoryKey && (
+            <>
+              <span>/</span>
+              <Link to={`/products?category=${encodeURIComponent(activeCategoryKey)}`} className="hover:text-[var(--color-secondary)]">
+                {formatLabel(activeCategoryKey)}
+              </Link>
+            </>
+          )}
           <span>/</span>
-          <span className="min-w-0 break-words text-[var(--color-text)]">{product.name}</span>
+          <span className="min-w-0 break-words text-[var(--color-text)]">{displayName}</span>
         </div>
 
-        <div className="mx-auto grid w-full min-w-0 max-w-[1480px] grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(560px,0.7fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(620px,0.75fr)]">
-          <div className="min-w-0 self-start lg:sticky lg:top-28">
-            <div
-              className="min-w-0 touch-pan-y select-none overflow-hidden rounded-3xl bg-[var(--color-surface)]"
+        <div className="relative mx-auto grid w-full min-w-0 max-w-[1440px] grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(480px,0.92fr)_minmax(560px,0.78fr)] lg:items-start xl:grid-cols-[minmax(560px,0.88fr)_minmax(620px,0.82fr)]">
+          <div className="min-w-0 self-start">
+            <div className="lg:mx-auto lg:w-full lg:max-w-[560px] xl:max-w-[620px]">
+              <div
+                className="min-w-0 cursor-grab touch-pan-y select-none overflow-hidden rounded-[2.25rem] bg-white active:cursor-grabbing lg:rounded-[3.5rem]"
+              onWheel={(event) => {
+                if (images.length <= 1 || mainImageWheelLockRef.current) return;
+                if (Math.abs(event.deltaX) < 28 || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.2) return;
+
+                event.preventDefault();
+                mainImageWheelLockRef.current = true;
+                moveMainImage(event.deltaX > 0 ? 1 : -1);
+                window.setTimeout(() => {
+                  mainImageWheelLockRef.current = false;
+                }, 420);
+              }}
               onPointerDown={(event) => {
                 if (images.length <= 1) return;
 
@@ -558,6 +617,7 @@ const ProductDetails: React.FC = () => {
                   startY: event.clientY,
                   tracking: true,
                 };
+                setMainImageDragOffset(0);
                 event.currentTarget.setPointerCapture(event.pointerId);
               }}
               onPointerMove={(event) => {
@@ -568,6 +628,7 @@ const ProductDetails: React.FC = () => {
 
                 if (Math.abs(distanceX) > 10 && Math.abs(distanceX) > Math.abs(distanceY) * 1.2) {
                   event.preventDefault();
+                  setMainImageDragOffset(Math.max(Math.min(distanceX, 96), -96));
                 }
               }}
               onPointerUp={(event) => {
@@ -576,28 +637,31 @@ const ProductDetails: React.FC = () => {
                 const distanceX = event.clientX - mainImageSwipeRef.current.startX;
                 const distanceY = event.clientY - mainImageSwipeRef.current.startY;
 
-                mainImageSwipeRef.current.tracking = false;
+                resetMainImageDrag();
 
                 if (Math.abs(distanceX) > 56 && Math.abs(distanceX) > Math.abs(distanceY) * 1.25) {
                   moveMainImage(distanceX < 0 ? 1 : -1);
                 }
               }}
-              onPointerCancel={() => {
-                mainImageSwipeRef.current.tracking = false;
+              onPointerCancel={resetMainImageDrag}
+              onPointerLeave={(event) => {
+                if (event.pointerType !== "touch" && mainImageSwipeRef.current.tracking) resetMainImageDrag();
               }}
             >
-              <img
+              <motion.img
                 src={activeImage}
-                alt={product.name}
+                alt={displayName}
                 draggable={false}
-                className="block h-[360px] w-full max-w-full rounded-3xl object-cover sm:h-[520px] lg:h-[calc(100vh-176px)]"
-                onError={(event) => {
+                animate={{ x: mainImageDragOffset }}
+                transition={mainImageDragOffset === 0 ? { type: "spring", stiffness: 260, damping: 28 } : { duration: 0 }}
+                className="pointer-events-none block h-[360px] w-full max-w-full rounded-[2.25rem] bg-white object-contain sm:h-[520px] lg:h-[520px] lg:rounded-[3.5rem] xl:h-[560px]"
+                onError={(event: React.SyntheticEvent<HTMLImageElement>) => {
                   event.currentTarget.src = fallbackProduct;
                 }}
               />
             </div>
             {images.length > 1 && (
-              <div className="relative mt-4">
+              <div className="relative mt-4 lg:shrink-0">
                 {images.length > 4 && (
                   <>
                     <button
@@ -631,7 +695,7 @@ const ProductDetails: React.FC = () => {
                       }}
                       onClick={() => setSelectedImage(index)}
                       className={cn(
-                        "h-20 w-20 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white sm:h-24 sm:w-24",
+                        "h-16 w-16 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white sm:h-20 sm:w-20 xl:h-24 xl:w-24",
                         selectedImage === index
                           ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]"
                           : "border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
@@ -643,6 +707,7 @@ const ProductDetails: React.FC = () => {
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           <aside className="min-w-0 pb-8 lg:pr-4">
@@ -652,7 +717,7 @@ const ProductDetails: React.FC = () => {
               {productLowStock && <span className="text-[var(--color-danger)]">Low Stock</span>}
             </div>
 
-            <h1 className="mt-3 break-words text-2xl font-extrabold leading-tight text-[var(--color-text)] sm:text-3xl">{product.name}</h1>
+            <h1 className="mt-3 break-words text-2xl font-extrabold leading-tight text-[var(--color-text)] sm:text-3xl">{displayName}</h1>
 
             <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-[var(--color-muted)]">
               <span className="inline-flex items-center gap-1">
@@ -778,7 +843,7 @@ const ProductDetails: React.FC = () => {
             </div>
             <div className="-mx-4 flex max-w-[calc(100%+2rem)] snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:max-w-[calc(100%+3rem)] sm:scroll-px-6 sm:px-6 lg:mx-0 lg:max-w-full lg:scroll-px-0 lg:px-0">
               {relatedProducts.map((item) => (
-                <div key={item.id} className="w-[72vw] min-w-[180px] max-w-[250px] flex-none snap-start sm:w-[38vw] sm:max-w-[280px] md:w-[30vw] lg:w-[240px] lg:max-w-none xl:w-[260px]">
+                <div key={item.id} className={fiveCardProductRailItem}>
                   <ProductCard product={item} compact />
                 </div>
               ))}
@@ -786,7 +851,26 @@ const ProductDetails: React.FC = () => {
           </section>
         )}
 
-        <RecentlyViewedProducts products={recentlyViewedProducts} />
+        <CategoryShowcaseBanner
+          eyebrow={`${formatLabel(product.subsubcategory || product.subcategory || activeCategoryKey)} spotlight`}
+          title={`More from ${formatLabel(product.subsubcategory || product.subcategory || activeCategoryKey)}`}
+          description={`Stay in the same fragrance story with nearby picks from ${formatLabel(product.subcategory || product.category)}. These are a good next step if you want similar mood, format, or ritual fit before moving on.`}
+          ctaLabel="See matching products"
+          ctaTo={`/products?${new URLSearchParams(
+            product.subsubcategory
+              ? { category: activeCategoryKey || product.category, subsubcategory: product.subsubcategory }
+              : product.subcategory
+                ? { subcategory: product.subcategory }
+                : { category: activeCategoryKey || product.category }
+          ).toString()}`}
+          products={recentContextProducts}
+        />
+
+        <RecentProductRail
+          eyebrow="Recently viewed"
+          title="Continue where you left off"
+          products={recentlyViewedProducts}
+        />
 
         {productReviews.length > 0 && (
           <ProductReviewSection
@@ -807,38 +891,11 @@ const ProductDetails: React.FC = () => {
   );
 };
 
-function CategoryBannerRail() {
-  return (
-    <div className="-mx-4 mb-0 max-w-[calc(100%+2rem)] overflow-hidden border-b border-[var(--color-border)] bg-white sm:-mx-6 sm:max-w-[calc(100%+3rem)] lg:mx-0 lg:mb-0 lg:max-w-full">
-      <div className="flex snap-x gap-5 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 py-4 scrollbar-hide sm:justify-center sm:gap-8 lg:gap-12 lg:py-5">
-        {categoryRail.map((item) => {
-          const Icon = item.icon;
-
-          return (
-            <Link
-              key={item.label}
-              to={item.to}
-              className="group flex min-w-[88px] snap-start flex-col items-center gap-2 text-center"
-            >
-              <span className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-text)]/60 bg-white text-[var(--color-text)] transition duration-300 group-hover:border-[var(--color-primary)] group-hover:bg-[var(--color-primary)]/20 sm:h-16 sm:w-16">
-                <Icon className="h-7 w-7 stroke-[1.7]" />
-              </span>
-              <span className="text-[11px] font-semibold leading-tight text-[var(--color-muted)] group-hover:text-[var(--color-secondary)] sm:text-sm">
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function PromotionRail({ items }: { items: string[] }) {
   const feedItems = [...items, ...items, ...items, ...items];
 
   return (
-    <div className="-mx-4 mb-5 max-w-[calc(100%+2rem)] overflow-hidden bg-[var(--color-primary)] sm:-mx-6 sm:max-w-[calc(100%+3rem)] lg:mx-0 lg:max-w-full">
+    <div className="relative left-1/2 mb-5 w-screen -translate-x-1/2 overflow-hidden bg-[var(--color-primary)]">
       <div className="flex w-max animate-[marquee_24s_linear_infinite] gap-8 whitespace-nowrap px-4 py-2.5 text-xs font-extrabold text-[var(--color-text)] hover:[animation-play-state:paused] sm:text-sm">
         {feedItems.map((item, index) => (
           <span key={`${item}-${index}`} className="inline-flex items-center gap-2">
@@ -848,32 +905,6 @@ function PromotionRail({ items }: { items: string[] }) {
         ))}
       </div>
     </div>
-  );
-}
-
-function RecentlyViewedProducts({ products }: { products: Product[] }) {
-  if (!products.length) return null;
-
-  return (
-    <section className="mt-12 min-w-0">
-      <div className="mb-5 flex items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">Recently viewed</p>
-          <h2 className="mt-2 text-2xl font-bold text-[var(--color-text)]">Continue where you left off</h2>
-        </div>
-        <Link to="/products" className="shrink-0 text-sm font-bold text-[var(--color-secondary)] hover:underline">
-          View all
-        </Link>
-      </div>
-
-      <div className="-mx-4 flex max-w-[calc(100%+2rem)] snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:max-w-[calc(100%+3rem)] sm:scroll-px-6 sm:px-6 lg:mx-0 lg:max-w-full lg:scroll-px-0 lg:px-0">
-        {products.map((item) => (
-          <div key={item.id} className="w-[72vw] min-w-[180px] max-w-[250px] flex-none snap-start sm:w-[38vw] sm:max-w-[280px] md:w-[30vw] lg:w-[240px] lg:max-w-none xl:w-[260px]">
-            <ProductCard product={item} compact />
-          </div>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -1073,6 +1104,7 @@ function WriteReviewModal({
     toast.success("Review submitted. Thank you for sharing your experience.");
     onClose();
   };
+  const productDisplayName = getProductDisplayName(product);
 
   return (
     <div className="fixed inset-0 z-[90] grid place-items-center bg-black/55 px-4 py-6">
@@ -1090,8 +1122,8 @@ function WriteReviewModal({
           <div className="text-center">
             <h2 className="pr-8 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">How would you rate this product?</h2>
             <p className="mt-3 text-sm text-[var(--color-muted)] sm:text-base">We would love it if you shared a bit about your experience.</p>
-            <img src={activeImage} alt={product.name} className="mx-auto mt-8 h-36 w-36 rounded-2xl object-cover sm:h-44 sm:w-44" />
-            <p className="mx-auto mt-6 max-w-xl text-lg font-bold text-[var(--color-text)]">{product.name}</p>
+            <img src={activeImage} alt={productDisplayName} className="mx-auto mt-8 h-36 w-36 rounded-2xl object-cover sm:h-44 sm:w-44" />
+            <p className="mx-auto mt-6 max-w-xl text-lg font-bold text-[var(--color-text)]">{productDisplayName}</p>
             <div className="mt-8 flex justify-center gap-3">
               {Array.from({ length: 5 }).map((_, index) => {
                 const value = index + 1;
@@ -1114,7 +1146,7 @@ function WriteReviewModal({
 
         {step === 2 && (
           <div>
-            <h2 className="text-center text-xl font-bold text-[var(--color-text)] sm:text-2xl">{product.name}</h2>
+            <h2 className="text-center text-xl font-bold text-[var(--color-text)] sm:text-2xl">{productDisplayName}</h2>
             <div className="mt-5 flex justify-center gap-2 text-[var(--color-text)]">
               {Array.from({ length: 5 }).map((_, index) => (
                 <Star key={index} className={cn("h-8 w-8 sm:h-11 sm:w-11", index < rating && "fill-current")} />

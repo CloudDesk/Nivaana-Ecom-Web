@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
@@ -25,41 +25,50 @@ import Payments from './pages/Payments';
 import Promotions from './pages/Promotions';
 import { ToastProvider } from './components/Toast';
 
+function AppLayout() {
+  const location = useLocation();
+  const showsCategoryRail = location.pathname === "/products" || location.pathname.startsWith("/products/");
+
+  return (
+    <div className="flex min-h-screen max-w-full flex-col">
+      <Navbar />
+      <main className={`flex-grow pt-[4.5rem] ${showsCategoryRail ? "lg:pt-[6rem]" : "lg:pt-[8.75rem]"}`}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/products" element={<Products />} />
+          <Route path="/best-sellers" element={<Products defaultCollection="best-sellers" />} />
+          <Route path="/products/:productId" element={<ProductDetails />} />
+          <Route path="/login" element={<GuestOnlyRoute><Login /></GuestOnlyRoute>} />
+          <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
+          <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+          <Route path="/promotions" element={<ProtectedRoute><Promotions /></ProtectedRoute>} />
+          <Route path="/addresses" element={<ProtectedRoute><SavedAddresses /></ProtectedRoute>} />
+          <Route path="/cart" element={<Cart />} />
+          <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
+          <Route path="/wishlist" element={<Wishlist />} />
+          <Route path="/about" element={<AboutUs />} />
+          <Route path="/terms" element={<TermsAndConditions />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/shipping" element={<ShippingPolicy />} />
+          <Route path="/cancellation" element={<CancellationPolicy />} />
+          <Route path="/returns" element={<ReturnPolicy />} />
+          <Route path="/replacement-exchange" element={<ReplacementExchange />} />
+          <Route path="/delete-my-account" element={<DeleteMyAccount />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
 function App() {
   return (
     <Router>
       <ScrollToTop />
       <ToastProvider />
-      <div className="flex min-h-screen max-w-full flex-col">
-        <Navbar />
-        <main className="flex-grow pt-[4.5rem] lg:pt-24">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/best-sellers" element={<Products defaultCollection="best-sellers" />} />
-            <Route path="/products/:productId" element={<ProductDetails />} />
-            <Route path="/login" element={<GuestOnlyRoute><Login /></GuestOnlyRoute>} />
-            <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
-            <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
-            <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
-            <Route path="/promotions" element={<ProtectedRoute><Promotions /></ProtectedRoute>} />
-            <Route path="/addresses" element={<ProtectedRoute><SavedAddresses /></ProtectedRoute>} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
-            <Route path="/wishlist" element={<Wishlist />} />
-            <Route path="/about" element={<AboutUs />} />
-            <Route path="/terms" element={<TermsAndConditions />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/shipping" element={<ShippingPolicy />} />
-            <Route path="/cancellation" element={<CancellationPolicy />} />
-            <Route path="/returns" element={<ReturnPolicy />} />
-            <Route path="/replacement-exchange" element={<ReplacementExchange />} />
-            <Route path="/delete-my-account" element={<DeleteMyAccount />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
+      <AppLayout />
     </Router>
   );
 }

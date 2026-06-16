@@ -2,30 +2,12 @@ import React, { useEffect, useState } from "react";
 import { CheckCircle, Info, X, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "../lib/utils";
-
-type ToastType = "success" | "error" | "warning";
+import { toastListeners, type ToastPayload, type ToastType } from "./toastApi";
 
 type ToastItem = {
   id: number;
   message: string;
   type: ToastType;
-};
-
-type ToastPayload = {
-  message: string;
-  type?: ToastType;
-};
-
-const toastListeners = new Set<(payload: ToastPayload) => void>();
-
-const notify = (payload: ToastPayload) => {
-  toastListeners.forEach((listener) => listener(payload));
-};
-
-export const toast = {
-  success: (message: string) => notify({ message, type: "success" }),
-  error: (message: string) => notify({ message, type: "error" }),
-  warning: (message: string) => notify({ message, type: "warning" }),
 };
 
 const toastStyles: Record<ToastType, { text: string; icon: React.ElementType }> = {

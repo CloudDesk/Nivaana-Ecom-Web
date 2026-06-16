@@ -3,14 +3,20 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Award,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  HeartHandshake,
+  Sparkles,
   Star,
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
+import { resolveProductListingParams } from "../components/categoryNavigationData";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { theme } from "../config/theme.config";
+import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionalAssetService } from "../services/promotionalAssetService";
@@ -95,11 +101,85 @@ const categoryFallbacks = [
   { label: "Daily Rituals", to: "/products?category=daily_rituals" },
   { label: "Gift Collections", to: "/products?category=gift_collections" },
   { label: "Kitchen Accessories", to: "/products?category=kitchen_accessories" },
-  { label: "Essential Oils", to: "/products?subcategory=essential_oils" },
-  { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends" },
+  { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
+  { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
 ];
 
-const brandPartners = ["NIVAANA", "KRAFTELLA", "AUORA", "AROMAHPURE", "RITUAL EDITS"];
+const marqueeBrands = Array.from({ length: 36 }, () => "NIVAANA");
+
+const whyNivaanaFeatures = [
+  {
+    title: "Mood-Enhancing Scents",
+    text: "Carefully layered fragrances crafted to calm the mind and transform everyday spaces.",
+    icon: Sparkles,
+  },
+  {
+    title: "Long-Lasting Freshness",
+    text: "Premium blends designed to linger gently, keeping rooms, cars, and rituals fresh for longer.",
+    icon: Clock,
+  },
+  {
+    title: "Conscious Craft",
+    text: "Thoughtful ingredients, dependable quality, and formulas made with everyday wellbeing in mind.",
+    icon: HeartHandshake,
+  },
+  {
+    title: "Elegant & Easy To Use",
+    text: "Simple fragrance formats that fit beautifully into daily routines, gifting, and sacred moments.",
+    icon: Award,
+  },
+];
+
+type CustomerReview = {
+  id: number;
+  name: string;
+  rating: number;
+  review: string;
+  image: string;
+};
+
+const customerReviewFallbacks: CustomerReview[] = [
+  {
+    id: 1,
+    name: "Ananya R.",
+    rating: 5,
+    review:
+      "From the first spray, I knew this would be a favorite. The scent is elegant, warm, and makes my room feel like a high-end boutique.",
+    image: heroOne,
+  },
+  {
+    id: 2,
+    name: "Frieda T.",
+    rating: 5,
+    review:
+      "This perfume is the perfect blend of freshness and warmth. I wear it every day, and people always ask what I am wearing.",
+    image: fragranceBlendsCategory,
+  },
+  {
+    id: 3,
+    name: "Julene G.",
+    rating: 5,
+    review:
+      "I have tried so many home fragrances, but this one stands out. It is soft, comforting, and stays with me all day without overpowering.",
+    image: heroTwo,
+  },
+  {
+    id: 4,
+    name: "Meera S.",
+    rating: 5,
+    review:
+      "The incense has such a clean, calming aroma. It instantly changes the mood of the space and feels perfect for evening rituals.",
+    image: carFreshenerCategory,
+  },
+  {
+    id: 5,
+    name: "Rohan M.",
+    rating: 4,
+    review:
+      "Nivaana has become my go-to for gifting. The packaging feels premium, and the fragrances are refined without being too strong.",
+    image: kitchenAccessoriesCategory,
+  },
+];
 
 type CategorySlide = {
   id: string;
@@ -125,6 +205,33 @@ const usableImage = (images?: string[] | null) =>
 const productImage = (product?: Product) =>
   usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || fallbackProduct;
 
+const productDealBadge = (product: Product) => {
+  if (product.discount > 0) return `Save Rs. ${product.discount.toLocaleString("en-IN")}`;
+  if (product.isdealoftheday) return "Deal Of The Day";
+  return null;
+};
+
+const productSalePrice = (product: Product) => Math.max(product.price - product.discount, 0);
+
+const productListingQuery = (
+  product?: Product,
+  extraParams?: Partial<Record<"category" | "subcategory" | "subsubcategory" | "collection", string>>
+) => {
+  const params = new URLSearchParams();
+  const listingParams = resolveProductListingParams(product);
+
+  if (listingParams.category) params.set("category", listingParams.category);
+  if (listingParams.subcategory) params.set("subcategory", listingParams.subcategory);
+  if (listingParams.subsubcategory) params.set("subsubcategory", listingParams.subsubcategory);
+
+  Object.entries(extraParams || {}).forEach(([key, value]) => {
+    if (!value) return;
+    params.set(key, value);
+  });
+
+  return `/products?${params.toString()}`;
+};
+
 const categoryCarouselImages: Record<string, string> = {
   car_room_fresheners: carFreshenerCategory,
   car_and_room_fresheners: carFreshenerCategory,
@@ -149,17 +256,21 @@ const normalizeCategoryKey = (value?: string | null) =>
 
 const wrapIndex = (index: number, length: number) => (index + length) % length;
 
-const reviewAuthor = (review: Rating) => review.usermail || (review.userid ? `Customer #${review.userid}` : "");
-
-const reviewImage = (review: Rating, products: Product[]) =>
-  review.url?.find(Boolean) || productImage(products.find((product) => product.id === review.productid));
+const reviewAuthor = (review: Rating) => review.usermail || (review.userid ? `Customer #${review.userid}` : "Verified Customer");
 
 const carouselArrowClass =
   "h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
-const heroContainer = "mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-14";
+const heroContainer = "mx-auto w-full max-w-[1800px] px-3 sm:px-4 lg:px-8";
 const homeSection = "py-7 sm:py-8 lg:py-10";
+const fiveCardRailItem =
+  "w-[72vw] min-w-[210px] max-w-[280px] flex-none snap-start sm:w-[38vw] sm:max-w-[320px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
+const fiveCardFeatureRailItem =
+  "h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
+const fourCardFeatureRailItem =
+  "h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]";
 const heroSlideIntervalMs = 8000;
+const categorySlideIntervalMs = 4500;
 const heroTimerRadius = 10;
 const heroTimerCircumference = 2 * Math.PI * heroTimerRadius;
 
@@ -199,6 +310,7 @@ const Home: React.FC = () => {
   const flavorsScrollerRef = useRef<HTMLDivElement | null>(null);
   const bestSellersScrollerRef = useRef<HTMLDivElement | null>(null);
   const newArrivalsScrollerRef = useRef<HTMLDivElement | null>(null);
+  const bestOfNivaanaScrollerRef = useRef<HTMLDivElement | null>(null);
   const heroSwipeRef = useRef({ startX: 0, startY: 0, swiping: false, tracking: false });
   const heroSwipeDistanceRef = useRef(0);
   const suppressHeroClickRef = useRef(false);
@@ -239,14 +351,21 @@ const Home: React.FC = () => {
   const bestSellerConfig = firstSectionContent(homepageSections, placements.bestSellers);
   const newArrivalConfig = firstSectionContent(homepageSections, placements.newArrivals);
   const reviewConfig = firstSectionContent(homepageSections, placements.reviews);
-  const marqueeConfig = firstSectionContent(homepageSections, placements.marquee);
-  const customerReviews = useMemo(
+  const apiCustomerReviews = useMemo<CustomerReview[]>(
     () =>
       (ratingsQuery.data?.data ?? [])
         .filter((review) => review.comments?.trim())
-        .sort((a, b) => (b.createddate ?? 0) - (a.createddate ?? 0)),
-    [ratingsQuery.data?.data]
+        .sort((a, b) => (b.createddate ?? 0) - (a.createddate ?? 0))
+        .map((review) => ({
+          id: review.id,
+          name: reviewAuthor(review),
+          rating: review.starrating || 5,
+          review: review.comments?.trim() || "",
+          image: review.url?.find(Boolean) || productImage(products.find((product) => product.id === review.productid)),
+        })),
+    [products, ratingsQuery.data?.data]
   );
+  const customerReviews = apiCustomerReviews.length ? apiCustomerReviews : customerReviewFallbacks;
 
   const dealProducts = useMemo(() => {
     const filter = dealConfig.product_filter;
@@ -269,6 +388,18 @@ const Home: React.FC = () => {
     [newArrivalConfig.display_limit, newArrivalConfig.product_filter?.limit, products]
   );
 
+  const bestOfNivaanaProducts = useMemo(
+    () =>
+      [...products]
+        .sort((a, b) => {
+          const aScore = (a.soldquantity ?? 0) + (a.averagerating ?? 0) * 10 + (a.discount > 0 ? 8 : 0);
+          const bScore = (b.soldquantity ?? 0) + (b.averagerating ?? 0) * 10 + (b.discount > 0 ? 8 : 0);
+          return bScore - aScore;
+        })
+        .slice(0, 8),
+    [products]
+  );
+
   const flavors = useMemo<FlavorSlide[]>(() => {
     const flavorMap = new Map<string, FlavorSlide>();
 
@@ -285,7 +416,7 @@ const Home: React.FC = () => {
             id: key,
             name: formatLabel(flavor),
             image: productImage(product),
-            to: `/products?subsubcategory=${encodeURIComponent(flavor)}`,
+            to: productListingQuery(product, { subsubcategory: flavor }),
           });
         });
     });
@@ -349,6 +480,16 @@ const Home: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [activeSlide, visibleHeroSlides.length]);
 
+  useEffect(() => {
+    if (categories.length <= 1) return;
+
+    const timer = window.setTimeout(() => {
+      setActiveCategory((current) => wrapIndex(current + 1, categories.length));
+    }, categorySlideIntervalMs);
+
+    return () => window.clearTimeout(timer);
+  }, [activeCategory, categories.length]);
+
   const moveHeroSlide = (direction: number) => {
     setActiveSlide((current) => wrapIndex(current + direction, visibleHeroSlides.length));
   };
@@ -398,17 +539,30 @@ const Home: React.FC = () => {
     });
   };
 
+  const scrollBestOfNivaana = (direction: number) => {
+    const scroller = bestOfNivaanaScrollerRef.current;
+    if (!scroller) return;
+
+    scroller.scrollBy({
+      left: direction * Math.max(scroller.clientWidth * 0.9, 360),
+      behavior: "smooth",
+    });
+  };
+
   const activeCustomerReview = customerReviews.length
     ? customerReviews[wrapIndex(activeReview, customerReviews.length)]
     : undefined;
+  const visibleCustomerReviews = customerReviews.length
+    ? [0, 1, 2].map((offset) => customerReviews[wrapIndex(activeReview + offset, customerReviews.length)])
+    : [];
 
   return (
-    <div className="min-h-screen bg-[var(--color-surface)]">
-      <section className="bg-[var(--color-surface)] pb-6 pt-7 sm:pb-8 sm:pt-10 lg:pb-10 lg:pt-16">
+    <div className="min-h-screen bg-white">
+      <section className="bg-white pb-3 pt-3 sm:pb-4 sm:pt-5 lg:pb-5 lg:pt-6">
         <div className={heroContainer}>
           <div className="relative w-full overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-card)] sm:rounded-[28px] lg:rounded-[34px]">
             <div
-              className="relative h-[58svh] min-h-[350px] max-h-[300px] touch-pan-y select-none sm:h-[calc(100svh-11rem)] sm:min-h-[460px] sm:max-h-[620px] md:min-h-[520px] lg:h-[calc(100svh-12.5rem)] lg:min-h-[560px] lg:max-h-[704px]"
+              className="relative h-[52svh] min-h-[320px] max-h-[420px] touch-pan-y select-none sm:h-[calc(100svh-15rem)] sm:min-h-[400px] sm:max-h-[540px] md:min-h-[440px] lg:h-[calc(100svh-20rem)] lg:min-h-[460px] lg:max-h-[560px]"
               onClickCapture={(event) => {
                 if (suppressHeroClickRef.current) {
                   event.preventDefault();
@@ -523,7 +677,7 @@ const Home: React.FC = () => {
                         {slide.text}
                       </p>
                       <Link to={slide.ctaUrl || "/products"} className="mt-4 inline-flex sm:mt-5">
-                        <Button className="min-h-8 rounded-full !bg-[var(--color-text)] px-5 text-sm !text-white hover:!bg-[var(--color-secondary)] sm:min-h-9 sm:px-6">
+                        <Button className="min-h-8 rounded-full !bg-[var(--color-primary)] px-5 text-sm font-semibold !text-black hover:!bg-[var(--color-primary)]/90 sm:min-h-9 sm:px-6">
                           {slide.ctaText || "Shop Now"}
                         </Button>
                       </Link>
@@ -541,7 +695,7 @@ const Home: React.FC = () => {
                         "relative grid rounded-full transition",
                         activeSlide === index
                           ? "h-8 w-8 place-items-center bg-transparent hover:bg-transparent"
-                          : "h-3 w-3 bg-[#f0c353] hover:bg-[#f0c353]/85"
+                          : "h-3 w-3 bg-[#fbbc05] hover:bg-[#fbbc05]/85"
                       )}
                       onClick={() => setActiveSlide(index)}
                       aria-label={`Show ${item.title}`}
@@ -554,7 +708,7 @@ const Home: React.FC = () => {
                               cy="16"
                               r={heroTimerRadius}
                               fill="none"
-                              stroke="rgba(11,35,65,0.24)"
+                              stroke="rgba(255,255,255,0.32)"
                               strokeWidth="3"
                             />
                             <motion.circle
@@ -563,7 +717,7 @@ const Home: React.FC = () => {
                               cy="16"
                               r={heroTimerRadius}
                               fill="none"
-                              stroke="#0b2341"
+                              stroke="#ffffff"
                               strokeLinecap="round"
                               strokeWidth="3"
                               strokeDasharray={heroTimerCircumference}
@@ -572,7 +726,7 @@ const Home: React.FC = () => {
                               transition={{ duration: heroSlideIntervalMs / 1000, ease: "linear" }}
                             />
                           </svg>
-                          <span className="absolute h-2.5 w-2.5 rounded-full bg-[#f0c353]" />
+                          <span className="absolute h-2.5 w-2.5 rounded-full bg-[#fbbc05]" />
                         </>
                       )}
                     </button>
@@ -584,7 +738,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className="bg-[var(--color-surface)] pb-0 pt-3 sm:pt-4 lg:pt-5">
+      <section className="bg-white pb-0 pt-3 sm:pt-4 lg:pt-5">
         <div className={homeContainer}>
           <CategoryTripleSlider
             activeIndex={activeCategory}
@@ -595,7 +749,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className="bg-[var(--color-surface)] pb-6 pt-0 sm:pb-7 lg:pb-8">
+      <section className="bg-white pb-6 pt-0 sm:pb-7 lg:pb-8">
         <div className={homeContainer}>
           <SectionHeader
             eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
@@ -667,9 +821,9 @@ const Home: React.FC = () => {
             >
               {isLoading
                 ? Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton
+                  <Skeleton
                       key={index}
-                      className="h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
+                      className={fourCardFeatureRailItem}
                     />
                   ))
                 : dealProducts.map((product) => (
@@ -688,7 +842,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className="bg-[var(--color-surface)] pb-6 pt-0 sm:pb-7 lg:pb-8">
+      <section className="bg-white pb-6 pt-0 sm:pb-7 lg:pb-8">
         <div className={homeContainer}>
           <SectionHeader
             eyebrow="Flavours"
@@ -759,9 +913,9 @@ const Home: React.FC = () => {
             >
               {isLoading
                 ? Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton
+                  <Skeleton
                       key={index}
-                      className="h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
+                      className={fiveCardFeatureRailItem}
                     />
                   ))
                 : flavors.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
@@ -778,7 +932,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className={cn(homeSection, "bg-[var(--color-surface)]")}>
+      <section className={cn(homeSection, "bg-white")}>
         <div className={homeContainer}>
           <SectionHeader
             eyebrow={bestSellerConfig.section_eyebrow || "Best sellers"}
@@ -850,17 +1004,17 @@ const Home: React.FC = () => {
             >
               {isLoading
                 ? Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton
+                  <Skeleton
                       key={index}
-                      className="h-[300px] w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                      className={cn("min-h-[380px]", fiveCardRailItem)}
                     />
                   ))
                 : bestSellers.map((product) => (
                     <div
                       key={product.id}
-                      className="w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                      className={fiveCardRailItem}
                     >
-                      <ProductCard product={product} compact />
+                      <ProductCard product={product} compact imageFit="contain" />
                     </div>
                   ))}
             </div>
@@ -876,7 +1030,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
+      <section className={cn(theme.layout.section, "bg-white")}>
         <div className={homeContainer}>
           <SectionHeader
             eyebrow={newArrivalConfig.section_eyebrow || "New arrivals"}
@@ -947,17 +1101,17 @@ const Home: React.FC = () => {
             >
               {isLoading
                 ? Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton
+                  <Skeleton
                       key={index}
-                      className="h-[300px] w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                      className={cn("min-h-[380px]", fiveCardRailItem)}
                     />
                   ))
                 : newArrivals.map((product) => (
                     <div
                       key={product.id}
-                      className="w-[72vw] min-w-[164px] max-w-[220px] flex-none snap-start sm:w-[38vw] sm:max-w-[240px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_5rem)/6)]"
+                      className={fiveCardRailItem}
                     >
-                      <ProductCard product={product} compact />
+                      <ProductCard product={product} compact imageFit="contain" />
                     </div>
                   ))}
             </div>
@@ -973,81 +1127,83 @@ const Home: React.FC = () => {
         </div>
       </section>
 
+      <BestOfNivaanaSection
+        loading={isLoading}
+        products={bestOfNivaanaProducts}
+        scrollerRef={bestOfNivaanaScrollerRef}
+        onScroll={scrollBestOfNivaana}
+      />
+
+      <WhyNivaanaSection />
+      <MidPromoBanner />
+
       {activeCustomerReview && (
-      <section className={cn(theme.layout.section, "bg-[var(--color-surface)]")}>
-        <div className={homeContainer}>
-            <SectionHeader
-              eyebrow={reviewConfig.section_eyebrow || "Customer reviews"}
-              title={reviewConfig.section_title || "What our customers say"}
-            />
-            <div className="md:hidden">
-              <div className="relative mx-auto max-w-[340px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white px-5 pb-9 pt-6 text-center shadow-[var(--shadow-card)]">
-                <div className="mb-3 flex justify-center gap-1 text-[var(--color-text)]">
-                  {Array.from({ length: Math.max(1, Math.min(activeCustomerReview.starrating || 5, 5)) }).map((_, star) => (
-                    <Star key={star} className="h-4 w-4 fill-current" />
-                  ))}
-                </div>
-                <p className="mx-auto max-w-[270px] text-sm leading-6 text-[var(--color-muted)]">
-                  {activeCustomerReview.comments}
-                </p>
-                {reviewAuthor(activeCustomerReview) && (
-                  <p className="mt-4 text-sm font-bold text-[var(--color-text)]">{reviewAuthor(activeCustomerReview)}</p>
-                )}
-                <span className="absolute bottom-4 right-5 text-5xl font-bold leading-none text-[var(--color-border)]">"</span>
-                <div className="absolute -bottom-6 left-1/2 h-12 w-12 -translate-x-1/2 overflow-hidden rounded-full border-2 border-white bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
-                  <img
-                    src={reviewImage(activeCustomerReview, products)}
-                    alt=""
-                    aria-hidden="true"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
+        <section className="bg-white py-10 sm:py-12 lg:py-14">
+          <div className={homeContainer}>
+            <div className="mb-8 flex items-center justify-between gap-4 sm:mb-10">
+              <h2 className="text-3xl font-bold leading-tight text-[var(--color-text)] sm:text-4xl">
+                {reviewConfig.section_title || "Real Customers, Real Reviews"}
+              </h2>
 
               {customerReviews.length > 1 && (
-                <div className="mt-9 flex items-center justify-center gap-4">
+                <div className="hidden shrink-0 overflow-hidden rounded-full border border-[var(--color-border)] bg-white shadow-[0_8px_20px_rgba(17,24,39,0.06)] sm:flex">
                   <button
                     type="button"
-                    className="grid h-9 w-9 place-items-center rounded-full bg-[var(--color-text)] text-white shadow-[var(--shadow-card)]"
+                    className="grid h-12 w-12 place-items-center bg-white text-[#b8b8b8] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
                     onClick={() => moveReview(-1)}
                     aria-label="Previous review"
                   >
-                    <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+                    <ChevronLeft className="h-6 w-6 stroke-[2.8]" />
                   </button>
                   <button
                     type="button"
-                    className="grid h-9 w-9 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-muted)]"
+                    className="grid h-12 w-12 place-items-center bg-white text-[#777777] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
                     onClick={() => moveReview(1)}
                     aria-label="Next review"
                   >
-                    <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+                    <ChevronRight className="h-6 w-6 stroke-[2.8]" />
                   </button>
                 </div>
               )}
             </div>
 
-            <div className={cn("hidden md:grid md:grid-cols-3", theme.layout.gridGap)}>
-              {customerReviews.slice(0, 3).map((review) => (
-                <div key={review.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-6 shadow-[var(--shadow-card)]">
-                  <div className="mb-4 flex gap-1 text-[var(--color-primary)]">
-                    {Array.from({ length: Math.max(1, Math.min(review.starrating || 5, 5)) }).map((_, star) => (
-                      <Star key={star} className="h-4 w-4 fill-current" />
-                    ))}
-                  </div>
-                  <p className="text-sm leading-7 text-[var(--color-text)]">"{review.comments}"</p>
-                  {reviewAuthor(review) && (
-                    <p className="mt-5 text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">{reviewAuthor(review)}</p>
-                  )}
+            <div className="md:hidden">
+              <ReviewCard review={activeCustomerReview} />
+
+              {customerReviews.length > 1 && (
+                <div className="mt-10 flex items-center justify-center gap-4">
+                  <button
+                    type="button"
+                    className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)]"
+                    onClick={() => moveReview(-1)}
+                    aria-label="Previous review"
+                  >
+                    <ChevronLeft className="h-5 w-5 stroke-[2.8]" />
+                  </button>
+                  <button
+                    type="button"
+                    className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)]"
+                    onClick={() => moveReview(1)}
+                    aria-label="Next review"
+                  >
+                    <ChevronRight className="h-5 w-5 stroke-[2.8]" />
+                  </button>
                 </div>
+              )}
+            </div>
+
+            <div className="hidden grid-cols-3 gap-6 md:grid xl:gap-8">
+              {visibleCustomerReviews.map((review) => (
+                <ReviewCard key={review.id} review={review} />
               ))}
             </div>
           </div>
         </section>
       )}
 
-      <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)] py-5">
+      <section className="overflow-hidden border-y border-[var(--color-border)] bg-white py-5">
         <div className="flex w-max animate-[marquee_26s_linear_infinite] gap-10 whitespace-nowrap text-sm font-bold tracking-[0.2em] text-[var(--color-secondary)] hover:[animation-play-state:paused]">
-          {[...(marqueeConfig.brand_names?.length ? marqueeConfig.brand_names : brandPartners), ...(marqueeConfig.brand_names?.length ? marqueeConfig.brand_names : brandPartners), ...(marqueeConfig.brand_names?.length ? marqueeConfig.brand_names : brandPartners)].map((brand, index) => (
+          {marqueeBrands.map((brand, index) => (
             <span key={`${brand}-${index}`}>{brand}</span>
           ))}
         </div>
@@ -1056,6 +1212,70 @@ const Home: React.FC = () => {
     </div>
   );
 };
+
+function ReviewCard({ review }: { review: CustomerReview }) {
+  const rating = Math.max(1, Math.min(review.rating, 5));
+
+  return (
+    <article className="relative mx-auto flex min-h-[320px] w-full max-w-[640px] flex-col items-center justify-start rounded-[18px] border border-[#e7e7e7] bg-white px-6 pb-16 pt-8 text-center shadow-[0_14px_34px_rgba(17,24,39,0.04)] sm:min-h-[350px] sm:px-8 lg:px-10">
+      <div className="mb-3 flex justify-center gap-1 text-[var(--color-text)]">
+        {Array.from({ length: rating }).map((_, star) => (
+          <Star key={star} className="h-5 w-5 fill-current stroke-[2.4]" />
+        ))}
+      </div>
+
+      <p className="mx-auto line-clamp-5 max-w-[30rem] text-base font-medium leading-7 text-[#727272] sm:text-lg sm:leading-8">
+        {review.review}
+      </p>
+
+      <p className="mt-6 max-w-full break-words text-lg font-extrabold text-[var(--color-text)] sm:text-xl">
+        {review.name}
+      </p>
+
+      <span className="pointer-events-none absolute bottom-9 right-7 text-7xl font-black leading-none text-[#eeeeee]" aria-hidden="true">
+        "
+      </span>
+
+      <div className="absolute -bottom-9 left-1/2 grid h-[76px] w-[76px] -translate-x-1/2 place-items-center overflow-hidden rounded-full border-4 border-white bg-[var(--color-surface)] shadow-[0_8px_22px_rgba(17,24,39,0.12)] sm:h-[88px] sm:w-[88px]">
+        <img src={review.image} alt="" aria-hidden="true" loading="lazy" className="h-full w-full object-cover" />
+      </div>
+    </article>
+  );
+}
+
+function MidPromoBanner() {
+  return (
+    <section className="bg-white py-8 sm:py-10 lg:py-12">
+      <div className={homeContainer}>
+        <Link
+          to="/products?category=car_room_fresheners"
+          className="group relative block min-h-[360px] overflow-hidden rounded-[22px] bg-[#f3f2ef] shadow-[0_18px_46px_rgba(17,24,39,0.08)] sm:min-h-[420px] lg:min-h-[500px] lg:rounded-[30px]"
+          aria-label="Discover Nivaana car and room fresheners"
+        >
+          <img
+            src={carFreshenerCategory}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.02]"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/68 to-white/10" />
+          <div className="relative z-10 flex min-h-[360px] max-w-[560px] flex-col justify-center px-7 py-10 sm:min-h-[420px] sm:px-12 lg:min-h-[500px] lg:px-20">
+            <p className="text-xl font-bold text-black sm:text-2xl">
+              Upto 30% Off
+            </p>
+            <h2 className="mt-6 text-4xl font-extrabold leading-tight text-[var(--color-text)] sm:text-5xl lg:text-6xl">
+              Uncover the Essence of You
+            </h2>
+            <span className="mt-8 inline-flex w-fit items-center justify-center rounded-full bg-[var(--color-text)] px-8 py-4 text-base font-bold text-white transition group-hover:bg-[var(--color-secondary)] sm:text-lg">
+              Discover More
+            </span>
+          </div>
+        </Link>
+      </div>
+    </section>
+  );
+}
 
 function SectionHeader({ eyebrow, title, linkText, linkTo = "/products" }: { eyebrow: string; title: string; linkText?: string; linkTo?: string }) {
   return (
@@ -1070,6 +1290,41 @@ function SectionHeader({ eyebrow, title, linkText, linkTo = "/products" }: { eye
         </Link>
       )}
     </div>
+  );
+}
+
+function WhyNivaanaSection() {
+  return (
+    <section className="bg-white pb-6 pt-8 sm:pb-8 sm:pt-10 lg:pb-10 lg:pt-12">
+      <div className={homeContainer}>
+        <h2 className="text-center text-3xl font-bold leading-tight text-[var(--color-text)] sm:text-4xl">
+          Why Nivaana?
+        </h2>
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+          {whyNivaanaFeatures.map((feature) => {
+            const Icon = feature.icon;
+
+            return (
+              <article
+                key={feature.title}
+                className="flex min-h-[240px] flex-col items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-primary)]/35 bg-white px-5 py-8 text-center shadow-[0_18px_45px_rgba(51,64,93,0.08)] transition duration-300 hover:-translate-y-1 hover:border-[var(--color-primary)]/70 hover:shadow-[var(--shadow-hover)]"
+              >
+                <span className="grid h-20 w-20 place-items-center rounded-full bg-[var(--color-surface)] text-[var(--color-secondary)]">
+                  <Icon className="h-9 w-9" strokeWidth={1.9} />
+                </span>
+                <h3 className="mt-6 text-xl font-bold leading-tight text-[var(--color-text)]">
+                  {feature.title}
+                </h3>
+                <p className="mt-3 max-w-[18rem] text-base leading-7 text-[var(--color-muted)]">
+                  {feature.text}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1088,10 +1343,12 @@ function CategoryTripleSlider({
   const dragStartRef = useRef<number | null>(null);
   const lastDragDistanceRef = useRef(0);
   const suppressClickRef = useRef(false);
+  const wheelLockRef = useRef(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const clickThreshold = 8;
   const swipeThreshold = 36;
+  const wheelThreshold = 28;
 
   if (loading) {
     return <Skeleton className="h-[260px] rounded-[28px] sm:h-[310px]" />;
@@ -1136,6 +1393,49 @@ function CategoryTripleSlider({
             event.stopPropagation();
           }
         }}
+        onWheel={(event) => {
+          if (wheelLockRef.current) return;
+          if (Math.abs(event.deltaX) < wheelThreshold || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.2) return;
+
+          event.preventDefault();
+          wheelLockRef.current = true;
+          move(event.deltaX > 0 ? 1 : -1);
+          window.setTimeout(() => {
+            wheelLockRef.current = false;
+          }, 520);
+        }}
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest("button")) return;
+
+          dragStartRef.current = event.clientX;
+          lastDragDistanceRef.current = 0;
+          setIsDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (dragStartRef.current === null) return;
+          const distance = event.clientX - dragStartRef.current;
+          lastDragDistanceRef.current = Math.abs(distance);
+          setDragOffset(Math.max(Math.min(distance, 180), -180));
+        }}
+        onPointerUp={(event) => {
+          if (dragStartRef.current === null) return;
+          const distance = event.clientX - dragStartRef.current;
+          const dragDistance = Math.abs(distance);
+
+          lastDragDistanceRef.current = dragDistance;
+          suppressClickRef.current = dragDistance > clickThreshold;
+          resetDrag();
+
+          if (distance < -swipeThreshold) {
+            move(1);
+          }
+
+          if (distance > swipeThreshold) {
+            move(-1);
+          }
+        }}
+        onPointerCancel={resetDrag}
       >
         {positions.map((position) => {
           const category = categories[wrapIndex(activeIndex + position, categories.length)];
@@ -1145,45 +1445,7 @@ function CategoryTripleSlider({
           return (
             <motion.article
               key={category.id}
-              onPointerDown={(event) => {
-                if ((event.target as HTMLElement).closest("button")) return;
-
-                dragStartRef.current = event.clientX;
-                lastDragDistanceRef.current = 0;
-                setIsDragging(true);
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                if (dragStartRef.current === null) return;
-                const distance = event.clientX - dragStartRef.current;
-                lastDragDistanceRef.current = Math.abs(distance);
-                setDragOffset(Math.max(Math.min(distance, 180), -180));
-              }}
-              onPointerUp={(event) => {
-                if (dragStartRef.current === null) return;
-                const distance = event.clientX - dragStartRef.current;
-                const dragDistance = Math.abs(distance);
-
-                lastDragDistanceRef.current = dragDistance;
-                suppressClickRef.current = dragDistance > clickThreshold;
-                resetDrag();
-
-                if (distance < -swipeThreshold) {
-                  move(1);
-                  return;
-                }
-
-                if (distance > swipeThreshold) {
-                  move(-1);
-                  return;
-                }
-
-                if ((event.target as HTMLElement).closest("button")) return;
-                if (dragDistance <= clickThreshold) {
-                  navigate(category.to);
-                }
-              }}
-              onPointerCancel={resetDrag}
+              onClick={() => navigate(category.to)}
               initial={false}
               animate={{
                 x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
@@ -1197,18 +1459,18 @@ function CategoryTripleSlider({
                   ? { duration: 0 }
                   : {
                       type: "tween",
-                      duration: 0.55,
+                      duration: 0.95,
                       ease: [0.22, 1, 0.36, 1],
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] origin-center cursor-pointer touch-pan-y overflow-hidden rounded-[22px] bg-[#efe6d4] shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
+                "absolute left-1/2 top-0 h-[262px] w-[78vw] max-w-[310px] origin-center cursor-pointer touch-pan-y overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-card)] [backface-visibility:hidden] [transform-style:preserve-3d] active:cursor-grabbing sm:h-[308px] sm:w-[62vw] sm:max-w-[460px] lg:h-[338px] lg:w-[43vw] lg:max-w-[620px]",
                 isCenter
                   ? "z-10 shadow-[0_20px_54px_rgba(17,24,39,0.14)]"
                   : "z-0 shadow-[0_10px_26px_rgba(17,24,39,0.06)]"
               )}
             >
-              <div className="relative h-full overflow-hidden bg-[#efe6d4]">
+              <div className="relative h-full overflow-hidden bg-white">
                 <motion.img
                   src={category.image}
                   alt={category.name}
@@ -1218,8 +1480,8 @@ function CategoryTripleSlider({
                   transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                   className="pointer-events-none h-full w-full object-cover object-center"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
-                <div className="absolute bottom-4 left-5 right-5 max-w-[calc(100%-2.5rem)] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:left-6 sm:right-6 sm:max-w-[76%]">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+                <div className="absolute bottom-4 left-5 right-5 z-10 max-w-[calc(100%-2.5rem)] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:left-6 sm:right-6 sm:max-w-[76%]">
                   <p className="line-clamp-1 text-xs font-bold uppercase tracking-wide">{category.name}</p>
                   <h3 className="mt-1 line-clamp-2 text-xl font-extrabold leading-tight sm:text-2xl">
                     {category.subcategory}
@@ -1227,7 +1489,7 @@ function CategoryTripleSlider({
                 </div>
                 <Button
                   type="button"
-                  className="absolute right-4 top-4 h-8 rounded-full bg-[#f0c353] px-3 text-xs font-bold text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:h-9 sm:px-4 sm:text-sm"
+                  className="absolute right-4 top-4 z-10 h-8 rounded-full bg-[#fbbc05] px-3 text-xs font-bold text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:h-9 sm:px-4 sm:text-sm"
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -1269,23 +1531,200 @@ function CategoryTripleSlider({
   );
 }
 
-function DealCard({ product }: { product: Product }) {
+function BestOfNivaanaSection({
+  loading,
+  products,
+  scrollerRef,
+  onScroll,
+}: {
+  loading: boolean;
+  products: Product[];
+  scrollerRef: React.RefObject<HTMLDivElement | null>;
+  onScroll: (direction: number) => void;
+}) {
+  const dragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
+  const dragDistanceRef = useRef(0);
+
+  if (!loading && !products.length) return null;
+
+  return (
+    <section className="bg-white py-8 sm:py-12 lg:py-14">
+      <div className={homeContainer}>
+        <div className="mb-5 flex items-center justify-between gap-3 sm:mb-8 sm:gap-4">
+          <h2 className="min-w-0 text-3xl font-bold leading-tight text-[var(--color-text)] sm:text-4xl">
+            Best of Nivaana
+          </h2>
+
+          <div className="hidden shrink-0 overflow-hidden rounded-full border border-[var(--color-border)] bg-white shadow-[0_8px_20px_rgba(17,24,39,0.06)] sm:flex">
+            <button
+              type="button"
+              className="grid h-11 w-12 place-items-center bg-white text-[#777777] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
+              onClick={() => onScroll(-1)}
+              aria-label="Previous best of Nivaana"
+            >
+              <ChevronLeft className="h-6 w-6 stroke-[2.8]" />
+            </button>
+            <button
+              type="button"
+              className="grid h-11 w-12 place-items-center bg-white text-[#777777] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
+              onClick={() => onScroll(1)}
+              aria-label="Next best of Nivaana"
+            >
+              <ChevronRight className="h-6 w-6 stroke-[2.8]" />
+            </button>
+          </div>
+        </div>
+
+        <div
+          ref={scrollerRef}
+          className="-mx-4 flex cursor-grab snap-x snap-mandatory select-none gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-2 scrollbar-hide touch-pan-y active:cursor-grabbing sm:-mx-6 sm:gap-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:gap-8 lg:scroll-px-0 lg:px-0"
+          onClickCapture={(event) => {
+            if (dragDistanceRef.current > 8) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+          onPointerDown={(event) => {
+            if (event.pointerType === "touch") return;
+            if (event.button !== 0) return;
+
+            dragRef.current = {
+              startX: event.clientX,
+              startY: event.clientY,
+              scrollLeft: event.currentTarget.scrollLeft,
+              dragging: true,
+              horizontal: false,
+            };
+            dragDistanceRef.current = 0;
+          }}
+          onPointerMove={(event) => {
+            if (event.pointerType === "touch") return;
+            if (!dragRef.current.dragging) return;
+
+            const distanceX = event.clientX - dragRef.current.startX;
+            const distanceY = event.clientY - dragRef.current.startY;
+            const absX = Math.abs(distanceX);
+            const absY = Math.abs(distanceY);
+
+            if (!dragRef.current.horizontal) {
+              if (absY > 8 && absY > absX) {
+                dragRef.current.dragging = false;
+                return;
+              }
+              if (absX <= 8 || absX <= absY * 1.15) return;
+              dragRef.current.horizontal = true;
+            }
+
+            dragDistanceRef.current = absX;
+            event.preventDefault();
+            event.currentTarget.scrollLeft = dragRef.current.scrollLeft - distanceX;
+          }}
+          onPointerUp={() => {
+            dragRef.current.dragging = false;
+            dragRef.current.horizontal = false;
+          }}
+          onPointerCancel={() => {
+            dragRef.current.dragging = false;
+            dragRef.current.horizontal = false;
+          }}
+        >
+          {loading
+            ? Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  className="h-[420px] w-[84vw] max-w-[420px] flex-none snap-start rounded-[22px] sm:h-[520px] sm:w-[48vw] sm:max-w-[560px] lg:w-auto lg:max-w-none lg:basis-[calc((100%_-_4rem)/3)] xl:h-[640px]"
+                />
+              ))
+            : products.map((product) => <BestOfNivaanaCard key={product.id} product={product} />)}
+        </div>
+
+        <div className="mt-6 flex justify-center gap-3 sm:hidden">
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)]"
+            onClick={() => onScroll(-1)}
+            aria-label="Previous best of Nivaana"
+          >
+            <ChevronLeft className="h-5 w-5 stroke-[2.8]" />
+          </button>
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)]"
+            onClick={() => onScroll(1)}
+            aria-label="Next best of Nivaana"
+          >
+            <ChevronRight className="h-5 w-5 stroke-[2.8]" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BestOfNivaanaCard({ product }: { product: Product }) {
+  const displayName = getProductDisplayName(product);
+
   return (
     <Link
-      to="/products?collection=deals"
-      className="group relative h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)] sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
-      aria-label={`View deals for ${product.name}`}
+      to={`/products/${product.id}`}
+      className="group relative h-[420px] w-[84vw] max-w-[420px] flex-none snap-start overflow-hidden rounded-[18px] bg-white transition duration-300 hover:-translate-y-0.5 sm:h-[520px] sm:w-[48vw] sm:max-w-[560px] sm:rounded-[22px] lg:w-auto lg:max-w-none lg:basis-[calc((100%_-_4rem)/3)] xl:h-[640px]"
+      aria-label={`View ${displayName}`}
+      draggable={false}
     >
       <img
         src={productImage(product)}
-        alt={product.name}
+        alt={displayName}
+        loading="lazy"
+        draggable={false}
+        className="pointer-events-none h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.03]"
+      />
+    </Link>
+  );
+}
+
+function DealCard({ product }: { product: Product }) {
+  const badge = productDealBadge(product);
+  const hasDiscount = product.discount > 0;
+  const salePrice = productSalePrice(product);
+  const displayName = getProductDisplayName(product);
+
+  return (
+    <Link
+      to={productListingQuery(product, { collection: "deals" })}
+      className={cn(
+        "group relative overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)]",
+        fourCardFeatureRailItem
+      )}
+      aria-label={`View deals for ${displayName}`}
+    >
+      <img
+        src={productImage(product)}
+        alt={displayName}
         loading="lazy"
         className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
       />
+      {badge && (
+        <span className="absolute left-4 top-4 max-w-[calc(100%-2rem)] rounded-full bg-[var(--color-primary)] px-3 py-1 text-xs font-semibold text-black shadow-sm">
+          {badge}
+        </span>
+      )}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-5 pb-5 pt-16">
         <h3 className="line-clamp-2 text-xl font-extrabold leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
-          {product.name}
+          {displayName}
         </h3>
+        {hasDiscount && (
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
+            <span className="text-sm font-semibold text-white/75 line-through">
+              Rs. {product.price.toLocaleString("en-IN")}
+            </span>
+            <span className="text-lg font-bold text-white">
+              Rs. {salePrice.toLocaleString("en-IN")}
+            </span>
+            <span className="text-xs font-semibold text-[var(--color-primary)]">
+              Save Rs. {product.discount.toLocaleString("en-IN")}
+            </span>
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -1295,7 +1734,10 @@ function FlavorCard({ flavor }: { flavor: FlavorSlide }) {
   return (
     <Link
       to={flavor.to}
-      className="group relative h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)] sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]"
+      className={cn(
+        "group relative overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)]",
+        fiveCardFeatureRailItem
+      )}
       aria-label={`Shop ${flavor.name} products`}
     >
       <img
@@ -1305,7 +1747,7 @@ function FlavorCard({ flavor }: { flavor: FlavorSlide }) {
         className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
       />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-5 pb-5 pt-16">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#f0c353]">Flavour</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-[#fbbc05]">Flavour</p>
         <h3 className="mt-1 line-clamp-2 text-2xl font-extrabold leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
           {flavor.name}
         </h3>

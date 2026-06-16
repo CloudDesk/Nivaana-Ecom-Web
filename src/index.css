@@ -5,10 +5,10 @@
 @layer base {
   :root {
     --font-app: "Google Sans";
-    --color-primary: #ffd200;
+    --color-primary: #fbbc05;
     --color-secondary: #485470;
     --color-background: #ffffff;
-    --color-surface: #f8fafc;
+    --color-surface: #ffffff;
     --color-text: #111827;
     --color-muted: #6b7280;
     --color-border: #e5e7eb;
@@ -67,27 +67,41 @@
 
 @layer components {
   .navbar-brand-logo {
-    @apply flex h-14 shrink-0 items-center gap-2.5 px-1 py-1 transition hover:brightness-110 lg:h-20 lg:gap-3;
+    @apply flex h-14 shrink-0 items-center px-1 py-1 transition hover:brightness-110 lg:h-20;
   }
 
   .navbar-brand-icon {
-    @apply h-10 w-10 shrink-0 object-contain lg:h-14 lg:w-14;
+    @apply h-10 w-auto shrink-0 object-contain lg:h-14;
+  }
+
+  .header-brand-logo {
+    @apply -ml-2 h-[calc(100%_-_1rem)] w-auto self-center px-0 py-0 hover:brightness-100 sm:-ml-3 lg:-ml-6 lg:h-[calc(100%_-_1.25rem)];
+  }
+
+  .header-brand-logo .navbar-brand-icon {
+    @apply h-full w-auto object-contain;
   }
 
   .navbar-brand-copy {
-    @apply flex min-w-0 flex-col items-start leading-none;
+    @apply grid min-w-0 leading-none;
+    justify-items: center;
+    width: max-content;
   }
 
   .navbar-brand-name {
     position: relative;
     display: inline-flex;
     align-items: baseline;
-    color: #ffd200;
+    color: #fbbc05;
     font-family: "Questal Bold" !important;
     font-size: 1.4rem;
     font-weight: 700;
     letter-spacing: 0;
     line-height: 1;
+  }
+
+  .header-brand-logo .navbar-brand-name {
+    font-size: 1.65rem;
   }
 
   .navbar-brand-initial {
@@ -96,52 +110,79 @@
   }
 
   .navbar-brand-tm {
-    margin-left: 0.14rem;
-    transform: translateY(-0.18rem);
+    position: absolute;
+    top: 0.08em;
+    left: calc(100% + 0.08rem);
     font-family: "Questal Bold" !important;
-    font-size: 0.34em;
+    font-size: 0.22em;
     font-weight: 700;
     line-height: 1;
   }
 
   .navbar-brand-tagline {
     @apply mt-0.5 whitespace-nowrap text-[0.46rem] font-bold lg:text-[0.5rem];
-    color: #ffd200;
+    color: #fbbc05;
     font-family: "Questal Bold" !important;
     letter-spacing: 0;
     max-width: 100%;
+    text-align: center;
+    width: 100%;
+  }
+
+  .header-brand-logo .navbar-brand-tagline {
+    font-size: 0.54rem;
   }
 
   @media (max-width: 420px) {
     .navbar-brand-logo {
-      @apply h-12 gap-1.5 px-0.5 py-1;
+      @apply h-12 px-0.5 py-1;
     }
 
     .navbar-brand-icon {
-      @apply h-8 w-8;
+      @apply h-8 w-auto;
+    }
+
+    .header-brand-logo .navbar-brand-icon {
+      @apply h-full w-full;
     }
 
     .navbar-brand-name {
       font-size: 0.9rem;
     }
 
+    .header-brand-logo .navbar-brand-name {
+      font-size: 1.05rem;
+    }
+
     .navbar-brand-tagline {
       margin-top: 0.12rem;
       font-size: 0.34rem;
+    }
+
+    .header-brand-logo .navbar-brand-tagline {
+      font-size: 0.38rem;
     }
   }
 
   @media (max-width: 360px) {
     .navbar-brand-logo {
-      @apply gap-1 p-1;
+      @apply p-1;
     }
 
     .navbar-brand-icon {
-      @apply h-7 w-7;
+      @apply h-7 w-auto;
+    }
+
+    .header-brand-logo .navbar-brand-icon {
+      @apply h-full w-full;
     }
 
     .navbar-brand-name {
       font-size: 0.78rem;
+    }
+
+    .header-brand-logo .navbar-brand-name {
+      font-size: 0.95rem;
     }
 
     .navbar-brand-tagline {
@@ -150,20 +191,20 @@
   }
 
   .footer-brand-logo {
-    @apply inline-flex h-auto gap-2 px-0 py-0 hover:brightness-100;
+    @apply inline-flex h-auto px-0 py-0 hover:brightness-100;
   }
 
   .footer-brand-icon {
-    @apply h-9 w-9 md:h-11 md:w-11;
+    @apply h-14 w-auto md:h-16;
   }
 
   @media (max-width: 420px) {
     .footer-brand-logo {
-      @apply gap-2;
+      @apply px-0;
     }
 
     .footer-brand-icon {
-      @apply h-9 w-9;
+      @apply h-12 w-auto;
     }
 
     .footer-brand-logo .navbar-brand-name {

@@ -7,9 +7,10 @@ import { platformProductService } from "../services/productPlatformService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
-import { toast } from "../components/Toast";
+import { toast } from "../components/toastApi";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import type { Product } from "../types";
+import { getProductDisplayName } from "../lib/productDisplay";
 import { isOutOfStock } from "../lib/stock";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
 
@@ -145,6 +146,7 @@ const Wishlist: React.FC = () => {
         ) : (
           <div className="mt-8 grid gap-4 md:grid-cols-2">
             {wishlistProducts.map(({ apiId, item, product }) => {
+              const displayName = getProductDisplayName(product, `Product #${item.productid}`);
               const price = product ? Math.max(product.price - product.discount, 0) : 0;
               const productMissing = !productsQuery.isLoading && !product;
               const outOfStock = Boolean(product) && isOutOfStock(product);
@@ -158,11 +160,11 @@ const Wishlist: React.FC = () => {
                   <Link
                     to={`/products/${item.productid}`}
                     className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)]"
-                    aria-label={`View ${product?.name || `product ${item.productid}`}`}
+                    aria-label={`View ${displayName}`}
                   >
                     <img
                       src={imageFor(product)}
-                      alt={product?.name || "Product image"}
+                      alt={displayName}
                       className="h-full w-full object-cover"
                       onError={(event) => {
                         event.currentTarget.src = fallbackProduct;
@@ -174,11 +176,8 @@ const Wishlist: React.FC = () => {
                       to={`/products/${item.productid}`}
                       className="line-clamp-2 text-base font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)]"
                     >
-                      {product?.name || `Product #${item.productid}`}
+                      {displayName}
                     </Link>
-                    <p className="mt-1 text-sm capitalize text-[var(--color-muted)]">
-                      {product?.subcategory?.replace(/_/g, " ") || product?.category?.replace(/_/g, " ") || "Saved product"}
-                    </p>
                     {product?.shortdescription && (
                       <p className="mt-2 line-clamp-2 text-sm text-[var(--color-muted)]">{product.shortdescription}</p>
                     )}
@@ -193,7 +192,7 @@ const Wishlist: React.FC = () => {
                         className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15 sm:w-auto sm:px-4"
                         disabled={moveToCart.isPending || cannotAddToCart}
                         onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
-                        aria-label={`Add ${product?.name || `product ${item.productid}`} to cart`}
+                        aria-label={`Add ${displayName} to cart`}
                       >
                         <ShoppingBag className="h-4 w-4 sm:mr-2" />
                         <span className="hidden sm:inline">Add to Cart</span>

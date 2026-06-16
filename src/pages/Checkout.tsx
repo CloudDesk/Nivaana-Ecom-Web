@@ -25,6 +25,7 @@ import { getUserDisplayName, sessionService } from "../services/sessionService";
 import { Button } from "../components/ui/button";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import type { Product } from "../types";
+import { getProductDisplayName } from "../lib/productDisplay";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 import {
   buildPromotionCartData,
@@ -814,12 +815,15 @@ const Checkout: React.FC = () => {
               Order summary
             </h2>
             <div className="mt-4 space-y-3">
-              {enrichedItems.map(({ item, product, quantity }) => (
+              {enrichedItems.map(({ item, product, quantity }) => {
+                const displayName = getProductDisplayName(product, `Product #${item.productid}`);
+
+                return (
                 <div key={item.id} className="flex items-center gap-3">
                   <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                     <img
                       src={productImage(product)}
-                      alt={product?.name || "Product image"}
+                      alt={displayName}
                       className="h-full w-full object-cover"
                       onError={(event) => {
                         event.currentTarget.src = fallbackProduct;
@@ -828,7 +832,7 @@ const Checkout: React.FC = () => {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 text-xs font-semibold text-[var(--color-text)]">
-                      {product?.name || `Product #${item.productid}`}
+                      {displayName}
                     </p>
                     <p className="mt-1 text-[11px] text-[var(--color-muted)]">Qty: {quantity}</p>
                     {(checkoutStockIssueMap.has(item.productid) || checkoutBackendIssueMap.has(item.productid)) && (
@@ -841,7 +845,8 @@ const Checkout: React.FC = () => {
                     {formatCurrency(productUnitPrice(product) * quantity)}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-5 space-y-2 border-t border-[var(--color-border)] pt-4 text-sm">
@@ -867,7 +872,7 @@ const Checkout: React.FC = () => {
             </div>
 
             <Button
-              className="mt-5 w-full gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-[var(--color-text)] shadow-[0_14px_30px_rgba(255,210,0,0.24)] hover:bg-[var(--color-secondary)] hover:text-white"
+              className="mt-5 w-full gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-[var(--color-text)] shadow-[0_14px_30px_rgba(251,188,5,0.24)] hover:bg-[var(--color-secondary)] hover:text-white"
               disabled={
                 !selectedAddress ||
                 paymentMutation.isPending ||
@@ -1195,7 +1200,7 @@ function CheckoutStep({ label, state, value }: { label: string; state: "done" | 
           isDone
             ? "border-green-200 bg-green-50 text-green-700"
             : isActive
-              ? "border-[var(--color-secondary)] bg-white text-[var(--color-secondary)] shadow-[0_0_0_3px_rgba(255,210,0,0.2)]"
+              ? "border-[var(--color-secondary)] bg-white text-[var(--color-secondary)] shadow-[0_0_0_3px_rgba(251,188,5,0.2)]"
               : "border-[var(--color-border)] text-[var(--color-muted)]"
         }`}
       >

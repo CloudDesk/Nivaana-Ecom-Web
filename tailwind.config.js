@@ -8,7 +8,7 @@ export default {
     extend: {
       colors: {
         primary: {
-          gold: '#ffd200',
+          gold: '#fbbc05',
           blue: '#485470',
         },
         secondary: {
@@ -17,7 +17,7 @@ export default {
           'dark-gray': '#333333',
           'medium-gray': '#666666',
           'light-gray': '#DDDDDD',
-          'extra-light-gray': '#F5F5F5',
+          'extra-light-gray': '#FFFFFF',
         }
       },
       fontFamily: {

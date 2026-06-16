@@ -10,9 +10,10 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import logoIcon from "../assets/Nivaana_Sun_Gold.png";
+import { AnimatePresence, motion } from "framer-motion";
+import logoIcon from "../assets/new_brand_logo_google_yellow.png";
 import { theme } from "../config/theme.config";
+import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { cartService } from "../services/cartService";
 import { guestStoreService } from "../services/guestStoreService";
@@ -37,35 +38,35 @@ const categoryGroups: CategoryGroup[] = [
     heading: "Incense",
     to: "/products?category=incense",
     links: [
-      { label: "Incense Sticks", to: "/products?subcategory=incense_sticks" },
-      { label: "Dhoops", to: "/products?subcategory=dhoops" },
-      { label: "Cones", to: "/products?subcategory=cones" },
-      { label: "Havan Cups", to: "/products?subcategory=havan_cups" },
+      { label: "Incense Sticks", to: "/products?category=incense&subcategory=incense_sticks" },
+      { label: "Premium Incense Sticks", to: "/products?category=incense&subcategory=premium_incense_sticks" },
+      { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
+      { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
     ],
   },
   {
     heading: "Home Fragrance",
     to: "/products?category=home_fragrance",
     links: [
-      { label: "Essential Oils", to: "/products?subcategory=essential_oils" },
-      { label: "Fragrance Blends", to: "/products?subcategory=fragrance_blends" },
-      { label: "Wardrobe Sachets", to: "/products?subcategory=wardrobe_sachets" },
+      { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
+      { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
+      { label: "Wardrobe Sachets", to: "/products?category=home_fragrance&subcategory=wardrobe_sachets" },
     ],
   },
   {
     heading: "Car & Room Fresheners",
     to: "/products?category=car_room_fresheners",
     links: [
-      { label: "Premium Room Mist", to: "/products?subcategory=premium_room_mist" },
-      { label: "Diffuser Oils", to: "/products?subcategory=diffuser_oils" },
-      { label: "Diffuser Oil Refill Pack for Machines", to: "/products?subcategory=diffuser_oil_refill_pack_for_machines" },
+      { label: "Premium Room Mist", to: "/products?category=car_room_fresheners&subcategory=premium_room_mist" },
+      { label: "Diffuser Oils", to: "/products?category=car_room_fresheners&subcategory=diffuser_oils" },
+      { label: "Diffuser Oil Refill Pack For Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
       {
         label: "Diffuser Machines",
-        to: "/products?subcategory=diffuser_machines",
+        to: "/products?category=car_room_fresheners&subcategory=diffuser_machines",
         children: [
-          { label: "For Car", to: "/products?subcategory=diffuser_machines&subsubcategory=for_car" },
-          { label: "For Home", to: "/products?subcategory=diffuser_machines&subsubcategory=for_home" },
-          { label: "For Hotels & Commercial Places", to: "/products?subcategory=diffuser_machines&subsubcategory=for_hotels_commercial_places" },
+          { label: "For Car", to: "/products?category=car_room_fresheners&subcategory=for_car" },
+          { label: "For Home", to: "/products?category=car_room_fresheners&subcategory=for_home" },
+          { label: "For Hotels & Commercial Places", to: "/products?category=car_room_fresheners&subcategory=for_hotels_commercial_places" },
         ],
       },
     ],
@@ -102,20 +103,23 @@ const categoryGroups: CategoryGroup[] = [
     heading: "Gift Collections",
     to: "/products?category=gift_collections",
     links: [
-      { label: "Gift Collections", to: "/products?category=gift_collections" },
+      { label: "Home Decor", to: "/products?category=gift_collections&subcategory=home_decor" },
+      { label: "Table Decor", to: "/products?category=gift_collections&subcategory=table_decor" },
     ],
   },
 ];
 
-const countDistinctProducts = (items: Array<{ productid: number }>) => new Set(items.map((item) => item.productid)).size;
+const countDistinctProducts = (items: Array<{ productid: number }>) =>
+  new Set(items.map((item) => item.productid)).size;
+
 const desktopNavLinkClass =
-  "group relative inline-flex h-12 items-center px-5 text-lg font-semibold text-[var(--color-text)] transition-colors after:absolute after:bottom-1 after:left-5 after:right-5 after:h-0.5 after:origin-left after:scale-x-0 after:rounded-full after:bg-[var(--color-secondary)] after:transition-transform after:duration-200 hover:text-[var(--color-secondary)] hover:after:scale-x-100";
+  "group relative inline-flex h-10 items-center whitespace-nowrap px-3 text-sm font-bold text-[#ffe0a0] transition-colors after:absolute after:bottom-1 after:left-3 after:right-3 after:h-px after:origin-left after:scale-x-0 after:rounded-full after:bg-[#fbbc05] after:transition-transform after:duration-200 hover:text-[#fbbc05] hover:after:scale-x-100 xl:px-4 xl:text-base";
 
 const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const [activeCategoryHeading, setActiveCategoryHeading] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -129,6 +133,10 @@ const Navbar: React.FC = () => {
   };
 
   const handleHomeClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    setIsMobileMenuOpen(false);
+    setIsSearchOpen(false);
+    setActiveCategoryHeading(null);
+
     if (location.pathname === "/" && !location.search && !location.hash) {
       event.preventDefault();
       scrollHomeToTop();
@@ -163,6 +171,7 @@ const Navbar: React.FC = () => {
   const isWishlistRoute = location.pathname === "/wishlist";
   const isAccountRoute = location.pathname === "/account" || location.pathname === "/login";
   const isCartRoute = location.pathname === "/cart";
+  const showsCategoryRail = location.pathname === "/products" || location.pathname.startsWith("/products/");
   const searchSuggestions = (productResponse?.data ?? [])
     .filter((product) => {
       const query = searchTerm.trim().toLowerCase();
@@ -187,9 +196,7 @@ const Navbar: React.FC = () => {
 
       scrollTickingRef.current = true;
       window.requestAnimationFrame(() => {
-        const currentScrollY = window.scrollY;
-        setIsScrolled(currentScrollY > 16);
-
+        setIsScrolled(window.scrollY > 16);
         scrollTickingRef.current = false;
       });
     };
@@ -211,7 +218,7 @@ const Navbar: React.FC = () => {
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
-    setIsCategoriesOpen(false);
+    setActiveCategoryHeading(null);
     setIsSearchOpen(false);
   }, [location.hash, location.pathname, location.search]);
 
@@ -229,21 +236,26 @@ const Navbar: React.FC = () => {
     navigate(`/products?search=${encodeURIComponent(query)}`);
   };
 
-  const openCategoriesMenu = () => {
+  const openCategoriesMenu = (heading: string) => {
     window.clearTimeout(categoryCloseTimer.current ?? undefined);
-    setIsCategoriesOpen(true);
+    setActiveCategoryHeading(heading);
   };
 
   const closeCategoriesMenu = () => {
     window.clearTimeout(categoryCloseTimer.current ?? undefined);
     categoryCloseTimer.current = window.setTimeout(() => {
-      setIsCategoriesOpen(false);
+      setActiveCategoryHeading(null);
     }, 120);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+    setIsSearchOpen(false);
   };
 
   const searchBox = (inputClassName: string, dropdownClassName = "") => (
     <>
-      <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-muted)]" />
+      <Search className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#fbbc05]" />
       <input
         aria-label="Search products"
         placeholder="Search"
@@ -263,49 +275,46 @@ const Navbar: React.FC = () => {
             dropdownClassName || "right-0"
           )}
         >
-          {searchSuggestions.map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition hover:bg-[var(--color-surface)]"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handleSuggestionClick(product.name)}
-            >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--color-primary)]/25 text-xs font-bold text-[var(--color-secondary)]">
-                {product.name.charAt(0)}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-[var(--color-text)]">
-                  {product.name}
+          {searchSuggestions.map((product) => {
+            const displayName = getProductDisplayName(product);
+
+            return (
+              <button
+                key={product.id}
+                type="button"
+                className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition hover:bg-[var(--color-surface)]"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => handleSuggestionClick(product.name)}
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--color-primary)]/25 text-xs font-bold text-[var(--color-secondary)]">
+                  {displayName.charAt(0)}
                 </span>
-                <span className="block truncate text-xs text-[var(--color-muted)]">
-                  {product.subcategory?.replace(/_/g, " ") || product.category?.replace(/_/g, " ")}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-[var(--color-text)]">
+                    {displayName}
+                  </span>
                 </span>
-              </span>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
     </>
   );
 
   return (
-    <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 w-full max-w-full bg-white [transform:none]"
-      )}
-    >
+    <header className="fixed inset-x-0 top-0 z-50 w-full max-w-full bg-[#33405d] [transform:none]">
       <motion.nav
         className={cn(
           "w-full border-b transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300",
           isScrolled
-            ? "border-[var(--color-border)] bg-white/95 shadow-[var(--shadow-header)] backdrop-blur"
-            : "border-white/40 bg-white/80 backdrop-blur-md"
+            ? "border-[#fbbc05]/20 bg-[#33405d]/95 shadow-[var(--shadow-header)] backdrop-blur"
+            : "border-[#fbbc05]/15 bg-[#33405d]/95 backdrop-blur-md"
         )}
       >
         <div className={cn(theme.layout.container, "flex h-[4.5rem] items-center justify-between gap-2 lg:h-24 lg:gap-4")}>
           <button
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[var(--color-border)] text-[var(--color-secondary)] lg:hidden"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#fbbc05]/30 bg-[#26324a] text-[#fbbc05] lg:hidden"
             onClick={() => {
               setIsMobileMenuOpen((value) => !value);
               setIsSearchOpen(false);
@@ -316,80 +325,27 @@ const Navbar: React.FC = () => {
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
 
-          <Link to="/" className="navbar-brand-logo" onClick={handleHomeClick} aria-label="Nivaana home">
+          <Link to="/" className="navbar-brand-logo header-brand-logo" onClick={handleHomeClick} aria-label="Nivaana home">
             <img src={logoIcon} alt="" className="navbar-brand-icon" loading="eager" />
-            <span className="navbar-brand-copy">
-              <span className="navbar-brand-name">
-                <span className="navbar-brand-initial">N</span>ivaana
-                <span className="navbar-brand-tm">TM</span>
-              </span>
-              <span className="navbar-brand-tagline">Breath in Bliss!!</span>
-            </span>
           </Link>
 
-          <div className="hidden items-center gap-3 lg:ml-40 lg:mr-auto lg:flex xl:ml-48 2xl:ml-52">
-            <Link
-              to="/"
-              className={desktopNavLinkClass}
-              onClick={handleHomeClick}
-            >
-              Home
-            </Link>
-            <div className="relative" onMouseEnter={openCategoriesMenu} onMouseLeave={closeCategoriesMenu}>
-              <button
-                type="button"
-                className={cn(
-                  desktopNavLinkClass,
-                  "gap-2 bg-transparent hover:bg-transparent",
-                  isCategoriesOpen && "text-[var(--color-secondary)] after:scale-x-100"
-                )}
-                onClick={() => navigate("/products")}
-                onFocus={openCategoriesMenu}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setIsCategoriesOpen(false);
-                  }
-                }}
-                aria-expanded={isCategoriesOpen}
-                aria-haspopup="true"
-              >
-                Product Categories <ChevronDown className={cn("h-5 w-5 transition", isCategoriesOpen && "rotate-180")} />
-              </button>
-            </div>
-            <Link
-              to="/products?collection=deals"
-              className={desktopNavLinkClass}
-            >
-              Deals
-            </Link>
-            {/* <Link
-              to="/about"
-              className={desktopNavLinkClass}
-            >
-              About
-            </Link> */}
-            {/* <Link
-              to="/#contact"
-              className={desktopNavLinkClass}
-            >
-              Contact
-            </Link> */}
+          <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
+            <form className="relative w-full max-w-[420px] xl:max-w-[520px]" onSubmit={handleSearchSubmit}>
+              {searchBox(
+                "h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-12 pr-5 text-base text-[#ffe0a0] outline-none placeholder:text-[#ffe0a0]/65 transition focus:border-[#fbbc05]",
+                "w-full"
+              )}
+            </form>
           </div>
 
           <div className="hidden items-center gap-3 md:flex lg:pr-6 xl:pr-10">
-            <form className="relative hidden xl:block" onSubmit={handleSearchSubmit}>
-              {searchBox(
-                "h-12 w-64 rounded-full border border-[var(--color-border)] bg-white pl-12 pr-5 text-lg outline-none transition focus:border-[var(--color-secondary)]",
-                "w-[400px]"
-              )}
-            </form>
             <Link to="/wishlist">
               <Button
                 variant="icon"
                 aria-label="Wishlist"
                 className={cn(
-                  "relative w-12 min-h-12 bg-white/90 hover:bg-[var(--color-surface)]",
-                  isWishlistRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  isWishlistRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
                 )}
               >
                 <Heart className="h-5 w-5" />
@@ -402,8 +358,10 @@ const Navbar: React.FC = () => {
                 aria-label={session ? `Account for ${accountLabel}` : "Account"}
                 className={cn(
                   "min-h-12",
-                  session ? "h-12 max-w-52 gap-2 rounded-full border-[var(--color-border)] bg-white px-4 hover:bg-[var(--color-surface)]" : "w-12 bg-white/90 hover:bg-[var(--color-surface)]",
-                  isAccountRoute && "border-[var(--color-primary)] bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                  session
+                    ? "h-12 max-w-52 gap-2 rounded-full border-[#fbbc05]/25 bg-[#26324a] px-4 text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]"
+                    : "w-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  isAccountRoute && "border-[#fbbc05] bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
                 )}
               >
                 <UserRound className="h-5 w-5 shrink-0" />
@@ -415,8 +373,8 @@ const Navbar: React.FC = () => {
                 variant="icon"
                 aria-label="Cart"
                 className={cn(
-                  "relative w-12 min-h-12 bg-white/90 hover:bg-[var(--color-surface)]",
-                  isCartRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  isCartRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
                 )}
               >
                 <ShoppingBag className="h-5 w-5" />
@@ -428,7 +386,7 @@ const Navbar: React.FC = () => {
           <div className="flex items-center gap-1.5 md:hidden">
             <button
               type="button"
-              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-secondary)] shadow-sm transition hover:bg-[var(--color-primary)]"
+              className="grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]"
               onClick={() => {
                 setIsSearchOpen((value) => !value);
                 setIsMobileMenuOpen(false);
@@ -442,8 +400,8 @@ const Navbar: React.FC = () => {
               to={session ? "/account" : "/login"}
               aria-label={session ? `Account for ${accountLabel}` : "Account"}
               className={cn(
-                "grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-text)] shadow-sm transition hover:bg-[var(--color-surface)]",
-                isAccountRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                "grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                isAccountRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
               )}
             >
               <UserRound className="h-5 w-5" />
@@ -452,17 +410,115 @@ const Navbar: React.FC = () => {
               to="/cart"
               aria-label="Cart"
               className={cn(
-                "relative grid h-10 w-10 place-items-center rounded-full bg-white/90 text-[var(--color-text)] shadow-sm transition hover:bg-[var(--color-surface)]",
-                isCartRoute && "bg-[var(--color-primary)] hover:bg-[var(--color-primary)]"
+                "relative grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                isCartRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
               )}
             >
               <ShoppingBag className="h-5 w-5" />
               <Badge count={cartCount} />
             </Link>
           </div>
-
         </div>
       </motion.nav>
+
+      {!showsCategoryRail && (
+      <div className="relative z-40 hidden bg-[#33405d] lg:block">
+        <div className={cn(theme.layout.container, "flex h-11 items-center justify-center gap-1 overflow-visible whitespace-nowrap")}>
+          {categoryGroups.map((group) => (
+            <div
+              key={group.heading}
+              className="relative flex h-11 items-center"
+              onMouseEnter={() => openCategoriesMenu(group.heading)}
+              onMouseLeave={closeCategoriesMenu}
+              onFocus={() => openCategoriesMenu(group.heading)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setActiveCategoryHeading(null);
+                }
+              }}
+            >
+              <div
+                className={cn(
+                  "inline-flex h-10 items-center overflow-hidden transition"
+                )}
+              >
+                <Link
+                  to={group.to}
+                  className={cn(
+                    desktopNavLinkClass,
+                    "pr-1 after:right-1",
+                    activeCategoryHeading === group.heading && "text-[#fbbc05] after:scale-x-100"
+                  )}
+                >
+                  {group.heading}
+                </Link>
+                <button
+                  type="button"
+                  className="grid h-10 w-8 place-items-center bg-transparent p-0 text-[#ffe0a0] transition hover:text-[#fbbc05]"
+                  aria-label={`Show ${group.heading} subcategories`}
+                  aria-expanded={activeCategoryHeading === group.heading}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setActiveCategoryHeading((current) => (current === group.heading ? null : group.heading));
+                  }}
+                >
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition-transform",
+                      activeCategoryHeading === group.heading && "rotate-180"
+                    )}
+                  />
+                </button>
+              </div>
+              <AnimatePresence>
+                {activeCategoryHeading === group.heading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.16 }}
+                    className="absolute left-0 top-full z-50 mt-[1px] w-max min-w-full max-w-[min(26rem,calc(100vw-2rem))] rounded-[2px] border border-[#fbbc05]/25 bg-[#26324a] px-5 py-3 shadow-[var(--shadow-hover)]"
+                  >
+                    <Link
+                      to={group.to}
+                      className="mb-2 block whitespace-nowrap text-sm font-bold text-[#fbbc05] transition hover:text-[#ffe0a0]"
+                    >
+                      {group.heading}
+                    </Link>
+                    <div className="h-px scale-y-[0.35] bg-[#fbbc05]/55" />
+                    <div className="mt-2 grid gap-1">
+                      {group.links.map((item) => (
+                        <div key={item.label}>
+                          <Link
+                            to={item.to}
+                            className="block whitespace-nowrap px-1.5 py-1 text-sm font-medium leading-snug text-[#ffe0a0] transition-colors hover:text-[#fbbc05]"
+                          >
+                            {item.label}
+                          </Link>
+                          {item.children && (
+                            <div className="ml-2 mt-1 space-y-1 border-l-[0.5px] border-[#fbbc05]/30 pl-2">
+                              {item.children.map((child) => (
+                                <Link
+                                  key={child.label}
+                                  to={child.to}
+                                  className="block whitespace-nowrap px-1.5 py-0.5 text-xs font-medium leading-snug text-[#ffe0a0]/85 transition-colors hover:text-[#fbbc05]"
+                                >
+                                  {child.label}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
+      </div>
+      )}
 
       <AnimatePresence>
         {isSearchOpen && !isMobileMenuOpen && (
@@ -471,63 +527,11 @@ const Navbar: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
-            className="border-b border-[var(--color-border)] bg-white px-4 py-3 shadow-[var(--shadow-card)] md:hidden"
+            className="border-b border-[#fbbc05]/20 bg-[#33405d] px-4 py-3 shadow-[var(--shadow-card)] md:hidden"
           >
-            <form className="relative" onSubmit={handleSearchSubmit}>
-              {searchBox("h-12 w-full rounded-full border border-[var(--color-border)] bg-white pl-12 pr-5 text-base outline-none focus:border-[var(--color-secondary)]")}
+            <form className={cn(theme.layout.container, "relative")} onSubmit={handleSearchSubmit}>
+              {searchBox("h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-14 pr-5 text-base text-[#ffe0a0] outline-none placeholder:text-[#ffe0a0]/65 focus:border-[#fbbc05] md:ml-auto md:w-[420px]")}
             </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isCategoriesOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="hidden border-b border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] lg:block"
-            onMouseEnter={openCategoriesMenu}
-            onMouseLeave={closeCategoriesMenu}
-          >
-            <div className={cn(theme.layout.container, "grid grid-cols-4 gap-x-10 gap-y-9 py-10 xl:grid-cols-7")}>
-              {categoryGroups.map((group) => (
-                <div key={group.heading}>
-                  <Link
-                    to={group.to}
-                    className="mb-5 block text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)] transition hover:text-[var(--color-text)]"
-                  >
-                    {group.heading}
-                  </Link>
-                  <div className="space-y-3">
-                    {group.links.map((item) => (
-                      <div key={item.label}>
-                        <Link
-                          to={item.to}
-                          className="block text-base font-medium leading-snug text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
-                        >
-                          {item.label}
-                        </Link>
-                        {item.children && (
-                          <div className="mt-2 space-y-2 border-l border-[var(--color-border)] pl-3">
-                            {item.children.map((child) => (
-                              <Link
-                                key={child.label}
-                                to={child.to}
-                                className="block text-sm font-medium leading-snug text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
-                              >
-                                {child.label}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -538,25 +542,23 @@ const Navbar: React.FC = () => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="border-b border-[var(--color-border)] bg-white shadow-[var(--shadow-card)] lg:hidden"
+            className="max-h-[calc(100vh_-_4.5rem)] overflow-y-auto overscroll-contain border-b border-[#fbbc05]/20 bg-[#33405d] shadow-[var(--shadow-card)] lg:hidden"
           >
             <div className={cn(theme.layout.container, "space-y-2 py-4")}>
               <form className="relative mb-3" onSubmit={handleSearchSubmit}>
-                {searchBox("h-12 w-full rounded-full border border-[var(--color-border)] pl-12 pr-5 text-base outline-none focus:border-[var(--color-secondary)]")}
+                {searchBox("h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-14 pr-5 text-base text-[#ffe0a0] outline-none placeholder:text-[#ffe0a0]/65 focus:border-[#fbbc05]")}
               </form>
-              <Link to="/" onClick={handleHomeClick} className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]">
-                Home
-              </Link>
               <details className="rounded-[var(--radius-sm)] px-3 py-3">
-                <summary className="cursor-pointer text-base font-semibold text-[var(--color-secondary)]">
-                  Product Categories
+                <summary className="cursor-pointer text-base font-semibold text-[#fbbc05]">
+                  Categories
                 </summary>
                 <div className="mt-4 space-y-5">
                   {categoryGroups.map((group) => (
                     <div key={group.heading}>
                       <Link
                         to={group.to}
-                        className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
+                        onClick={closeMobileMenu}
+                        className="mb-2 block text-base font-bold text-[#fbbc05] hover:text-[#ffe0a0]"
                       >
                         {group.heading}
                       </Link>
@@ -565,17 +567,19 @@ const Navbar: React.FC = () => {
                           <div key={item.label}>
                             <Link
                               to={item.to}
-                              className="block rounded-[var(--radius-sm)] px-2 py-2 text-base text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
+                              onClick={closeMobileMenu}
+                              className="block rounded-[var(--radius-sm)] px-2 py-2 text-base text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
                             >
                               {item.label}
                             </Link>
                             {item.children && (
-                              <div className="ml-3 space-y-1 border-l border-[var(--color-border)] pl-3">
+                              <div className="ml-3 space-y-1 border-l-[0.5px] border-[#fbbc05]/30 pl-3">
                                 {item.children.map((child) => (
                                   <Link
                                     key={child.label}
                                     to={child.to}
-                                    className="block rounded-[var(--radius-sm)] px-2 py-2 text-sm text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)]"
+                                    onClick={closeMobileMenu}
+                                    className="block rounded-[var(--radius-sm)] px-2 py-2 text-sm text-[#ffe0a0]/80 hover:bg-[#26324a] hover:text-[#fbbc05]"
                                   >
                                     {child.label}
                                   </Link>
@@ -590,33 +594,15 @@ const Navbar: React.FC = () => {
                 </div>
               </details>
               <Link
-                to="/products?collection=deals"
-                className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
-              >
-                Deals
-              </Link>
-              {/* <Link
-                to="/about"
-                className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
-              >
-                About
-              </Link> */}
-              {/* <Link
-                to="/#contact"
-                className="block rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
-              >
-                Contact
-              </Link> */}
-              <Link
                 to={session ? "/account" : "/login"}
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
               >
                 <UserRound className="h-5 w-5" />
                 {session ? accountLabel : "Login"}
               </Link>
               <Link
                 to="/wishlist"
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
               >
                 <Heart className="h-5 w-5" />
                 Wishlist
@@ -624,7 +610,7 @@ const Navbar: React.FC = () => {
               </Link>
               <Link
                 to="/cart"
-                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[var(--color-secondary)] hover:bg-[var(--color-surface)]"
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
               >
                 <ShoppingBag className="h-5 w-5" />
                 Cart

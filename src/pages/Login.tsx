@@ -79,13 +79,13 @@ const Login: React.FC = () => {
   if (session) return null;
 
   return (
-    <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-[#f7f6f2] px-6 py-12 lg:min-h-[calc(100vh-5rem)]">
+    <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-white px-6 py-12 font-sans lg:min-h-[calc(100vh-5rem)]">
       <div className="w-full min-w-0 max-w-[21.375rem] sm:max-w-[28rem]">
         <div className="flex items-center justify-center gap-4">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[#edca78] bg-[#fff8e8] text-[#d29210]" aria-hidden="true">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10 text-[var(--color-primary)]" aria-hidden="true">
             <Smartphone className="h-6 w-6" strokeWidth={1.8} />
           </span>
-          <h1 className="font-sans text-3xl font-bold leading-tight text-[#070707] sm:text-4xl">
+          <h1 className="text-3xl font-bold leading-tight text-[#070707] sm:text-4xl">
             Login with OTP
           </h1>
         </div>
@@ -94,7 +94,7 @@ const Login: React.FC = () => {
           <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="mobile">
             Mobile Number
           </label>
-          <div className="mt-3 flex h-12 overflow-hidden rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white transition focus-within:border-[#d29210] focus-within:ring-2 focus-within:ring-[#d29210]/15">
+          <div className="mt-3 flex h-12 overflow-hidden rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white transition focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/20">
             <div className="flex min-w-[4.75rem] items-center justify-center border-r border-[#e1d9cc] bg-[#fbf7ef] text-xs font-semibold text-[#3f3122]">
               IN&nbsp;<span className="text-sm">+91</span>
             </div>
@@ -123,7 +123,7 @@ const Login: React.FC = () => {
                 placeholder="4-digit OTP"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[#d29210] focus:ring-2 focus:ring-[#d29210]/15"
+                className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                 required
               />
             </div>
@@ -132,7 +132,7 @@ const Login: React.FC = () => {
           {message && <p className="mt-4 text-sm font-medium text-[#766c63]">{message}</p>}
 
           <Button
-            className="mt-6 h-12 w-full bg-[#d29210] text-sm font-bold text-white shadow-none hover:bg-[#b97f0e] hover:shadow-none"
+            className="mt-6 h-12 w-full bg-[var(--color-primary)] text-sm font-semibold text-black shadow-none hover:bg-[var(--color-primary)]/90 hover:text-black hover:shadow-none disabled:bg-[var(--color-primary)]/60 disabled:text-black/70"
             disabled={loading}
           >
             {loading ? "Please wait..." : otpSent ? "Verify OTP" : "Send OTP"}
@@ -141,11 +141,11 @@ const Login: React.FC = () => {
 
         <p className="mx-auto mt-8 max-w-[30rem] text-center text-sm leading-6 text-[#9a8e80]">
           By continuing, you agree to Nivaana's{" "}
-          <Link className="font-medium text-[#c17c00] hover:text-[#9e6500]" to="/terms">
+          <Link className="font-medium text-[var(--color-primary)] hover:text-[var(--color-primary)]/80" to="/terms">
             Terms of Service
           </Link>{" "}
           and{" "}
-          <Link className="font-medium text-[#c17c00] hover:text-[#9e6500]" to="/privacy">
+          <Link className="font-medium text-[var(--color-primary)] hover:text-[var(--color-primary)]/80" to="/privacy">
             Privacy Policy
           </Link>
           .

@@ -1,8 +1,26 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import CategoryNavigationRail from "../components/CategoryNavigationRail";
+import {
+  buildChildCategoryItems,
+  buildTopCategoryItems,
+  isKnownCategoryChildValue,
+  matchesProductCategory,
+  matchesProductChildCategory,
+  resolveActiveCategory,
+  resolveActiveChildKey,
+  type CategoryNavChildItem,
+  type CategoryNavTopItem,
+} from "../components/categoryNavigationData";
+import CategoryShowcaseBanner from "../components/CategoryShowcaseBanner";
 import ProductCard from "../components/ProductCard";
+import RecentProductRail from "../components/RecentProductRail";
+import { readRecentlyViewedProductIds } from "../lib/recentlyViewed";
 import type { Product } from "../types";
 import { platformProductService } from "../services/productPlatformService";
+
+const PRODUCTS_PAGE_SIZE = 40;
 
 const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
 
@@ -25,12 +43,16 @@ const filterAliases: Record<string, string[]> = {
   bath: ["soaps", "facewash", "handwash"],
   car_room_fresheners: ["car_&_room_fresheners"],
   dhoops: ["premium_dhoop_sticks"],
+  diffuser_oils: ["fragrance_blends"],
   diffuser_oil_refill_pack_for_machines: ["diffuser_oils"],
   floor_cleaner_concentrates: ["bath"],
   fragrance_sachets: ["wardrobe_sachets"],
+  gift_collections: ["home_decor", "table_decor"],
+  home_decor: ["gift_collections"],
   havan_cups: ["premium_havan_cups"],
-  incense_sticks: ["premium_incense_sticks"],
+  incense_sticks: ["incense", "premium_incense_sticks"],
   premium_room_mist: ["room_fresheners", "car_fresheners"],
+  room_mist: ["room_fresheners", "premium_room_mist"],
   wardrobe_sachets: ["fragrance_sachets"],
 };
 
@@ -61,58 +83,69 @@ const listValueMatches = (productValue: string | null | undefined, filterValue: 
 const formatFilterLabel = (value: string) =>
   value.replace(/_/g, " ").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
-interface FilterPill {
-  label: string;
-  param: "category" | "subcategory" | "subsubcategory";
-  value: string;
-}
-
 interface ProductsProps {
   defaultCollection?: string;
 }
 
 const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const activeCategoryPillRef = useRef<HTMLButtonElement | null>(null);
-  const activeDetailPillRef = useRef<HTMLButtonElement | null>(null);
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const category = searchParams.get("category");
   const subcategory = searchParams.get("subcategory");
   const subsubcategory = searchParams.get("subsubcategory");
   const collection = searchParams.get("collection") || defaultCollection;
   const search = searchParams.get("search");
+  const hasActiveFilter = Boolean(category || subcategory || subsubcategory || collection || search);
+  const currentCategoryRoute = useMemo(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    const queryString = nextParams.toString();
+    return `/products${queryString ? `?${queryString}` : ""}#category-top`;
+  }, [searchParams]);
+
+  const productsQuery = useInfiniteQuery({
+    queryKey: ["platform-products-list"],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => platformProductService.getProducts(pageParam, PRODUCTS_PAGE_SIZE),
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasNext && lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const products = useMemo(
+    () => (productsQuery.data?.pages ?? []).flatMap((page) => page.data ?? []),
+    [productsQuery.data?.pages]
+  );
 
   const filteredProducts = useMemo(() => {
     let result = products;
 
     if (category) {
-      result = result.filter(
-        (product) =>
-          filterValueMatches(product.category, category) ||
-          filterValueMatches(product.subcategory, category) ||
-          filterValueMatches(product.subsubcategory, category)
-      );
+      result = result.filter((product) => matchesProductCategory(product, category));
     }
 
     if (subcategory) {
-      result = result.filter(
-        (product) =>
-          filterValueMatches(product.subcategory, subcategory) ||
-          filterValueMatches(product.subsubcategory, subcategory) ||
-          filterValueMatches(product.fragnancetype, subcategory) ||
-          listValueMatches(product.fragnancetype, subcategory)
+      result = result.filter((product) =>
+        isKnownCategoryChildValue(subcategory, category)
+          ? matchesProductChildCategory(product, subcategory, category)
+          : filterValueMatches(product.subcategory, subcategory) ||
+            filterValueMatches(product.subsubcategory, subcategory) ||
+            filterValueMatches(product.fragnancetype, subcategory) ||
+            listValueMatches(product.fragnancetype, subcategory)
       );
     }
 
     if (subsubcategory) {
       result = result.filter(
         (product) =>
-          filterValueMatches(product.subsubcategory, subsubcategory) ||
-          filterValueMatches(product.fragnancetype, subsubcategory) ||
-          listValueMatches(product.fragnancetype, subsubcategory)
+          (isKnownCategoryChildValue(subsubcategory, category)
+            ? matchesProductChildCategory(product, subsubcategory, category)
+            : filterValueMatches(product.subsubcategory, subsubcategory) ||
+              filterValueMatches(product.fragnancetype, subsubcategory) ||
+              listValueMatches(product.fragnancetype, subsubcategory))
       );
     }
 
@@ -155,105 +188,30 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     return result;
   }, [category, collection, products, search, subcategory, subsubcategory]);
 
-  const addFilterOption = (map: Map<string, FilterPill>, param: FilterPill["param"], value?: string | null) => {
-    const cleanedValue = value?.trim();
-    if (!cleanedValue) return;
+  const resolvedCategory = useMemo(
+    () =>
+      resolveActiveCategory({
+        products,
+        category,
+        subcategory,
+        subsubcategory,
+      }),
+    [category, products, subcategory, subsubcategory]
+  );
 
-    const key = `${param}:${normalizeFilterKey(cleanedValue)}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        label: formatFilterLabel(cleanedValue),
-        param,
-        value: cleanedValue,
-      });
-    }
-  };
+  const topCategoryItems = useMemo(() => buildTopCategoryItems(), []);
 
-  const topCategoryOptions = useMemo<FilterPill[]>(() => {
-    const options = new Map<string, FilterPill>();
+  const childCategoryItems = useMemo(() => buildChildCategoryItems(products, resolvedCategory), [products, resolvedCategory]);
 
-    products.forEach((product) => {
-      addFilterOption(options, "category", product.category);
-    });
-
-    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [products]);
-
-  const childCategoryOptions = useMemo<FilterPill[]>(() => {
-    if (!category) return [];
-
-    const options = new Map<string, FilterPill>();
-    const categoryProducts = products.filter(
-      (product) =>
-        filterValueMatches(product.category, category) ||
-        filterValueMatches(product.subcategory, category) ||
-        filterValueMatches(product.subsubcategory, category)
-    );
-
-    categoryProducts.forEach((product) => {
-      if (!filterValueMatches(product.subcategory, category)) {
-        addFilterOption(options, "subcategory", product.subcategory);
-      }
-
-      if (!filterValueMatches(product.subsubcategory, category)) {
-        addFilterOption(options, "subsubcategory", product.subsubcategory);
-      }
-    });
-
-    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [category, products]);
-
-  const allCategoryOptions = useMemo<FilterPill[]>(() => {
-    const addOption = (map: Map<string, FilterPill>, param: FilterPill["param"], value?: string | null) => {
-      const cleanedValue = value?.trim();
-      if (!cleanedValue) return;
-
-      const key = `${param}:${normalizeFilterKey(cleanedValue)}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          label: formatFilterLabel(cleanedValue),
-          param,
-          value: cleanedValue,
-        });
-      }
-    };
-
-    const options = new Map<string, FilterPill>();
-
-    products.forEach((product) => {
-      addOption(options, "category", product.category);
-      addOption(options, "subcategory", product.subcategory);
-      addOption(options, "subsubcategory", product.subsubcategory);
-    });
-
-    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [products]);
-
-  const variantOptions = useMemo<FilterPill[]>(() => {
-    const categoryKeys = new Set(allCategoryOptions.flatMap((option) => [...filterKeyVariants(option.value)]));
-    const options = new Map<string, FilterPill>();
-
-    products.forEach((product) => {
-      product.fragnancetype
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .forEach((value) => {
-          if (categoryKeys.has(normalizeFilterKey(value))) return;
-
-          const key = normalizeFilterKey(value);
-          if (!options.has(key)) {
-            options.set(key, {
-              label: formatFilterLabel(value),
-              param: "subsubcategory",
-              value,
-            });
-          }
-        });
-    });
-
-    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [allCategoryOptions, products]);
+  const activeChildKey = useMemo(
+    () =>
+      resolveActiveChildKey({
+        childItems: childCategoryItems,
+        subcategory,
+        subsubcategory,
+      }),
+    [childCategoryItems, subcategory, subsubcategory]
+  );
 
   const pageTitle = useMemo(() => {
     if (subsubcategory) return formatFilterLabel(subsubcategory);
@@ -264,180 +222,146 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     return "Our Products";
   }, [category, collection, search, subcategory, subsubcategory]);
 
+  const listingBannerProducts = useMemo(() => {
+    const source = filteredProducts.length > 0 ? filteredProducts : products;
+    return source.slice(0, 4);
+  }, [filteredProducts, products]);
+
+  const listingBannerEyebrow = useMemo(() => {
+    if (subsubcategory) return `${formatFilterLabel(subsubcategory)} spotlight`;
+    if (subcategory) return `${formatFilterLabel(subcategory)} spotlight`;
+    if (resolvedCategory) return `${formatFilterLabel(resolvedCategory)} spotlight`;
+    if (collection) return `${formatFilterLabel(collection)} picks`;
+    if (search) return "Search spotlight";
+    return "Nivaana spotlight";
+  }, [collection, resolvedCategory, search, subcategory, subsubcategory]);
+
+  const listingBannerDescription = useMemo(() => {
+    if (subsubcategory) {
+      return `Explore standout picks from ${formatFilterLabel(subsubcategory)}, selected to keep the same mood, fragrance profile, and everyday ritual feel across this shelf.`;
+    }
+    if (subcategory) {
+      return `Browse the ${formatFilterLabel(subcategory)} collection with product formats and scent directions that stay closely aligned across the category.`;
+    }
+    if (resolvedCategory) {
+      return `A curated look at ${formatFilterLabel(resolvedCategory)}, bringing together the strongest products in this category so comparison feels quick and natural.`;
+    }
+    if (collection) {
+      return `A focused view into ${formatFilterLabel(collection)}, assembled to make browsing and comparing easier.`;
+    }
+    if (search) {
+      return `Products related to ${search}, gathered into one visual shelf so you can scan the strongest matches quickly.`;
+    }
+    return "A broad Nivaana shelf with category-led picks, everyday staples, and giftable products in one place.";
+  }, [collection, resolvedCategory, search, subcategory, subsubcategory]);
+
+  const recentlyViewedProducts = useMemo(() => {
+    if (!recentlyViewedIds.length) return [];
+
+    const productsById = new Map(products.map((item) => [item.id, item]));
+
+    return recentlyViewedIds
+      .map((itemId) => productsById.get(itemId))
+      .filter((item): item is Product => Boolean(item))
+      .slice(0, 10);
+  }, [products, recentlyViewedIds]);
+
   const showAllProducts = () => {
     setSearchParams({});
   };
 
-  const selectCategory = (option: FilterPill) => {
-    if (option.param === "category") {
-      setSearchParams({ category: option.value });
-      return;
-    }
+  const selectTopCategory = (item: CategoryNavTopItem) => {
+    setSearchParams({ category: item.value });
+  };
 
-    const nextParams: Record<string, string> = { [option.param]: option.value };
-    if (category) nextParams.category = category;
-
-    setSearchParams(nextParams);
+  const selectChildCategory = (item: CategoryNavChildItem) => {
+    setSearchParams(item.queryParams);
   };
 
   useEffect(() => {
-    const centerPill = (activePill: HTMLButtonElement | null) => {
-      const scroller = activePill?.parentElement;
-      if (!activePill || !scroller) return;
+    setRecentlyViewedIds(readRecentlyViewedProductIds());
+  }, [category, collection, search, subcategory, subsubcategory]);
 
-      scroller.scrollTo({
-        left: activePill.offsetLeft - scroller.clientWidth / 2 + activePill.clientWidth / 2,
-        behavior: "smooth",
-      });
-    };
-
-    centerPill(activeCategoryPillRef.current);
-    centerPill(activeDetailPillRef.current);
-
-    document.documentElement.scrollLeft = 0;
-    document.body.scrollLeft = 0;
-  }, [category, collection, search, subcategory, subsubcategory, topCategoryOptions, childCategoryOptions, variantOptions]);
-
-  // Fetch products on component mount
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await platformProductService.getProducts(1, 1000);
-        if (response.success) {
-          setProducts(response.data);
-        } else {
-          setError("Failed to fetch products");
-        }
-      } catch (err) {
-        setError("Failed to fetch products");
-        console.error("Error fetching products:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const node = loadMoreRef.current;
+    if (!node || !productsQuery.hasNextPage) return;
 
-    fetchProducts();
-  }, []);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (!entry?.isIntersecting || productsQuery.isFetchingNextPage) return;
+        productsQuery.fetchNextPage();
+      },
+      {
+        rootMargin: "400px 0px",
+      }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [productsQuery.fetchNextPage, productsQuery.hasNextPage, productsQuery.isFetchingNextPage]);
+
+  useEffect(() => {
+    if (
+      !hasActiveFilter ||
+      productsQuery.isLoading ||
+      productsQuery.isFetchingNextPage ||
+      !productsQuery.hasNextPage ||
+      filteredProducts.length > 0
+    ) {
+      return;
+    }
+
+    productsQuery.fetchNextPage();
+  }, [
+    filteredProducts.length,
+    hasActiveFilter,
+    productsQuery.fetchNextPage,
+    productsQuery.hasNextPage,
+    productsQuery.isFetchingNextPage,
+    productsQuery.isLoading,
+  ]);
 
   return (
     <div className="min-h-screen bg-secondary-extra-light-gray">
-      {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-secondary-dark-gray mb-2">
-            {pageTitle}
-          </h1>
-          <p className="text-lg text-secondary-medium-gray">
-            Explore our premium incense sticks, essential oils, and spiritual
-            home decor
-            {search ? ` matching "${search}"` : ""}
-          </p>
-          {topCategoryOptions.length > 0 && (
-            <div className="mt-5 space-y-3">
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                <button
-                  type="button"
-                  onClick={showAllProducts}
-                  ref={!category && !subcategory && !subsubcategory && !collection && !search ? activeCategoryPillRef : undefined}
-                  className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    !category && !subcategory && !subsubcategory && !collection && !search
-                      ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
-                      : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
-                  }`}
-                >
-                  All
-                </button>
-                {topCategoryOptions.map((option) => {
-                  const isActive = filterValueMatches(option.value, category);
-
-                  return (
-                    <button
-                      key={`${option.param}-${option.value}`}
-                      type="button"
-                      onClick={() => selectCategory(option)}
-                      ref={isActive ? activeCategoryPillRef : undefined}
-                      className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        isActive
-                          ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
-                          : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {category && childCategoryOptions.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                  {childCategoryOptions.map((option) => {
-                    const isActive =
-                      option.param === "subcategory"
-                        ? filterValueMatches(option.value, subcategory)
-                        : filterValueMatches(option.value, subsubcategory);
-
-                    return (
-                      <button
-                        key={`child-${option.param}-${option.value}`}
-                        type="button"
-                        onClick={() => selectCategory(option)}
-                        ref={isActive ? activeDetailPillRef : undefined}
-                        className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                          isActive
-                            ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
-                            : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {!category && variantOptions.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                  {variantOptions.map((option) => {
-                    const isActive = filterValueMatches(option.value, subsubcategory);
-
-                    return (
-                      <button
-                        key={`variant-${option.value}`}
-                        type="button"
-                        onClick={() => selectCategory(option)}
-                        ref={isActive ? activeDetailPillRef : undefined}
-                        className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                          isActive
-                            ? "border-primary-gold bg-primary-gold text-[var(--color-text)]"
-                            : "border-[var(--color-border)] bg-white text-[var(--color-text)] hover:border-primary-gold"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+      <div id="category-top" className="scroll-mt-24 lg:scroll-mt-28">
+        <CategoryNavigationRail
+          topItems={topCategoryItems}
+          childItems={childCategoryItems}
+          activeTopKey={resolvedCategory}
+          activeChildKey={activeChildKey}
+          onTopSelect={selectTopCategory}
+          onChildSelect={selectChildCategory}
+        />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div id="category-results" className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
         {/* Results Header */}
-        <div className="mb-6">
-          <p className="text-secondary-medium-gray mb-2 sm:mb-0">
-            Showing {filteredProducts.length} products
-          </p>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-secondary-dark-gray sm:text-3xl">{pageTitle}</h1>
+            <p className="mt-2 text-secondary-medium-gray">
+              Showing {filteredProducts.length}{productsQuery.hasNextPage ? "+" : ""} products
+              {search ? ` matching "${search}"` : ""}
+            </p>
+          </div>
+          {(category || subcategory || subsubcategory || collection || search) && (
+            <button
+              type="button"
+              onClick={showAllProducts}
+              className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--color-text)] transition hover:border-primary-gold"
+            >
+              All products
+            </button>
+          )}
         </div>
-
         {/* Products Grid */}
-        {loading ? (
+        {productsQuery.isLoading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-gold mx-auto mb-4"></div>
             <p className="text-secondary-medium-gray">Loading products...</p>
           </div>
-        ) : error ? (
+        ) : productsQuery.isError ? (
           <div className="text-center py-12">
             <svg
               className="w-16 h-16 text-red-500 mx-auto mb-4"
@@ -455,20 +379,50 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
             <h3 className="text-lg font-semibold text-secondary-dark-gray mb-2">
               Error Loading Products
             </h3>
-            <p className="text-secondary-medium-gray mb-4">{error}</p>
+            <p className="text-secondary-medium-gray mb-4">{productsQuery.error instanceof Error ? productsQuery.error.message : "Failed to fetch products"}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => productsQuery.refetch()}
               className="btn-primary"
             >
               Try Again
             </button>
           </div>
         ) : filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6">
-            {filteredProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
+              {filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} imageFit="contain" />
+              ))}
+            </div>
+
+            {recentlyViewedProducts.length > 0 && (
+              <>
+                <CategoryShowcaseBanner
+                  eyebrow={listingBannerEyebrow}
+                  title={pageTitle}
+                  description={listingBannerDescription}
+                  ctaLabel={(category || subcategory || subsubcategory || collection || search) ? "Browse all products" : "Explore collection"}
+                  ctaTo={currentCategoryRoute}
+                  products={listingBannerProducts}
+                />
+                <RecentProductRail
+                  eyebrow="Recently viewed"
+                  title="Continue browsing"
+                  products={recentlyViewedProducts}
+                />
+              </>
+            )}
+
+            <div ref={loadMoreRef} className="h-4 w-full" />
+
+            {productsQuery.isFetchingNextPage && (
+              <div className="py-8 text-center">
+                <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-b-2 border-primary-gold" />
+                <p className="text-secondary-medium-gray">Loading more products...</p>
+              </div>
+            )}
+
+          </>
         ) : (
           <div className="text-center py-12">
             <svg
