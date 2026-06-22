@@ -164,14 +164,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false, ima
       <div className={cn("relative overflow-hidden bg-[var(--color-surface)]", compact ? "aspect-[4/3.8]" : "aspect-[4/3.75]")}>
         <img
           src={getProductImage(product)}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl"
+        />
+        <img
+          src={getProductImage(product)}
           alt={displayName}
           loading="lazy"
           className={cn(
-            "h-full w-full transition duration-500",
-            imageFit === "contain" ? "object-contain" : "object-cover group-hover:scale-105"
+            "relative z-10 h-full w-full object-contain object-center transition duration-500 group-hover:scale-[1.025]",
+            imageFit === "cover" && "p-0"
           )}
         />
-        <div className="absolute left-2 top-2 flex max-w-[calc(100%-3rem)] flex-wrap gap-1.5 sm:left-3 sm:top-3 sm:gap-2">
+        <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-3rem)] flex-wrap gap-1.5 sm:left-3 sm:top-3 sm:gap-2">
           {outOfStock && (
             <span className={cn("rounded-full bg-red-600 font-bold uppercase tracking-wide text-white", compact ? "px-2 py-0.5 text-[10px]" : "px-2 py-0.5 text-[9px] sm:px-3 sm:py-1 sm:text-[11px]")}>
               Out of stock
@@ -190,7 +197,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false, ima
         </div>
         <button
           className={cn(
-            "absolute right-2 top-2 grid place-items-center rounded-full shadow-sm transition sm:right-3 sm:top-3",
+            "absolute right-2 top-2 z-20 grid place-items-center rounded-full shadow-sm transition sm:right-3 sm:top-3",
             compact ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-10 sm:w-10",
             isInWishlist
               ? "bg-[var(--color-primary)] text-[var(--color-text)] ring-2 ring-[var(--color-secondary)] hover:bg-[var(--color-primary)]"
@@ -208,7 +215,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false, ima
       </div>
 
       <div className={cn("flex flex-col", compact ? "flex-1 p-3 sm:p-3.5" : "flex-1 p-2 sm:p-3")}>
-        <h3 className={cn("line-clamp-2 font-semibold text-[var(--color-text)]", compact ? "min-h-10 text-sm leading-5 sm:min-h-11 sm:text-[15px] sm:leading-[22px]" : "min-h-8 text-xs leading-4 sm:min-h-9 sm:text-sm sm:leading-[18px]")}>
+        <h3 className={cn("line-clamp-2 min-h-12 text-[18px] font-semibold leading-6 text-[var(--color-text)]", compact && "sm:min-h-12")}>
           {displayName}
         </h3>
 

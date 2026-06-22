@@ -391,7 +391,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
           <>
             <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
               {filteredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} imageFit="contain" />
+                <ProductCard key={product.id} product={product} />
               ))}
             </div>
 

@@ -19,13 +19,13 @@ import { theme } from "../config/theme.config";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
-import { promotionalAssetService } from "../services/promotionalAssetService";
 import { ratingService } from "../services/ratingService";
-import type { Product, PromotionalAsset, PromotionalAssetContent, Rating } from "../types";
+import type { Product, Rating } from "../types";
 import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
 import heroTwo from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import fallbackProduct from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
-import carFreshenerCategory from "../assets/Carfreshner.png";
+import carFreshenerCategoryDesktop from "../assets/carfreshner_desktopview_categorycarousel.png";
+import carFreshenerCategoryMobile from "../assets/carfreshner_mobileview_category_carousel.png";
 import fragranceBlendsCategory from "../assets/Fragranceandblends.png";
 import kitchenAccessoriesCategory from "../assets/kitchenaccessories.png";
 import heroVideoOne from "../assets/i_need_a_video_for_the_hero_co.mp4";
@@ -169,7 +169,7 @@ const customerReviewFallbacks: CustomerReview[] = [
     rating: 5,
     review:
       "The incense has such a clean, calming aroma. It instantly changes the mood of the space and feels perfect for evening rituals.",
-    image: carFreshenerCategory,
+    image: carFreshenerCategoryMobile,
   },
   {
     id: 5,
@@ -186,6 +186,7 @@ type CategorySlide = {
   name: string;
   subcategory: string;
   image: string;
+  mobileImage?: string;
   to: string;
 };
 
@@ -194,6 +195,18 @@ type FlavorSlide = {
   name: string;
   image: string;
   to: string;
+};
+
+type HomeSectionConfig = {
+  section_eyebrow?: string;
+  section_title?: string;
+  link_text?: string;
+  display_limit?: number;
+  product_filter?: {
+    require_deal_flag?: boolean;
+    include_discounted?: boolean;
+    limit?: number;
+  };
 };
 
 const formatLabel = (value?: string | null) =>
@@ -233,17 +246,28 @@ const productListingQuery = (
 };
 
 const categoryCarouselImages: Record<string, string> = {
-  car_room_fresheners: carFreshenerCategory,
-  car_and_room_fresheners: carFreshenerCategory,
+  car_room_fresheners: carFreshenerCategoryDesktop,
+  car_and_room_fresheners: carFreshenerCategoryDesktop,
   fragrance_blends: fragranceBlendsCategory,
   fragrance_and_blends: fragranceBlendsCategory,
   kitchen_accessories: kitchenAccessoriesCategory,
+};
+
+const categoryCarouselMobileImages: Record<string, string> = {
+  car_room_fresheners: carFreshenerCategoryMobile,
+  car_and_room_fresheners: carFreshenerCategoryMobile,
 };
 
 const categoryCarouselImage = (...values: Array<string | null | undefined>) =>
   values
     .map((value) => normalizeCategoryKey(value))
     .map((key) => categoryCarouselImages[key])
+    .find(Boolean);
+
+const categoryCarouselMobileImage = (...values: Array<string | null | undefined>) =>
+  values
+    .map((value) => normalizeCategoryKey(value))
+    .map((key) => categoryCarouselMobileImages[key])
     .find(Boolean);
 
 const normalizeCategoryKey = (value?: string | null) =>
@@ -264,49 +288,19 @@ const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
 const heroContainer = "mx-auto w-full max-w-[1800px] px-3 sm:px-4 lg:px-8";
 const homeSection = "py-7 sm:py-8 lg:py-10";
 const fiveCardRailItem =
-  "w-[72vw] min-w-[210px] max-w-[280px] flex-none snap-start sm:w-[38vw] sm:max-w-[320px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
+  "w-[66vw] min-w-[190px] max-w-[250px] flex-none snap-start sm:w-[34vw] sm:max-w-[280px] md:w-[27vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
 const fiveCardFeatureRailItem =
   "h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
-const fourCardFeatureRailItem =
-  "h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_3rem)/4)]";
 const heroSlideIntervalMs = 8000;
 const categorySlideIntervalMs = 4500;
 const heroTimerRadius = 10;
 const heroTimerCircumference = 2 * Math.PI * heroTimerRadius;
 
-const placements = {
-  hero: "ecom_web_homepage_hero",
-  deals: "ecom_web_homepage_deal_of_day",
-  categories: "ecom_web_homepage_fragrance_categories",
-  bestSellers: "ecom_web_homepage_best_sellers",
-  newArrivals: "ecom_web_homepage_new_arrivals",
-  reviews: "ecom_web_homepage_reviews",
-  marquee: "ecom_web_homepage_brand_marquee",
-} as const;
-
-const firstSectionContent = (sections: Record<string, PromotionalAsset[]> | undefined, key: string): PromotionalAssetContent =>
-  sections?.[key]?.[0]?.content || {};
-
-const configuredHeroSlides = (assets?: PromotionalAsset[]): HeroSlide[] =>
-  (assets || [])
-    .filter((asset) => asset.content?.desktop_video_url || asset.content?.desktop_image_url || asset.content?.poster_image_url)
-    .map((asset) => ({
-      eyebrow: asset.content.eyebrow || asset.content.section_eyebrow || "",
-      title: asset.title || "Nivaana",
-      text: asset.content.body_text || asset.content.subtitle || "",
-      video: asset.content.desktop_video_url || "",
-      image: asset.content.desktop_image_url || asset.content.poster_image_url || "",
-      poster: asset.content.poster_image_url || asset.content.desktop_image_url || heroOne,
-      fit: asset.content.fit === "contain" ? "contain" : "cover",
-      ctaText: asset.content.cta_text || "Shop Now",
-      ctaUrl: asset.content.cta_url || "/products",
-    }));
-
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeCategory, setActiveCategory] = useState(0);
+  const [activeDeal, setActiveDeal] = useState(0);
   const [activeReview, setActiveReview] = useState(0);
-  const dealsScrollerRef = useRef<HTMLDivElement | null>(null);
   const flavorsScrollerRef = useRef<HTMLDivElement | null>(null);
   const bestSellersScrollerRef = useRef<HTMLDivElement | null>(null);
   const newArrivalsScrollerRef = useRef<HTMLDivElement | null>(null);
@@ -314,8 +308,6 @@ const Home: React.FC = () => {
   const heroSwipeRef = useRef({ startX: 0, startY: 0, swiping: false, tracking: false });
   const heroSwipeDistanceRef = useRef(0);
   const suppressHeroClickRef = useRef(false);
-  const dealsDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
-  const dealsDragDistanceRef = useRef(0);
   const flavorsDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
   const flavorsDragDistanceRef = useRef(0);
   const bestSellersDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
@@ -325,7 +317,7 @@ const Home: React.FC = () => {
 
   const { data, isLoading } = useQuery({
     queryKey: ["home-products"],
-    queryFn: () => platformProductService.getProducts(1, 24),
+    queryFn: () => platformProductService.getProducts(1, 100),
   });
 
   const ratingsQuery = useQuery({
@@ -333,24 +325,13 @@ const Home: React.FC = () => {
     queryFn: () => ratingService.getRatings(1, 12),
   });
 
-  const homepageConfigQuery = useQuery({
-    queryKey: ["homepage-promotional-config"],
-    queryFn: () => promotionalAssetService.getHomepageConfig(),
-    staleTime: 1000 * 60 * 5,
-  });
-
   const products = useMemo(() => data?.data ?? [], [data?.data]);
-  const homepageSections = homepageConfigQuery.data?.data.sections;
-  const heroSlidesFromConfig = useMemo(
-    () => configuredHeroSlides(homepageSections?.[placements.hero]),
-    [homepageSections]
-  );
-  const visibleHeroSlides = heroSlidesFromConfig.length ? heroSlidesFromConfig : heroSlides;
-  const dealConfig = firstSectionContent(homepageSections, placements.deals);
-  const categoryConfig = firstSectionContent(homepageSections, placements.categories);
-  const bestSellerConfig = firstSectionContent(homepageSections, placements.bestSellers);
-  const newArrivalConfig = firstSectionContent(homepageSections, placements.newArrivals);
-  const reviewConfig = firstSectionContent(homepageSections, placements.reviews);
+  const visibleHeroSlides = heroSlides;
+  const dealConfig: HomeSectionConfig = {};
+  const categoryConfig: HomeSectionConfig = {};
+  const bestSellerConfig: HomeSectionConfig = {};
+  const newArrivalConfig: HomeSectionConfig = {};
+  const reviewConfig: HomeSectionConfig = {};
   const apiCustomerReviews = useMemo<CustomerReview[]>(
     () =>
       (ratingsQuery.data?.data ?? [])
@@ -371,12 +352,11 @@ const Home: React.FC = () => {
     const filter = dealConfig.product_filter;
     const requireDealFlag = filter?.require_deal_flag ?? true;
     const includeDiscounted = filter?.include_discounted ?? true;
-    const limit = filter?.limit || dealConfig.display_limit || 4;
     const deals = products.filter((product) =>
       (requireDealFlag && product.isdealoftheday) || (includeDiscounted && product.discount > 0)
     );
-    return (deals.length ? deals : products).slice(0, limit);
-  }, [dealConfig.display_limit, dealConfig.product_filter, products]);
+    return deals.length ? deals : products;
+  }, [dealConfig.product_filter, products]);
 
   const bestSellers = useMemo(
     () => [...products].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0)).slice(0, bestSellerConfig.display_limit || bestSellerConfig.product_filter?.limit || 8),
@@ -444,6 +424,7 @@ const Home: React.FC = () => {
           name: formatLabel(category || subcategory),
           subcategory: formatLabel(subcategory || category),
           image: categoryCarouselImage(category, subcategory) || productImage(product),
+          mobileImage: categoryCarouselMobileImage(category, subcategory),
           to: `/products?${params.toString()}`,
         });
       }
@@ -464,6 +445,7 @@ const Home: React.FC = () => {
       name: "Nivaana",
       subcategory: category.label,
       image: categoryCarouselImage(category.label) || fallbackProduct,
+      mobileImage: categoryCarouselMobileImage(category.label),
       to: category.to,
     }));
   }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
@@ -490,6 +472,16 @@ const Home: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [activeCategory, categories.length]);
 
+  useEffect(() => {
+    if (dealProducts.length <= 1) return;
+
+    const timer = window.setTimeout(() => {
+      setActiveDeal((current) => wrapIndex(current + 1, dealProducts.length));
+    }, categorySlideIntervalMs);
+
+    return () => window.clearTimeout(timer);
+  }, [activeDeal, dealProducts.length]);
+
   const moveHeroSlide = (direction: number) => {
     setActiveSlide((current) => wrapIndex(current + direction, visibleHeroSlides.length));
   };
@@ -497,16 +489,6 @@ const Home: React.FC = () => {
   const moveReview = (direction: number) => {
     if (!customerReviews.length) return;
     setActiveReview((current) => wrapIndex(current + direction, customerReviews.length));
-  };
-
-  const scrollDeals = (direction: number) => {
-    const scroller = dealsScrollerRef.current;
-    if (!scroller) return;
-
-    scroller.scrollBy({
-      left: direction * Math.max(scroller.clientWidth * 0.9, 320),
-      behavior: "smooth",
-    });
   };
 
   const scrollFlavors = (direction: number) => {
@@ -565,7 +547,7 @@ const Home: React.FC = () => {
               className="relative h-[52svh] min-h-[320px] max-h-[420px] touch-pan-y select-none sm:h-[calc(100svh-15rem)] sm:min-h-[400px] sm:max-h-[540px] md:min-h-[440px] lg:h-[calc(100svh-20rem)] lg:min-h-[460px] lg:max-h-[560px]"
               onClickCapture={(event) => {
                 if (suppressHeroClickRef.current) {
-                  event.preventDefault();
+                  if (event.cancelable) event.preventDefault();
                   event.stopPropagation();
                 }
               }}
@@ -758,87 +740,12 @@ const Home: React.FC = () => {
             linkTo="/products?collection=deals"
           />
 
-          <div className="relative lg:px-16">
-            <button
-              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollDeals(-1)}
-              aria-label="Previous deals"
-            >
-              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
-            </button>
-
-            <div
-              ref={dealsScrollerRef}
-              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
-              onClickCapture={(event) => {
-                if (dealsDragDistanceRef.current > 8) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }
-              }}
-              onPointerDown={(event) => {
-                if (event.pointerType === "touch") return;
-                if (event.button !== 0) return;
-                dealsDragRef.current = {
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  scrollLeft: event.currentTarget.scrollLeft,
-                  dragging: true,
-                  horizontal: false,
-                };
-                dealsDragDistanceRef.current = 0;
-              }}
-              onPointerMove={(event) => {
-                if (event.pointerType === "touch") return;
-                if (!dealsDragRef.current.dragging) return;
-
-                const distanceX = event.clientX - dealsDragRef.current.startX;
-                const distanceY = event.clientY - dealsDragRef.current.startY;
-                const absX = Math.abs(distanceX);
-                const absY = Math.abs(distanceY);
-
-                if (!dealsDragRef.current.horizontal) {
-                  if (absY > 8 && absY > absX) {
-                    dealsDragRef.current.dragging = false;
-                    return;
-                  }
-                  if (absX <= 8 || absX <= absY * 1.15) return;
-                  dealsDragRef.current.horizontal = true;
-                }
-
-                dealsDragDistanceRef.current = absX;
-                event.preventDefault();
-                event.currentTarget.scrollLeft = dealsDragRef.current.scrollLeft - distanceX;
-              }}
-              onPointerUp={() => {
-                dealsDragRef.current.dragging = false;
-                dealsDragRef.current.horizontal = false;
-              }}
-              onPointerCancel={() => {
-                dealsDragRef.current.dragging = false;
-                dealsDragRef.current.horizontal = false;
-              }}
-            >
-              {isLoading
-                ? Array.from({ length: 6 }).map((_, index) => (
-                  <Skeleton
-                      key={index}
-                      className={fourCardFeatureRailItem}
-                    />
-                  ))
-                : dealProducts.map((product) => (
-                    <DealCard key={product.id} product={product} />
-                  ))}
-            </div>
-
-            <button
-              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollDeals(1)}
-              aria-label="Next deals"
-            >
-              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
-            </button>
-          </div>
+          <DealTripleSlider
+            activeIndex={activeDeal}
+            loading={isLoading}
+            products={dealProducts}
+            setActiveIndex={setActiveDeal}
+          />
         </div>
       </section>
 
@@ -864,7 +771,7 @@ const Home: React.FC = () => {
               className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
               onClickCapture={(event) => {
                 if (flavorsDragDistanceRef.current > 8) {
-                  event.preventDefault();
+                  if (event.cancelable) event.preventDefault();
                   event.stopPropagation();
                 }
               }}
@@ -899,7 +806,7 @@ const Home: React.FC = () => {
                 }
 
                 flavorsDragDistanceRef.current = absX;
-                event.preventDefault();
+                if (event.cancelable) event.preventDefault();
                 event.currentTarget.scrollLeft = flavorsDragRef.current.scrollLeft - distanceX;
               }}
               onPointerUp={() => {
@@ -955,7 +862,7 @@ const Home: React.FC = () => {
               className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
               onClickCapture={(event) => {
                 if (bestSellersDragDistanceRef.current > 8) {
-                  event.preventDefault();
+                  if (event.cancelable) event.preventDefault();
                   event.stopPropagation();
                 }
               }}
@@ -990,7 +897,7 @@ const Home: React.FC = () => {
                 }
 
                 bestSellersDragDistanceRef.current = absX;
-                event.preventDefault();
+                if (event.cancelable) event.preventDefault();
                 event.currentTarget.scrollLeft = bestSellersDragRef.current.scrollLeft - distanceX;
               }}
               onPointerUp={() => {
@@ -1014,7 +921,7 @@ const Home: React.FC = () => {
                       key={product.id}
                       className={fiveCardRailItem}
                     >
-                      <ProductCard product={product} compact imageFit="contain" />
+                      <ProductCard product={product} compact />
                     </div>
                   ))}
             </div>
@@ -1052,7 +959,7 @@ const Home: React.FC = () => {
               className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
               onClickCapture={(event) => {
                 if (newArrivalsDragDistanceRef.current > 8) {
-                  event.preventDefault();
+                  if (event.cancelable) event.preventDefault();
                   event.stopPropagation();
                 }
               }}
@@ -1087,7 +994,7 @@ const Home: React.FC = () => {
                 }
 
                 newArrivalsDragDistanceRef.current = absX;
-                event.preventDefault();
+                if (event.cancelable) event.preventDefault();
                 event.currentTarget.scrollLeft = newArrivalsDragRef.current.scrollLeft - distanceX;
               }}
               onPointerUp={() => {
@@ -1111,7 +1018,7 @@ const Home: React.FC = () => {
                       key={product.id}
                       className={fiveCardRailItem}
                     >
-                      <ProductCard product={product} compact imageFit="contain" />
+                      <ProductCard product={product} compact />
                     </div>
                   ))}
             </div>
@@ -1252,13 +1159,16 @@ function MidPromoBanner() {
           className="group relative block min-h-[360px] overflow-hidden rounded-[22px] bg-[#f3f2ef] shadow-[0_18px_46px_rgba(17,24,39,0.08)] sm:min-h-[420px] lg:min-h-[500px] lg:rounded-[30px]"
           aria-label="Discover Nivaana car and room fresheners"
         >
-          <img
-            src={carFreshenerCategory}
-            alt=""
-            aria-hidden="true"
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.02]"
-          />
+          <picture>
+            <source media="(min-width: 1024px)" srcSet={carFreshenerCategoryDesktop} />
+            <img
+              src={carFreshenerCategoryMobile}
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+              className="absolute inset-0 h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.02]"
+            />
+          </picture>
           <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/68 to-white/10" />
           <div className="relative z-10 flex min-h-[360px] max-w-[560px] flex-col justify-center px-7 py-10 sm:min-h-[420px] sm:px-12 lg:min-h-[500px] lg:px-20">
             <p className="text-xl font-bold text-black sm:text-2xl">
@@ -1373,7 +1283,7 @@ function CategoryTripleSlider({
   };
 
   const positions = [-1, 0, 1];
-  const sideCardScale = 0.88;
+  const sideCardScale = 0.9;
   return (
     <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:overflow-visible lg:px-24 lg:pb-0 lg:pt-1">
       <button
@@ -1389,7 +1299,7 @@ function CategoryTripleSlider({
         onClickCapture={(event) => {
           if (suppressClickRef.current) {
             suppressClickRef.current = false;
-            event.preventDefault();
+            if (event.cancelable) event.preventDefault();
             event.stopPropagation();
           }
         }}
@@ -1397,7 +1307,7 @@ function CategoryTripleSlider({
           if (wheelLockRef.current) return;
           if (Math.abs(event.deltaX) < wheelThreshold || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.2) return;
 
-          event.preventDefault();
+          if (event.cancelable) event.preventDefault();
           wheelLockRef.current = true;
           move(event.deltaX > 0 ? 1 : -1);
           window.setTimeout(() => {
@@ -1452,7 +1362,7 @@ function CategoryTripleSlider({
                 y: 0,
                 rotateY: 0,
                 scale: isCenter ? 1 : sideCardScale,
-                opacity: 1,
+                opacity: isCenter ? 1 : 0.86,
               }}
               transition={
                 isDragging
@@ -1471,15 +1381,18 @@ function CategoryTripleSlider({
               )}
             >
               <div className="relative h-full overflow-hidden bg-white">
-                <motion.img
-                  src={category.image}
-                  alt={category.name}
-                  draggable={false}
-                  loading="lazy"
-                  animate={{ scale: isCenter ? 1.01 : 1 }}
-                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                  className="pointer-events-none h-full w-full object-cover object-center"
-                />
+                <picture>
+                  <source media="(min-width: 1024px)" srcSet={category.image} />
+                  <motion.img
+                    src={category.mobileImage || category.image}
+                    alt={category.name}
+                    draggable={false}
+                    loading="lazy"
+                    animate={{ scale: isCenter ? 1.01 : 1 }}
+                    transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                    className="pointer-events-none h-full w-full object-cover object-center"
+                  />
+                </picture>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
                 <div className="absolute bottom-4 left-5 right-5 z-10 max-w-[calc(100%-2.5rem)] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:left-6 sm:right-6 sm:max-w-[76%]">
                   <p className="line-clamp-1 text-xs font-bold uppercase tracking-wide">{category.name}</p>
@@ -1524,6 +1437,192 @@ function CategoryTripleSlider({
             )}
             onClick={() => setActiveIndex(index)}
             aria-label={`Show category ${index + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DealTripleSlider({
+  activeIndex,
+  loading,
+  products,
+  setActiveIndex,
+}: {
+  activeIndex: number;
+  loading: boolean;
+  products: Product[];
+  setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
+}) {
+  const navigate = useNavigate();
+  const dragStartRef = useRef<number | null>(null);
+  const lastDragDistanceRef = useRef(0);
+  const suppressClickRef = useRef(false);
+  const wheelLockRef = useRef(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const clickThreshold = 8;
+  const swipeThreshold = 36;
+  const wheelThreshold = 28;
+
+  if (loading) {
+    return <Skeleton className="h-[300px] rounded-[28px] sm:h-[340px] lg:h-[390px]" />;
+  }
+
+  if (!products.length) return null;
+
+  const move = (direction: number) => {
+    setActiveIndex((current) => current + direction);
+  };
+
+  const openDealsPage = () => {
+    if (suppressClickRef.current || lastDragDistanceRef.current > clickThreshold) {
+      suppressClickRef.current = false;
+      return;
+    }
+
+    navigate("/products?collection=deals");
+  };
+
+  const resetDrag = () => {
+    dragStartRef.current = null;
+    setDragOffset(0);
+    setIsDragging(false);
+  };
+
+  const positions = products.length >= 3 ? [-1, 0, 1] : products.length === 2 ? [0, 1] : [0];
+  const sideCardScale = 0.88;
+
+  return (
+    <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:overflow-visible lg:px-24 lg:pb-0 lg:pt-1">
+      <button
+        className={cn("absolute left-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+        onClick={() => move(-1)}
+        aria-label="Previous deals"
+      >
+        <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+      </button>
+
+      <motion.div
+        className="relative h-[312px] cursor-grab select-none overflow-hidden touch-pan-y [perspective:1400px] active:cursor-grabbing sm:h-[352px] lg:h-[402px] lg:overflow-visible"
+        onClickCapture={(event) => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+        onWheel={(event) => {
+          if (wheelLockRef.current) return;
+          if (Math.abs(event.deltaX) < wheelThreshold || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.2) return;
+
+          if (event.cancelable) event.preventDefault();
+          wheelLockRef.current = true;
+          move(event.deltaX > 0 ? 1 : -1);
+          window.setTimeout(() => {
+            wheelLockRef.current = false;
+          }, 520);
+        }}
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest("button")) return;
+
+          dragStartRef.current = event.clientX;
+          lastDragDistanceRef.current = 0;
+          setIsDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (dragStartRef.current === null) return;
+          const distance = event.clientX - dragStartRef.current;
+          lastDragDistanceRef.current = Math.abs(distance);
+          setDragOffset(Math.max(Math.min(distance, 180), -180));
+        }}
+        onPointerUp={() => {
+          if (dragStartRef.current === null) return;
+          const distance = dragOffset;
+          const dragDistance = Math.abs(distance);
+
+          lastDragDistanceRef.current = dragDistance;
+          suppressClickRef.current = dragDistance > clickThreshold;
+          resetDrag();
+
+          if (distance < -swipeThreshold) {
+            move(1);
+          }
+
+          if (distance > swipeThreshold) {
+            move(-1);
+          }
+        }}
+        onPointerCancel={resetDrag}
+      >
+        {positions.map((position) => {
+          const product = products[wrapIndex(activeIndex + position, products.length)];
+          const isCenter = position === 0 || products.length === 1;
+          const cardX = products.length === 1 ? "-50%" : position === -1 ? "-112%" : position === 1 ? "12%" : "-50%";
+
+          return (
+            <motion.div
+              key={product.id}
+              role="link"
+              tabIndex={0}
+              initial={false}
+              onClick={openDealsPage}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate("/products?collection=deals");
+                }
+              }}
+              animate={{
+                x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
+                y: 0,
+                rotateY: 0,
+                scale: isCenter ? 1 : sideCardScale,
+                opacity: 1,
+              }}
+              transition={
+                isDragging
+                  ? { duration: 0 }
+                  : {
+                      type: "spring",
+                      stiffness: 145,
+                      damping: 24,
+                      mass: 0.9,
+                    }
+              }
+              className={cn(
+                "absolute left-1/2 top-0 h-[296px] w-[78vw] max-w-[330px] origin-center touch-pan-y will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] sm:h-[336px] sm:w-[62vw] sm:max-w-[480px] lg:h-[386px] lg:w-[40vw] lg:max-w-[560px]",
+                isCenter ? "z-10" : "z-0"
+              )}
+            >
+              <DealCard product={product} className="h-full w-full" onOpenDeals={openDealsPage} />
+            </motion.div>
+          );
+        })}
+      </motion.div>
+
+      <button
+        className={cn("absolute right-3 top-[46%] z-20 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+        onClick={() => move(1)}
+        aria-label="Next deals"
+      >
+        <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+      </button>
+
+      <div className="mt-2 flex justify-center gap-2">
+        {products.map((product, index) => (
+          <button
+            key={product.id}
+            className={cn(
+              "h-2.5 rounded-full transition-all",
+              wrapIndex(activeIndex, products.length) === index
+                ? "w-9 bg-[var(--color-secondary)]"
+                : "w-2.5 bg-[var(--color-border)]"
+            )}
+            onClick={() => setActiveIndex(index)}
+            aria-label={`Show deal ${index + 1}`}
           />
         ))}
       </div>
@@ -1580,7 +1679,7 @@ function BestOfNivaanaSection({
           className="-mx-4 flex cursor-grab snap-x snap-mandatory select-none gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-2 scrollbar-hide touch-pan-y active:cursor-grabbing sm:-mx-6 sm:gap-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:gap-8 lg:scroll-px-0 lg:px-0"
           onClickCapture={(event) => {
             if (dragDistanceRef.current > 8) {
-              event.preventDefault();
+              if (event.cancelable) event.preventDefault();
               event.stopPropagation();
             }
           }}
@@ -1616,7 +1715,7 @@ function BestOfNivaanaSection({
             }
 
             dragDistanceRef.current = absX;
-            event.preventDefault();
+            if (event.cancelable) event.preventDefault();
             event.currentTarget.scrollLeft = dragRef.current.scrollLeft - distanceX;
           }}
           onPointerUp={() => {
@@ -1682,51 +1781,76 @@ function BestOfNivaanaCard({ product }: { product: Product }) {
   );
 }
 
-function DealCard({ product }: { product: Product }) {
+function DealCard({
+  product,
+  className,
+  onOpenDeals,
+}: {
+  product: Product;
+  className?: string;
+  onOpenDeals?: () => void;
+}) {
   const badge = productDealBadge(product);
   const hasDiscount = product.discount > 0;
   const salePrice = productSalePrice(product);
   const displayName = getProductDisplayName(product);
 
   return (
-    <Link
-      to={productListingQuery(product, { collection: "deals" })}
+    <article
       className={cn(
-        "group relative overflow-hidden rounded-[var(--radius-md)] bg-white shadow-[var(--shadow-card)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)]",
-        fourCardFeatureRailItem
+        "group flex flex-col overflow-hidden rounded-[28px] border border-[#eadfce] bg-white shadow-[0_16px_38px_rgba(17,24,39,0.11)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(17,24,39,0.15)] sm:flex-row",
+        className
       )}
       aria-label={`View deals for ${displayName}`}
     >
-      <img
-        src={productImage(product)}
-        alt={displayName}
-        loading="lazy"
-        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-      />
-      {badge && (
-        <span className="absolute left-4 top-4 max-w-[calc(100%-2rem)] rounded-full bg-[var(--color-primary)] px-3 py-1 text-xs font-semibold text-black shadow-sm">
-          {badge}
-        </span>
-      )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-5 pb-5 pt-16">
-        <h3 className="line-clamp-2 text-xl font-extrabold leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+      <div className="relative flex min-h-0 flex-[1.25] items-center justify-center overflow-hidden bg-[#f8f3ea] p-3 sm:p-4">
+        <img
+          src={productImage(product)}
+          alt={displayName}
+          loading="lazy"
+          draggable={false}
+          className="h-full w-full object-contain object-center transition duration-700 group-hover:scale-[1.018]"
+        />
+        {badge && (
+          <span className="absolute left-4 top-4 max-w-[calc(100%-2rem)] rounded-full bg-[var(--color-primary)] px-3 py-1 text-xs font-semibold leading-none text-black shadow-sm">
+            {badge}
+          </span>
+        )}
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col justify-center bg-white px-4 py-4 sm:px-5">
+        <p className="mb-1 text-[11px] font-bold uppercase text-[#33405d]">Deal of the day</p>
+        <h3 className="line-clamp-2 text-base font-extrabold leading-tight text-[#111827] sm:text-lg">
           {displayName}
         </h3>
         {hasDiscount && (
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
-            <span className="text-sm font-semibold text-white/75 line-through">
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[#111827]">
+            <span className="text-sm font-semibold text-[#8a8a8a] line-through">
               Rs. {product.price.toLocaleString("en-IN")}
             </span>
-            <span className="text-lg font-bold text-white">
+            <span className="text-lg font-bold text-[#111827]">
               Rs. {salePrice.toLocaleString("en-IN")}
             </span>
-            <span className="text-xs font-semibold text-[var(--color-primary)]">
+            <span className="text-xs font-semibold text-[#b77a00]">
               Save Rs. {product.discount.toLocaleString("en-IN")}
             </span>
           </div>
         )}
+        <button
+          type="button"
+          className="mt-4 inline-flex h-10 w-fit items-center justify-center rounded-full bg-[var(--color-primary)] px-4 text-sm font-bold text-[#111827] transition hover:bg-[#d99c16]"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenDeals?.();
+          }}
+        >
+          Shop deals
+          <ChevronRight className="ml-1.5 h-4 w-4 stroke-[2.4]" />
+        </button>
       </div>
-    </Link>
+    </article>
   );
 }
 

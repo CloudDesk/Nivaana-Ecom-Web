@@ -3,7 +3,7 @@ import ProductCard from "./ProductCard";
 import type { Product } from "../types";
 
 const railItemClass =
-  "w-[72vw] min-w-[210px] max-w-[280px] flex-none snap-start sm:w-[38vw] sm:max-w-[320px] md:w-[30vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
+  "w-[66vw] min-w-[190px] max-w-[250px] flex-none snap-start sm:w-[34vw] sm:max-w-[280px] md:w-[27vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
 
 interface RecentProductRailProps {
   eyebrow: string;

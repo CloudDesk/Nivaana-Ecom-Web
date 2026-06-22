@@ -695,13 +695,17 @@ const ProductDetails: React.FC = () => {
                       }}
                       onClick={() => setSelectedImage(index)}
                       className={cn(
-                        "h-16 w-16 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white sm:h-20 sm:w-20 xl:h-24 xl:w-24",
+                        "h-16 w-16 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white p-1 sm:h-20 sm:w-20 sm:p-1.5 xl:h-24 xl:w-24",
                         selectedImage === index
                           ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]"
                           : "border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
                       )}
                     >
-                      <img src={image} alt="" className="h-full w-full rounded-2xl object-cover" />
+                      <img
+                        src={image}
+                        alt=""
+                        className="h-full w-full rounded-xl object-contain object-center"
+                      />
                     </button>
                   ))}
                 </div>

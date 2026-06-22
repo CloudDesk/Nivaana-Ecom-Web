@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CreditCard, Heart, LogOut, MapPin, PackageCheck, ShoppingBag, TicketPercent, Trash2, UserRound } from "lucide-react";
+import { Check, CreditCard, Heart, LogOut, MapPin, PackageCheck, Pencil, ShoppingBag, TicketPercent, Trash2, UserRound, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { getUserDisplayName, sessionService, type AuthSession } from "../services/sessionService";
+import { userService } from "../services/userService";
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(() => sessionService.getSession());
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [nameMessage, setNameMessage] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     const refresh = () => setSession(sessionService.getSession());
@@ -17,6 +24,63 @@ const Account: React.FC = () => {
   const handleLogout = () => {
     sessionService.clearSession();
     navigate("/", { replace: true });
+  };
+
+  const beginNameEdit = () => {
+    const currentUser = session?.user;
+    setFirstName(currentUser?.firstname?.trim() || "");
+    setLastName(currentUser?.lastname?.trim() || "");
+    setNameMessage("");
+    setNameError("");
+    setIsEditingName(true);
+  };
+
+  const cancelNameEdit = () => {
+    setIsEditingName(false);
+    setNameError("");
+  };
+
+  const handleNameUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!session) return;
+
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+
+    if (!trimmedFirstName && !trimmedLastName) {
+      setNameError("Please enter at least one name.");
+      setNameMessage("");
+      return;
+    }
+
+    setSavingName(true);
+    setNameError("");
+    setNameMessage("");
+
+    try {
+      const response = await userService.updateProfile(session.user.id, {
+        firstname: trimmedFirstName || null,
+        lastname: trimmedLastName || null,
+      });
+      const updatedUser = response.data || {
+        ...session.user,
+        firstname: trimmedFirstName || null,
+        lastname: trimmedLastName || null,
+      };
+      sessionService.saveSession({
+        token: session.token,
+        refreshToken: session.refreshToken,
+        user: updatedUser,
+      });
+      setSession({ ...session, user: updatedUser });
+      setIsEditingName(false);
+      setNameMessage("Name updated successfully.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update name. Please try again.";
+      setNameError(message);
+    } finally {
+      setSavingName(false);
+    }
   };
 
   if (!session) {
@@ -52,7 +116,68 @@ const Account: React.FC = () => {
             <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
               <UserRound className="h-8 w-8" />
             </div>
-            <h2 className="mt-5 text-xl font-bold text-[var(--color-text)]">{displayName}</h2>
+            <div className="mt-5 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Profile name</p>
+                <h2 className="mt-1 break-words text-xl font-bold text-[var(--color-text)]">{displayName}</h2>
+              </div>
+              {!isEditingName && (
+                <button
+                  type="button"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
+                  onClick={beginNameEdit}
+                  aria-label="Edit profile name"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {isEditingName && (
+              <form className="mt-4 space-y-3" onSubmit={handleNameUpdate}>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]" htmlFor="account-first-name">
+                    First name
+                  </label>
+                  <input
+                    id="account-first-name"
+                    value={firstName}
+                    onChange={(event) => setFirstName(event.target.value)}
+                    className="mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                    placeholder="Enter first name"
+                    autoComplete="given-name"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]" htmlFor="account-last-name">
+                    Last name
+                  </label>
+                  <input
+                    id="account-last-name"
+                    value={lastName}
+                    onChange={(event) => setLastName(event.target.value)}
+                    className="mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                    placeholder="Enter last name"
+                    autoComplete="family-name"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="submit" className="gap-2 px-3" disabled={savingName}>
+                    <Check className="h-4 w-4" />
+                    {savingName ? "Saving" : "Save"}
+                  </Button>
+                  <Button type="button" variant="ghost" className="gap-2 px-3" onClick={cancelNameEdit} disabled={savingName}>
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            )}
+            {(nameMessage || nameError) && (
+              <p className={nameError ? "mt-3 text-sm font-medium text-red-600" : "mt-3 text-sm font-medium text-green-700"}>
+                {nameError || nameMessage}
+              </p>
+            )}
             <div className="mt-3 space-y-1 text-sm text-[var(--color-muted)]">
               {email && <p>{email}</p>}
               {mobile && <p>{mobile}</p>}

@@ -12,11 +12,11 @@ export interface UpsertCartPayload {
 
 class CartService {
   getCart(userId: number): Promise<ApiResponse<CartItem[]>> {
-    return apiService.get<CartItem[]>(`/carts/user/${userId}`);
+    return apiService.get<CartItem[]>(`/carts?userid=${userId}&iscart=true&limit=100`);
   }
 
   getWishlist(userId: number): Promise<ApiResponse<CartItem[]>> {
-    return apiService.get<CartItem[]>(`/carts/wishlist/${userId}`);
+    return apiService.get<CartItem[]>(`/carts?userid=${userId}&iswishlist=true&limit=100`);
   }
 
   upsert(payload: UpsertCartPayload): Promise<ApiResponse<CartItem>> {
