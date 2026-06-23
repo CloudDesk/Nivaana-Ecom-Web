@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --font-app: "Google Sans";
+    --font-app: "Google Sans", "Roboto", sans-serif;
     --color-primary: #fbbc05;
     --color-secondary: #485470;
     --color-background: #ffffff;
@@ -93,7 +93,7 @@
     display: inline-flex;
     align-items: baseline;
     color: #fbbc05;
-    font-family: "Questal Bold" !important;
+    font-family: var(--font-app) !important;
     font-size: 1.4rem;
     font-weight: 700;
     letter-spacing: 0;
@@ -113,7 +113,7 @@
     position: absolute;
     top: 0.08em;
     left: calc(100% + 0.08rem);
-    font-family: "Questal Bold" !important;
+    font-family: var(--font-app) !important;
     font-size: 0.22em;
     font-weight: 700;
     line-height: 1;
@@ -122,7 +122,7 @@
   .navbar-brand-tagline {
     @apply mt-0.5 whitespace-nowrap text-[0.46rem] font-bold lg:text-[0.5rem];
     color: #fbbc05;
-    font-family: "Questal Bold" !important;
+    font-family: var(--font-app) !important;
     letter-spacing: 0;
     max-width: 100%;
     text-align: center;

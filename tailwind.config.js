@@ -21,7 +21,7 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Google Sans']
+        sans: ['Google Sans', 'Roboto', 'sans-serif']
       },
     },
   },

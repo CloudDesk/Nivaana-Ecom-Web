@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
   Heart,
+  House,
   Menu,
   Search,
   ShoppingBag,
@@ -38,7 +39,6 @@ const categoryGroups: CategoryGroup[] = [
     heading: "Incense",
     to: "/products?category=incense",
     links: [
-      { label: "Incense Sticks", to: "/products?category=incense&subcategory=incense_sticks" },
       { label: "Premium Incense Sticks", to: "/products?category=incense&subcategory=premium_incense_sticks" },
       { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
       { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
@@ -59,16 +59,8 @@ const categoryGroups: CategoryGroup[] = [
     links: [
       { label: "Premium Room Mist", to: "/products?category=car_room_fresheners&subcategory=premium_room_mist" },
       { label: "Diffuser Oils", to: "/products?category=car_room_fresheners&subcategory=diffuser_oils" },
-      { label: "Diffuser Oil Refill Pack For Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
-      {
-        label: "Diffuser Machines",
-        to: "/products?category=car_room_fresheners&subcategory=diffuser_machines",
-        children: [
-          { label: "For Car", to: "/products?category=car_room_fresheners&subcategory=for_car" },
-          { label: "For Home", to: "/products?category=car_room_fresheners&subcategory=for_home" },
-          { label: "For Hotels & Commercial Places", to: "/products?category=car_room_fresheners&subcategory=for_hotels_commercial_places" },
-        ],
-      },
+      { label: "Diffuser Oil Refill Pack", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
+      { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
     ],
   },
   {
@@ -102,10 +94,7 @@ const categoryGroups: CategoryGroup[] = [
   {
     heading: "Gift Collections",
     to: "/products?category=gift_collections",
-    links: [
-      { label: "Home Decor", to: "/products?category=gift_collections&subcategory=home_decor" },
-      { label: "Table Decor", to: "/products?category=gift_collections&subcategory=table_decor" },
-    ],
+    links: [],
   },
 ];
 
@@ -113,7 +102,7 @@ const countDistinctProducts = (items: Array<{ productid: number }>) =>
   new Set(items.map((item) => item.productid)).size;
 
 const desktopNavLinkClass =
-  "group relative inline-flex h-10 items-center whitespace-nowrap px-3 text-sm font-bold text-[#ffe0a0] transition-colors after:absolute after:bottom-1 after:left-3 after:right-3 after:h-px after:origin-left after:scale-x-0 after:rounded-full after:bg-[#fbbc05] after:transition-transform after:duration-200 hover:text-[#fbbc05] hover:after:scale-x-100 xl:px-4 xl:text-base";
+  "group relative inline-flex h-10 items-center whitespace-nowrap px-3 text-sm font-semibold text-black transition-colors after:absolute after:bottom-1 after:left-3 after:right-3 after:h-px after:origin-left after:scale-x-0 after:rounded-full after:bg-black after:transition-transform after:duration-200 hover:text-black hover:after:scale-x-100 xl:px-4 xl:text-base";
 
 const Navbar: React.FC = () => {
   const location = useLocation();
@@ -168,6 +157,7 @@ const Navbar: React.FC = () => {
   const cartCount = session ? countDistinctProducts(cartQuery.data?.data ?? []) : guestCartCount;
   const wishlistCount = session ? countDistinctProducts(wishlistQuery.data?.data ?? []) : guestWishlistCount;
   const accountLabel = session ? getUserDisplayName(session.user) : "Account";
+  const isHomeRoute = location.pathname === "/" && !location.search && !location.hash;
   const isWishlistRoute = location.pathname === "/wishlist";
   const isAccountRoute = location.pathname === "/account" || location.pathname === "/login";
   const isCartRoute = location.pathname === "/cart";
@@ -332,19 +322,31 @@ const Navbar: React.FC = () => {
           <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
             <form className="relative w-full max-w-[420px] xl:max-w-[520px]" onSubmit={handleSearchSubmit}>
               {searchBox(
-                "h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-12 pr-5 text-base text-[#ffe0a0] outline-none placeholder:text-[#ffe0a0]/65 transition focus:border-[#fbbc05]",
+                "h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-12 pr-5 text-base font-semibold text-[#fbbc05] outline-none placeholder:text-[#fbbc05] transition focus:border-[#fbbc05]",
                 "w-full"
               )}
             </form>
           </div>
 
           <div className="hidden items-center gap-3 md:flex lg:pr-6 xl:pr-10">
+            <Link to="/" onClick={handleHomeClick}>
+              <Button
+                variant="icon"
+                aria-label="Home"
+                className={cn(
+                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  isHomeRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
+                )}
+              >
+                <House className="h-5 w-5" />
+              </Button>
+            </Link>
             <Link to="/wishlist">
               <Button
                 variant="icon"
                 aria-label="Wishlist"
                 className={cn(
-                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
                   isWishlistRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
                 )}
               >
@@ -359,13 +361,13 @@ const Navbar: React.FC = () => {
                 className={cn(
                   "min-h-12",
                   session
-                    ? "h-12 max-w-52 gap-2 rounded-full border-[#fbbc05]/25 bg-[#26324a] px-4 text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]"
-                    : "w-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                    ? "h-12 max-w-52 gap-2 rounded-full border-[#fbbc05]/25 bg-[#26324a] px-4 text-[#fbbc05] hover:bg-[#3f4d6c] hover:text-[#fbbc05]"
+                    : "w-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
                   isAccountRoute && "border-[#fbbc05] bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
                 )}
               >
-                <UserRound className="h-5 w-5 shrink-0" />
-                {session && <span className="truncate text-sm font-bold">{accountLabel}</span>}
+                <UserRound className={cn("h-5 w-5 shrink-0 text-[#fbbc05]", isAccountRoute && "text-[#26324a]")} />
+                {session && <span className={cn("truncate text-sm font-bold text-[#fbbc05]", isAccountRoute && "text-[#26324a]")}>{accountLabel}</span>}
               </Button>
             </Link>
             <Link to="/cart">
@@ -373,7 +375,7 @@ const Navbar: React.FC = () => {
                 variant="icon"
                 aria-label="Cart"
                 className={cn(
-                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  "relative w-12 min-h-12 border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
                   isCartRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
                 )}
               >
@@ -386,7 +388,7 @@ const Navbar: React.FC = () => {
           <div className="flex items-center gap-1.5 md:hidden">
             <button
               type="button"
-              className="grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]"
+              className="grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]"
               onClick={() => {
                 setIsSearchOpen((value) => !value);
                 setIsMobileMenuOpen(false);
@@ -400,7 +402,7 @@ const Navbar: React.FC = () => {
               to={session ? "/account" : "/login"}
               aria-label={session ? `Account for ${accountLabel}` : "Account"}
               className={cn(
-                "grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                "grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
                 isAccountRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
               )}
             >
@@ -410,7 +412,7 @@ const Navbar: React.FC = () => {
               to="/cart"
               aria-label="Cart"
               className={cn(
-                "relative grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#ffe0a0] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                "relative grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
                 isCartRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
               )}
             >
@@ -422,15 +424,15 @@ const Navbar: React.FC = () => {
       </motion.nav>
 
       {!showsCategoryRail && (
-      <div className="relative z-40 hidden bg-[#33405d] lg:block">
+      <div className="relative z-40 hidden border-b border-[#e5e7eb] bg-white lg:block">
         <div className={cn(theme.layout.container, "flex h-11 items-center justify-center gap-1 overflow-visible whitespace-nowrap")}>
           {categoryGroups.map((group) => (
             <div
               key={group.heading}
               className="relative flex h-11 items-center"
-              onMouseEnter={() => openCategoriesMenu(group.heading)}
+              onMouseEnter={() => group.links.length > 0 && openCategoriesMenu(group.heading)}
               onMouseLeave={closeCategoriesMenu}
-              onFocus={() => openCategoriesMenu(group.heading)}
+              onFocus={() => group.links.length > 0 && openCategoriesMenu(group.heading)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
                   setActiveCategoryHeading(null);
@@ -447,61 +449,63 @@ const Navbar: React.FC = () => {
                   className={cn(
                     desktopNavLinkClass,
                     "pr-1 after:right-1",
-                    activeCategoryHeading === group.heading && "text-[#fbbc05] after:scale-x-100"
+                    activeCategoryHeading === group.heading && "text-black after:scale-x-100"
                   )}
                 >
                   {group.heading}
                 </Link>
-                <button
-                  type="button"
-                  className="grid h-10 w-8 place-items-center bg-transparent p-0 text-[#ffe0a0] transition hover:text-[#fbbc05]"
-                  aria-label={`Show ${group.heading} subcategories`}
-                  aria-expanded={activeCategoryHeading === group.heading}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    setActiveCategoryHeading((current) => (current === group.heading ? null : group.heading));
-                  }}
-                >
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 transition-transform",
-                      activeCategoryHeading === group.heading && "rotate-180"
-                    )}
-                  />
-                </button>
+                {group.links.length > 0 && (
+                  <button
+                    type="button"
+                    className="grid h-10 w-8 place-items-center bg-transparent p-0 text-black transition hover:text-black"
+                    aria-label={`Show ${group.heading} subcategories`}
+                    aria-expanded={activeCategoryHeading === group.heading}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setActiveCategoryHeading((current) => (current === group.heading ? null : group.heading));
+                    }}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 transition-transform",
+                        activeCategoryHeading === group.heading && "rotate-180"
+                      )}
+                    />
+                  </button>
+                )}
               </div>
               <AnimatePresence>
-                {activeCategoryHeading === group.heading && (
+                {group.links.length > 0 && activeCategoryHeading === group.heading && (
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
                     transition={{ duration: 0.16 }}
-                    className="absolute left-0 top-full z-50 mt-[1px] w-max min-w-full max-w-[min(26rem,calc(100vw-2rem))] rounded-[2px] border border-[#fbbc05]/25 bg-[#26324a] px-5 py-3 shadow-[var(--shadow-hover)]"
+                    className="absolute left-0 top-full z-50 mt-[1px] w-max min-w-full max-w-[min(26rem,calc(100vw-2rem))] rounded-[2px] border border-[#e5e7eb] bg-white px-5 py-3 shadow-[var(--shadow-hover)]"
                   >
                     <Link
                       to={group.to}
-                      className="mb-2 block whitespace-nowrap text-sm font-bold text-[#fbbc05] transition hover:text-[#ffe0a0]"
+                      className="mb-2 block whitespace-nowrap text-sm font-semibold text-black transition hover:text-[#485470]"
                     >
                       {group.heading}
                     </Link>
-                    <div className="h-px scale-y-[0.35] bg-[#fbbc05]/55" />
+                    <div className="h-px scale-y-[0.35] bg-[#e5e7eb]" />
                     <div className="mt-2 grid gap-1">
                       {group.links.map((item) => (
                         <div key={item.label}>
                           <Link
                             to={item.to}
-                            className="block whitespace-nowrap px-1.5 py-1 text-sm font-medium leading-snug text-[#ffe0a0] transition-colors hover:text-[#fbbc05]"
+                            className="block whitespace-nowrap px-1.5 py-1 text-sm font-semibold leading-snug text-black transition-colors hover:text-[#485470]"
                           >
                             {item.label}
                           </Link>
                           {item.children && (
-                            <div className="ml-2 mt-1 space-y-1 border-l-[0.5px] border-[#fbbc05]/30 pl-2">
+                            <div className="ml-2 mt-1 space-y-1 border-l-[0.5px] border-[#e5e7eb] pl-2">
                               {item.children.map((child) => (
                                 <Link
                                   key={child.label}
                                   to={child.to}
-                                  className="block whitespace-nowrap px-1.5 py-0.5 text-xs font-medium leading-snug text-[#ffe0a0]/85 transition-colors hover:text-[#fbbc05]"
+                                  className="block whitespace-nowrap px-1.5 py-0.5 text-xs font-semibold leading-snug text-black transition-colors hover:text-[#485470]"
                                 >
                                   {child.label}
                                 </Link>
@@ -530,7 +534,7 @@ const Navbar: React.FC = () => {
             className="border-b border-[#fbbc05]/20 bg-[#33405d] px-4 py-3 shadow-[var(--shadow-card)] md:hidden"
           >
             <form className={cn(theme.layout.container, "relative")} onSubmit={handleSearchSubmit}>
-              {searchBox("h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-14 pr-5 text-base text-[#ffe0a0] outline-none placeholder:text-[#ffe0a0]/65 focus:border-[#fbbc05] md:ml-auto md:w-[420px]")}
+              {searchBox("h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-14 pr-5 text-base font-semibold text-[#fbbc05] outline-none placeholder:text-[#fbbc05] focus:border-[#fbbc05] md:ml-auto md:w-[420px]")}
             </form>
           </motion.div>
         )}
@@ -546,7 +550,7 @@ const Navbar: React.FC = () => {
           >
             <div className={cn(theme.layout.container, "space-y-2 py-4")}>
               <form className="relative mb-3" onSubmit={handleSearchSubmit}>
-                {searchBox("h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-14 pr-5 text-base text-[#ffe0a0] outline-none placeholder:text-[#ffe0a0]/65 focus:border-[#fbbc05]")}
+                {searchBox("h-12 w-full rounded-full border border-[#fbbc05]/25 bg-[#26324a] pl-14 pr-5 text-base font-semibold text-[#fbbc05] outline-none placeholder:text-[#fbbc05] focus:border-[#fbbc05]")}
               </form>
               <details className="rounded-[var(--radius-sm)] px-3 py-3">
                 <summary className="cursor-pointer text-base font-semibold text-[#fbbc05]">
@@ -593,6 +597,14 @@ const Navbar: React.FC = () => {
                   ))}
                 </div>
               </details>
+              <Link
+                to="/"
+                onClick={handleHomeClick}
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
+              >
+                <House className="h-5 w-5" />
+                Home
+              </Link>
               <Link
                 to={session ? "/account" : "/login"}
                 className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"

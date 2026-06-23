@@ -7,6 +7,8 @@ import { paymentService, type PaymentResponseData, type TransactionRecord } from
 import { orderService, type OrderDetails, type OrderSummary } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
 
+const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
+
 const getStatusText = (data?: PaymentResponseData | null) =>
   data?.status || data?.message || data?.paymentData?.state || "Status received";
 
@@ -129,7 +131,10 @@ const Payments: React.FC = () => {
   const [message, setMessage] = useState("");
   const userId = session?.user.id;
   const returnedPaymentStatus = searchParams.get("payment");
-  const returnedMerchantTransactionId = searchParams.get("merchantTransactionId");
+  const [pendingMerchantTransactionId, setPendingMerchantTransactionId] = useState(() =>
+    searchParams.get("merchantTransactionId") || localStorage.getItem(PENDING_TRANSACTION_KEY) || ""
+  );
+  const returnedMerchantTransactionId = searchParams.get("merchantTransactionId") || pendingMerchantTransactionId;
 
   const ordersQuery = useQuery({
     queryKey: ["payments", userId],
@@ -178,6 +183,9 @@ const Payments: React.FC = () => {
       setMessage(isSuccessfulPayment(response) ? "" : getStatusText(response));
 
       if (isSuccessfulPayment(response)) {
+        localStorage.removeItem(PENDING_TRANSACTION_KEY);
+        setPendingMerchantTransactionId("");
+
         if (session?.user.id) {
           queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] });
           queryClient.invalidateQueries({ queryKey: ["orders", session.user.id] });

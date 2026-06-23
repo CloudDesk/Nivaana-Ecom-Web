@@ -12,7 +12,6 @@ import {
   Star,
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
-import { resolveProductListingParams } from "../components/categoryNavigationData";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { theme } from "../config/theme.config";
@@ -226,24 +225,7 @@ const productDealBadge = (product: Product) => {
 
 const productSalePrice = (product: Product) => Math.max(product.price - product.discount, 0);
 
-const productListingQuery = (
-  product?: Product,
-  extraParams?: Partial<Record<"category" | "subcategory" | "subsubcategory" | "collection", string>>
-) => {
-  const params = new URLSearchParams();
-  const listingParams = resolveProductListingParams(product);
-
-  if (listingParams.category) params.set("category", listingParams.category);
-  if (listingParams.subcategory) params.set("subcategory", listingParams.subcategory);
-  if (listingParams.subsubcategory) params.set("subsubcategory", listingParams.subsubcategory);
-
-  Object.entries(extraParams || {}).forEach(([key, value]) => {
-    if (!value) return;
-    params.set(key, value);
-  });
-
-  return `/products?${params.toString()}`;
-};
+const flavorListingQuery = (flavor: string) => `/products?subsubcategory=${encodeURIComponent(flavor)}`;
 
 const categoryCarouselImages: Record<string, string> = {
   car_room_fresheners: carFreshenerCategoryDesktop,
@@ -286,7 +268,7 @@ const carouselArrowClass =
   "h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
 const heroContainer = "mx-auto w-full max-w-[1800px] px-3 sm:px-4 lg:px-8";
-const homeSection = "py-7 sm:py-8 lg:py-10";
+const homeSection = "py-3 sm:py-4 lg:py-5";
 const fiveCardRailItem =
   "w-[66vw] min-w-[190px] max-w-[250px] flex-none snap-start sm:w-[34vw] sm:max-w-[280px] md:w-[27vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
 const fiveCardFeatureRailItem =
@@ -396,7 +378,7 @@ const Home: React.FC = () => {
             id: key,
             name: formatLabel(flavor),
             image: productImage(product),
-            to: productListingQuery(product, { subsubcategory: flavor }),
+            to: flavorListingQuery(flavor),
           });
         });
     });
@@ -431,6 +413,11 @@ const Home: React.FC = () => {
     });
 
     const fromApi = Array.from(categoryMap.values())
+      .filter((category) => {
+        const categoryKey = normalizeCategoryKey(category.name);
+        const subcategoryKey = normalizeCategoryKey(category.subcategory);
+        return categoryKey !== "home_decor" && subcategoryKey !== "home_decor";
+      })
       .sort((a, b) => {
         const aHasUploadedImage = Boolean(categoryCarouselImage(a.name, a.subcategory));
         const bHasUploadedImage = Boolean(categoryCarouselImage(b.name, b.subcategory));
@@ -731,7 +718,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className="bg-white pb-6 pt-0 sm:pb-7 lg:pb-8">
+      <section className="bg-white pb-3 pt-0 sm:pb-4 lg:pb-5">
         <div className={homeContainer}>
           <SectionHeader
             eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
@@ -746,96 +733,6 @@ const Home: React.FC = () => {
             products={dealProducts}
             setActiveIndex={setActiveDeal}
           />
-        </div>
-      </section>
-
-      <section className="bg-white pb-6 pt-0 sm:pb-7 lg:pb-8">
-        <div className={homeContainer}>
-          <SectionHeader
-            eyebrow="Flavours"
-            title="Shop by fragrance mood"
-            linkText="View all flavours"
-          />
-
-          <div className="relative lg:px-16">
-            <button
-              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollFlavors(-1)}
-              aria-label="Previous flavours"
-            >
-              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
-            </button>
-
-            <div
-              ref={flavorsScrollerRef}
-              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
-              onClickCapture={(event) => {
-                if (flavorsDragDistanceRef.current > 8) {
-                  if (event.cancelable) event.preventDefault();
-                  event.stopPropagation();
-                }
-              }}
-              onPointerDown={(event) => {
-                if (event.pointerType === "touch") return;
-                if (event.button !== 0) return;
-                flavorsDragRef.current = {
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  scrollLeft: event.currentTarget.scrollLeft,
-                  dragging: true,
-                  horizontal: false,
-                };
-                flavorsDragDistanceRef.current = 0;
-              }}
-              onPointerMove={(event) => {
-                if (event.pointerType === "touch") return;
-                if (!flavorsDragRef.current.dragging) return;
-
-                const distanceX = event.clientX - flavorsDragRef.current.startX;
-                const distanceY = event.clientY - flavorsDragRef.current.startY;
-                const absX = Math.abs(distanceX);
-                const absY = Math.abs(distanceY);
-
-                if (!flavorsDragRef.current.horizontal) {
-                  if (absY > 8 && absY > absX) {
-                    flavorsDragRef.current.dragging = false;
-                    return;
-                  }
-                  if (absX <= 8 || absX <= absY * 1.15) return;
-                  flavorsDragRef.current.horizontal = true;
-                }
-
-                flavorsDragDistanceRef.current = absX;
-                if (event.cancelable) event.preventDefault();
-                event.currentTarget.scrollLeft = flavorsDragRef.current.scrollLeft - distanceX;
-              }}
-              onPointerUp={() => {
-                flavorsDragRef.current.dragging = false;
-                flavorsDragRef.current.horizontal = false;
-              }}
-              onPointerCancel={() => {
-                flavorsDragRef.current.dragging = false;
-                flavorsDragRef.current.horizontal = false;
-              }}
-            >
-              {isLoading
-                ? Array.from({ length: 6 }).map((_, index) => (
-                  <Skeleton
-                      key={index}
-                      className={fiveCardFeatureRailItem}
-                    />
-                  ))
-                : flavors.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
-            </div>
-
-            <button
-              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollFlavors(1)}
-              aria-label="Next flavours"
-            >
-              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
-            </button>
-          </div>
         </div>
       </section>
 
@@ -937,7 +834,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      <section className={cn(theme.layout.section, "bg-white")}>
+      <section className={cn(homeSection, "bg-white")}>
         <div className={homeContainer}>
           <SectionHeader
             eyebrow={newArrivalConfig.section_eyebrow || "New arrivals"}
@@ -1027,6 +924,96 @@ const Home: React.FC = () => {
               className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
               onClick={() => scrollNewArrivals(1)}
               aria-label="Next new arrivals"
+            >
+              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className={cn(homeSection, "bg-white")}>
+        <div className={homeContainer}>
+          <SectionHeader
+            eyebrow="Flavours"
+            title="Shop by fragrance mood"
+            linkText="View all flavours"
+          />
+
+          <div className="relative lg:px-16">
+            <button
+              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              onClick={() => scrollFlavors(-1)}
+              aria-label="Previous flavours"
+            >
+              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+            </button>
+
+            <div
+              ref={flavorsScrollerRef}
+              className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-3 scrollbar-hide touch-auto active:cursor-grabbing sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:gap-4 lg:mx-0 lg:scroll-px-0 lg:px-0"
+              onClickCapture={(event) => {
+                if (flavorsDragDistanceRef.current > 8) {
+                  if (event.cancelable) event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onPointerDown={(event) => {
+                if (event.pointerType === "touch") return;
+                if (event.button !== 0) return;
+                flavorsDragRef.current = {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  scrollLeft: event.currentTarget.scrollLeft,
+                  dragging: true,
+                  horizontal: false,
+                };
+                flavorsDragDistanceRef.current = 0;
+              }}
+              onPointerMove={(event) => {
+                if (event.pointerType === "touch") return;
+                if (!flavorsDragRef.current.dragging) return;
+
+                const distanceX = event.clientX - flavorsDragRef.current.startX;
+                const distanceY = event.clientY - flavorsDragRef.current.startY;
+                const absX = Math.abs(distanceX);
+                const absY = Math.abs(distanceY);
+
+                if (!flavorsDragRef.current.horizontal) {
+                  if (absY > 8 && absY > absX) {
+                    flavorsDragRef.current.dragging = false;
+                    return;
+                  }
+                  if (absX <= 8 || absX <= absY * 1.15) return;
+                  flavorsDragRef.current.horizontal = true;
+                }
+
+                flavorsDragDistanceRef.current = absX;
+                if (event.cancelable) event.preventDefault();
+                event.currentTarget.scrollLeft = flavorsDragRef.current.scrollLeft - distanceX;
+              }}
+              onPointerUp={() => {
+                flavorsDragRef.current.dragging = false;
+                flavorsDragRef.current.horizontal = false;
+              }}
+              onPointerCancel={() => {
+                flavorsDragRef.current.dragging = false;
+                flavorsDragRef.current.horizontal = false;
+              }}
+            >
+              {isLoading
+                ? Array.from({ length: 6 }).map((_, index) => (
+                  <Skeleton
+                      key={index}
+                      className={fiveCardFeatureRailItem}
+                    />
+                  ))
+                : flavors.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
+            </div>
+
+            <button
+              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+              onClick={() => scrollFlavors(1)}
+              aria-label="Next flavours"
             >
               <ChevronRight className="h-5 w-5 stroke-[2.4]" />
             </button>
@@ -1252,6 +1239,7 @@ function CategoryTripleSlider({
   const navigate = useNavigate();
   const dragStartRef = useRef<number | null>(null);
   const lastDragDistanceRef = useRef(0);
+  const pendingClickCategoryRef = useRef<CategorySlide | null>(null);
   const suppressClickRef = useRef(false);
   const wheelLockRef = useRef(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -1276,8 +1264,13 @@ function CategoryTripleSlider({
     setActiveIndex((current) => current + direction);
   };
 
+  const openCategory = (category: CategorySlide) => {
+    navigate(category.to);
+  };
+
   const resetDrag = () => {
     dragStartRef.current = null;
+    pendingClickCategoryRef.current = null;
     setDragOffset(0);
     setIsDragging(false);
   };
@@ -1317,7 +1310,11 @@ function CategoryTripleSlider({
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button")) return;
 
+          const card = (event.target as HTMLElement).closest<HTMLElement>("[data-category-index]");
+          const categoryIndex = card?.dataset.categoryIndex ? Number(card.dataset.categoryIndex) : NaN;
+
           dragStartRef.current = event.clientX;
+          pendingClickCategoryRef.current = Number.isFinite(categoryIndex) ? categories[categoryIndex] : null;
           lastDragDistanceRef.current = 0;
           setIsDragging(true);
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -1332,10 +1329,16 @@ function CategoryTripleSlider({
           if (dragStartRef.current === null) return;
           const distance = event.clientX - dragStartRef.current;
           const dragDistance = Math.abs(distance);
+          const pendingCategory = pendingClickCategoryRef.current;
 
           lastDragDistanceRef.current = dragDistance;
           suppressClickRef.current = dragDistance > clickThreshold;
           resetDrag();
+
+          if (pendingCategory && dragDistance <= clickThreshold) {
+            openCategory(pendingCategory);
+            return;
+          }
 
           if (distance < -swipeThreshold) {
             move(1);
@@ -1355,8 +1358,17 @@ function CategoryTripleSlider({
           return (
             <motion.article
               key={category.id}
-              onClick={() => navigate(category.to)}
+              data-category-index={wrapIndex(activeIndex + position, categories.length)}
+              role="link"
+              tabIndex={0}
+              aria-label={`Explore ${category.subcategory}`}
               initial={false}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openCategory(category);
+                }
+              }}
               animate={{
                 x: isDragging ? `calc(${cardX} + ${dragOffset}px)` : cardX,
                 y: 0,
@@ -1406,7 +1418,7 @@ function CategoryTripleSlider({
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
-                    navigate(category.to);
+                    openCategory(category);
                   }}
                 >
                   Explore <ChevronRight className="ml-1 h-3.5 w-3.5" />
@@ -1647,9 +1659,9 @@ function BestOfNivaanaSection({
   if (!loading && !products.length) return null;
 
   return (
-    <section className="bg-white py-8 sm:py-12 lg:py-14">
+    <section className="bg-white pb-4 pt-0 sm:pb-5 lg:pb-6">
       <div className={homeContainer}>
-        <div className="mb-5 flex items-center justify-between gap-3 sm:mb-8 sm:gap-4">
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-5 sm:gap-4">
           <h2 className="min-w-0 text-3xl font-bold leading-tight text-[var(--color-text)] sm:text-4xl">
             Best of Nivaana
           </h2>

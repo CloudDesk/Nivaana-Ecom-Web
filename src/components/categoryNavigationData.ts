@@ -126,15 +126,6 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
     icon: Flame,
     childItems: [
       {
-        label: "Incense Sticks",
-        value: "incense_sticks",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["incense sticks", "incense stick", "sub category incense sticks"],
-          excludeAny: ["premium incense", "dhoop", "havan cup"],
-        },
-      },
-      {
         label: "Premium Incense Sticks",
         value: "premium_incense_sticks",
         param: "subcategory",
@@ -171,7 +162,7 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
         param: "subcategory",
         matcher: {
           includeAny: ["room mist", "room freshener", "room fresheners", "room freshners"],
-          excludeAny: ["car freshener", "car fresheners", "diffuser"],
+          excludeAny: ["car freshener", "car fresheners", "diffuser", "fragrance sachet", "fragrance sachets", "premium fragrance sachet", "wardrobe sachet", "wardrobe sachets", "sachet"],
         },
       },
       {
@@ -184,7 +175,7 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
         },
       },
       {
-        label: "Diffuser Oil Refill Pack For Machines",
+        label: "Diffuser Oil Refill Pack",
         value: "diffuser_oil_refill_pack_for_machines",
         param: "subcategory",
         matcher: {
@@ -198,33 +189,6 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
         matcher: {
           includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
           excludeAny: ["diffuser oil", "refill pack"],
-        },
-      },
-      {
-        label: "For Car",
-        value: "for_car",
-        param: "subsubcategory",
-        queryParams: { category: "car_room_fresheners", subcategory: "for_car" },
-        matcher: {
-          includeAny: ["for car", "car freshener", "car fresheners"],
-        },
-      },
-      {
-        label: "For Home",
-        value: "for_home",
-        param: "subsubcategory",
-        queryParams: { category: "car_room_fresheners", subcategory: "for_home" },
-        matcher: {
-          includeAny: ["for home"],
-        },
-      },
-      {
-        label: "For Hotels & Commercial Places",
-        value: "for_hotels_commercial_places",
-        param: "subsubcategory",
-        queryParams: { category: "car_room_fresheners", subcategory: "for_hotels_commercial_places" },
-        matcher: {
-          includeAny: ["for hotels", "commercial places", "commercial place", "hotel use"],
         },
       },
     ],
@@ -248,7 +212,6 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
         param: "subcategory",
         matcher: {
           includeAny: ["fragrance blends", "fragrance blend"],
-          excludeAny: ["diffuser oil", "diffuser oils", "aromatic blends"],
         },
       },
       {

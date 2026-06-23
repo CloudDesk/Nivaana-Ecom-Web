@@ -783,7 +783,7 @@ const ProductDetails: React.FC = () => {
                     >
                       <Minus className="h-4 w-4" />
                     </button>
-                    <span className="min-w-10 px-1 text-center text-sm font-bold sm:min-w-14">Qty {displayedQuantity}</span>
+                    <span className="min-w-10 px-1 text-center text-sm font-bold sm:min-w-14">{displayedQuantity}</span>
                     <button
                       type="button"
                       className="grid h-full w-10 place-items-center transition hover:bg-white disabled:opacity-40 sm:w-12"
