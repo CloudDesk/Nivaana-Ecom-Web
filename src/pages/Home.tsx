@@ -8,8 +8,13 @@ import {
   ChevronRight,
   Clock,
   HeartHandshake,
+  Percent,
+  ShoppingBag,
   Sparkles,
   Star,
+  Tag,
+  TicketPercent,
+  Truck,
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import { Button } from "../components/ui/button";
@@ -18,6 +23,7 @@ import { theme } from "../config/theme.config";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
+import { promotionService, type Promotion } from "../services/promotionService";
 import { ratingService } from "../services/ratingService";
 import type { Product, Rating } from "../types";
 import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
@@ -29,7 +35,6 @@ import fragranceBlendsCategory from "../assets/Fragranceandblends.png";
 import kitchenAccessoriesCategory from "../assets/kitchenaccessories.png";
 import heroVideoOne from "../assets/i_need_a_video_for_the_hero_co.mp4";
 import heroVideoTwo from "../assets/I_need_a_video_with_insence_st.mp4";
-import heroVideoThree from "../assets/I_need_togenrate_a_video_for_t.mp4";
 import heroVideoFour from "../assets/Need_to_genarate_a_video_in_la.mp4";
 
 type HeroSlide = {
@@ -64,17 +69,6 @@ const heroSlides: HeroSlide[] = [
     image: "",
     poster: heroTwo,
     fit: "cover",
-    ctaText: "Shop Now",
-    ctaUrl: "/products",
-  },
-  {
-    eyebrow: "Deal of the Day",
-    title: "Bring Home Daily Serenity",
-    text: "Shop limited-time offers across incense sticks, car fresheners, fragrance sachets, and wellness blends.",
-    video: heroVideoThree,
-    image: "",
-    poster: heroOne,
-    fit: "contain",
     ctaText: "Shop Now",
     ctaUrl: "/products",
   },
@@ -217,15 +211,76 @@ const usableImage = (images?: string[] | null) =>
 const productImage = (product?: Product) =>
   usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || fallbackProduct;
 
-const productDealBadge = (product: Product) => {
-  if (product.discount > 0) return `Save Rs. ${product.discount.toLocaleString("en-IN")}`;
-  if (product.isdealoftheday) return "Deal Of The Day";
-  return null;
+const flavorListingQuery = (flavor: string) => `/products?subsubcategory=${encodeURIComponent(flavor)}`;
+
+const toDateTimestamp = (value?: number | string | null) => {
+  if (!value) return "";
+  if (typeof value === "number") return value > 0 && value < 1_000_000_000_000 ? value * 1000 : value;
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return "";
+
+  const numericValue = Number(trimmedValue);
+  if (Number.isFinite(numericValue)) {
+    return numericValue > 0 && numericValue < 1_000_000_000_000 ? numericValue * 1000 : numericValue;
+  }
+
+  const timestamp = Date.parse(trimmedValue);
+  return Number.isFinite(timestamp) ? timestamp : "";
 };
 
-const productSalePrice = (product: Product) => Math.max(product.price - product.discount, 0);
+const formatPromotionDate = (value?: number | string | null, timeZone?: string | null) => {
+  const timestamp = toDateTimestamp(value);
+  if (!timestamp) return "";
 
-const flavorListingQuery = (flavor: string) => `/products?subsubcategory=${encodeURIComponent(flavor)}`;
+  try {
+    return new Intl.DateTimeFormat("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      ...(timeZone ? { timeZone } : {}),
+    }).format(timestamp);
+  } catch {
+    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(timestamp);
+  }
+};
+
+const promotionDiscountLabel = (promotion: Promotion) => {
+  const discountType = promotion.discount_type?.toUpperCase() || promotion.type?.toUpperCase() || "";
+  const actionType = promotion.action?.type?.toUpperCase() || "";
+  const value = Number(promotion.discount_value ?? promotion.action?.value ?? 0);
+
+  if (discountType.includes("FREE_SHIPPING") || actionType.includes("FREE_SHIPPING")) return "Free ship";
+  if (discountType.includes("BOGO") || actionType.includes("BOGO")) return "BOGO";
+  if (discountType.includes("FREE_PRODUCT") || actionType.includes("FREE_PRODUCT")) return "Free gift";
+  if (discountType.includes("PERCENT") && value > 0) return `${value}% off`;
+  if (value > 0) return `Rs. ${value.toLocaleString("en-IN")} off`;
+  return "Special";
+};
+
+const promotionIcon = (promotion: Promotion) => {
+  const type = promotion.type?.toUpperCase() || promotion.action?.type?.toUpperCase() || "";
+  if (type.includes("FREE_SHIPPING")) return Truck;
+  if (type.includes("PERCENT")) return Percent;
+  if (type.includes("BOGO") || type.includes("FREE_PRODUCT")) return ShoppingBag;
+  if (promotion.code) return TicketPercent;
+  return Tag;
+};
+
+const promotionGradient = (index: number) =>
+  [
+    "from-[#ff6b6b] via-[#f78978] to-[#ffbd59]",
+    "from-[#4ecdc4] via-[#5fbf99] to-[#f4d35e]",
+    "from-[#7986cb] via-[#9c6ade] to-[#ff8fab]",
+    "from-[#42a5f5] via-[#26a69a] to-[#66bb6a]",
+    "from-[#fbbc05] via-[#f59e0b] to-[#ef6c57]",
+  ][index % 5];
+
+const promotionProductListPath = (promotion?: Promotion) => {
+  const params = new URLSearchParams({ title: "Special Deals" });
+  if (promotion?.id) params.set("offerId", String(promotion.id));
+  return `/products?${params.toString()}`;
+};
 
 const categoryCarouselImages: Record<string, string> = {
   car_room_fresheners: carFreshenerCategoryDesktop,
@@ -307,7 +362,20 @@ const Home: React.FC = () => {
     queryFn: () => ratingService.getRatings(1, 12),
   });
 
+  const promotionsQuery = useQuery({
+    queryKey: ["home-promotion-deals"],
+    queryFn: () =>
+      promotionService.list({
+        channel: "web",
+        geo: "IN",
+        status: "active",
+        visibility: "public",
+        limit: 10,
+      }),
+  });
+
   const products = useMemo(() => data?.data ?? [], [data?.data]);
+  const dealPromotions = useMemo(() => promotionsQuery.data?.data ?? [], [promotionsQuery.data?.data]);
   const visibleHeroSlides = heroSlides;
   const dealConfig: HomeSectionConfig = {};
   const categoryConfig: HomeSectionConfig = {};
@@ -329,16 +397,6 @@ const Home: React.FC = () => {
     [products, ratingsQuery.data?.data]
   );
   const customerReviews = apiCustomerReviews.length ? apiCustomerReviews : customerReviewFallbacks;
-
-  const dealProducts = useMemo(() => {
-    const filter = dealConfig.product_filter;
-    const requireDealFlag = filter?.require_deal_flag ?? true;
-    const includeDiscounted = filter?.include_discounted ?? true;
-    const deals = products.filter((product) =>
-      (requireDealFlag && product.isdealoftheday) || (includeDiscounted && product.discount > 0)
-    );
-    return deals.length ? deals : products;
-  }, [dealConfig.product_filter, products]);
 
   const bestSellers = useMemo(
     () => [...products].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0)).slice(0, bestSellerConfig.display_limit || bestSellerConfig.product_filter?.limit || 8),
@@ -460,14 +518,14 @@ const Home: React.FC = () => {
   }, [activeCategory, categories.length]);
 
   useEffect(() => {
-    if (dealProducts.length <= 1) return;
+    if (dealPromotions.length <= 1) return;
 
     const timer = window.setTimeout(() => {
-      setActiveDeal((current) => wrapIndex(current + 1, dealProducts.length));
+      setActiveDeal((current) => wrapIndex(current + 1, dealPromotions.length));
     }, categorySlideIntervalMs);
 
     return () => window.clearTimeout(timer);
-  }, [activeDeal, dealProducts.length]);
+  }, [activeDeal, dealPromotions.length]);
 
   const moveHeroSlide = (direction: number) => {
     setActiveSlide((current) => wrapIndex(current + direction, visibleHeroSlides.length));
@@ -721,16 +779,16 @@ const Home: React.FC = () => {
       <section className="bg-white pb-3 pt-0 sm:pb-4 lg:pb-5">
         <div className={homeContainer}>
           <SectionHeader
-            eyebrow={dealConfig.section_eyebrow || "Deal of the day"}
-            title={dealConfig.section_title || "Limited-time Nivaana picks"}
+            eyebrow={dealConfig.section_eyebrow || "Deals for you"}
+            title={dealConfig.section_title || "Limited-time Nivaana offers"}
             linkText={dealConfig.link_text || "Shop deals"}
-            linkTo="/products?collection=deals"
+            linkTo={promotionProductListPath()}
           />
 
           <DealTripleSlider
             activeIndex={activeDeal}
-            loading={isLoading}
-            products={dealProducts}
+            loading={promotionsQuery.isLoading}
+            promotions={dealPromotions}
             setActiveIndex={setActiveDeal}
           />
         </div>
@@ -1459,17 +1517,18 @@ function CategoryTripleSlider({
 function DealTripleSlider({
   activeIndex,
   loading,
-  products,
+  promotions,
   setActiveIndex,
 }: {
   activeIndex: number;
   loading: boolean;
-  products: Product[];
+  promotions: Promotion[];
   setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const navigate = useNavigate();
   const dragStartRef = useRef<number | null>(null);
   const lastDragDistanceRef = useRef(0);
+  const pendingClickPromotionRef = useRef<Promotion | null>(null);
   const suppressClickRef = useRef(false);
   const wheelLockRef = useRef(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -1482,28 +1541,29 @@ function DealTripleSlider({
     return <Skeleton className="h-[300px] rounded-[28px] sm:h-[340px] lg:h-[390px]" />;
   }
 
-  if (!products.length) return null;
+  if (!promotions.length) return null;
 
   const move = (direction: number) => {
     setActiveIndex((current) => current + direction);
   };
 
-  const openDealsPage = () => {
+  const openDealsPage = (promotion: Promotion) => {
     if (suppressClickRef.current || lastDragDistanceRef.current > clickThreshold) {
       suppressClickRef.current = false;
       return;
     }
 
-    navigate("/products?collection=deals");
+    navigate(promotionProductListPath(promotion));
   };
 
   const resetDrag = () => {
     dragStartRef.current = null;
+    pendingClickPromotionRef.current = null;
     setDragOffset(0);
     setIsDragging(false);
   };
 
-  const positions = products.length >= 3 ? [-1, 0, 1] : products.length === 2 ? [0, 1] : [0];
+  const positions = promotions.length >= 3 ? [-1, 0, 1] : promotions.length === 2 ? [0, 1] : [0];
   const sideCardScale = 0.88;
 
   return (
@@ -1539,7 +1599,11 @@ function DealTripleSlider({
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button")) return;
 
+          const card = (event.target as HTMLElement).closest<HTMLElement>("[data-promotion-index]");
+          const promotionIndex = card?.dataset.promotionIndex ? Number(card.dataset.promotionIndex) : NaN;
+
           dragStartRef.current = event.clientX;
+          pendingClickPromotionRef.current = Number.isFinite(promotionIndex) ? promotions[promotionIndex] : null;
           lastDragDistanceRef.current = 0;
           setIsDragging(true);
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -1554,10 +1618,16 @@ function DealTripleSlider({
           if (dragStartRef.current === null) return;
           const distance = dragOffset;
           const dragDistance = Math.abs(distance);
+          const pendingPromotion = pendingClickPromotionRef.current;
 
           lastDragDistanceRef.current = dragDistance;
           suppressClickRef.current = dragDistance > clickThreshold;
           resetDrag();
+
+          if (pendingPromotion && dragDistance <= clickThreshold) {
+            openDealsPage(pendingPromotion);
+            return;
+          }
 
           if (distance < -swipeThreshold) {
             move(1);
@@ -1570,21 +1640,22 @@ function DealTripleSlider({
         onPointerCancel={resetDrag}
       >
         {positions.map((position) => {
-          const product = products[wrapIndex(activeIndex + position, products.length)];
-          const isCenter = position === 0 || products.length === 1;
-          const cardX = products.length === 1 ? "-50%" : position === -1 ? "-112%" : position === 1 ? "12%" : "-50%";
+          const promotionIndex = wrapIndex(activeIndex + position, promotions.length);
+          const promotion = promotions[promotionIndex];
+          const isCenter = position === 0 || promotions.length === 1;
+          const cardX = promotions.length === 1 ? "-50%" : position === -1 ? "-112%" : position === 1 ? "12%" : "-50%";
 
           return (
             <motion.div
-              key={product.id}
+              key={promotion.id}
+              data-promotion-index={promotionIndex}
               role="link"
               tabIndex={0}
               initial={false}
-              onClick={openDealsPage}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  navigate("/products?collection=deals");
+                  navigate(promotionProductListPath(promotion));
                 }
               }}
               animate={{
@@ -1605,11 +1676,16 @@ function DealTripleSlider({
                     }
               }
               className={cn(
-                "absolute left-1/2 top-0 h-[296px] w-[78vw] max-w-[330px] origin-center touch-pan-y will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] sm:h-[336px] sm:w-[62vw] sm:max-w-[480px] lg:h-[386px] lg:w-[40vw] lg:max-w-[560px]",
+                "absolute left-1/2 top-0 h-[296px] w-[78vw] max-w-[330px] origin-center cursor-pointer touch-pan-y will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] sm:h-[336px] sm:w-[62vw] sm:max-w-[480px] lg:h-[386px] lg:w-[40vw] lg:max-w-[560px]",
                 isCenter ? "z-10" : "z-0"
               )}
             >
-              <DealCard product={product} className="h-full w-full" onOpenDeals={openDealsPage} />
+              <DealCard
+                promotion={promotion}
+                index={promotionIndex}
+                className="h-full w-full"
+                onOpenDeals={() => openDealsPage(promotion)}
+              />
             </motion.div>
           );
         })}
@@ -1624,12 +1700,12 @@ function DealTripleSlider({
       </button>
 
       <div className="mt-2 flex justify-center gap-2">
-        {products.map((product, index) => (
+        {promotions.map((promotion, index) => (
           <button
-            key={product.id}
+            key={promotion.id}
             className={cn(
               "h-2.5 rounded-full transition-all",
-              wrapIndex(activeIndex, products.length) === index
+              wrapIndex(activeIndex, promotions.length) === index
                 ? "w-9 bg-[var(--color-secondary)]"
                 : "w-2.5 bg-[var(--color-border)]"
             )}
@@ -1794,78 +1870,84 @@ function BestOfNivaanaCard({ product }: { product: Product }) {
 }
 
 function DealCard({
-  product,
+  promotion,
+  index,
   className,
   onOpenDeals,
 }: {
-  product: Product;
+  promotion: Promotion;
+  index: number;
   className?: string;
   onOpenDeals?: () => void;
 }) {
-  const badge = productDealBadge(product);
-  const hasDiscount = product.discount > 0;
-  const salePrice = productSalePrice(product);
-  const displayName = getProductDisplayName(product);
+  const Icon = promotionIcon(promotion);
+  const discountLabel = promotionDiscountLabel(promotion);
+  const validity = formatPromotionDate(promotion.end_date, promotion.timezone);
 
   return (
     <article
       className={cn(
-        "group flex flex-col overflow-hidden rounded-[28px] border border-[#eadfce] bg-white shadow-[0_16px_38px_rgba(17,24,39,0.11)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(17,24,39,0.15)] sm:flex-row",
+        "group relative isolate flex flex-col overflow-hidden rounded-[28px] border border-white/45 bg-gradient-to-br text-white shadow-[0_16px_38px_rgba(17,24,39,0.11)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(17,24,39,0.15)]",
+        promotionGradient(index),
         className
       )}
-      aria-label={`View deals for ${displayName}`}
+      aria-label={`View deal ${promotion.name}`}
     >
-      <div className="relative flex min-h-0 flex-[1.25] items-center justify-center overflow-hidden bg-[#f8f3ea] p-3 sm:p-4">
-        <img
-          src={productImage(product)}
-          alt={displayName}
-          loading="lazy"
-          draggable={false}
-          className="h-full w-full object-contain object-center transition duration-700 group-hover:scale-[1.018]"
-        />
-        {badge && (
-          <span className="absolute left-4 top-4 max-w-[calc(100%-2rem)] rounded-full bg-[var(--color-primary)] px-3 py-1 text-xs font-semibold leading-none text-black shadow-sm">
-            {badge}
-          </span>
-        )}
-      </div>
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.28),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.18),transparent_45%)]" />
 
-      <div className="flex min-h-0 flex-1 flex-col justify-center bg-white px-4 py-4 sm:px-5">
-        <p className="mb-1 text-[11px] font-bold uppercase text-[#33405d]">Deal of the day</p>
-        <h3 className="line-clamp-2 text-base font-extrabold leading-tight text-[#111827] sm:text-lg">
-          {displayName}
-        </h3>
-        {hasDiscount && (
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[#111827]">
-            <span className="text-sm font-semibold text-[#8a8a8a] line-through">
-              Rs. {product.price.toLocaleString("en-IN")}
-            </span>
-            <span className="text-lg font-bold text-[#111827]">
-              Rs. {salePrice.toLocaleString("en-IN")}
-            </span>
-            <span className="text-xs font-semibold text-[#b77a00]">
-              Save Rs. {product.discount.toLocaleString("en-IN")}
-            </span>
+      <div className="flex min-h-0 flex-1 flex-col p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/20 text-white ring-1 ring-white/20">
+            <Icon className="h-6 w-6 stroke-[2.4]" />
+          </span>
+          <span className="max-w-[48%] rounded-[14px] bg-white/18 px-4 py-2 text-center text-xs font-extrabold uppercase tracking-[0.08em] text-white ring-1 ring-white/24 sm:text-sm">
+            {discountLabel}
+          </span>
+        </div>
+
+        <div className="mt-6 min-h-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/80">Exclusive offer</p>
+          <h3 className="mt-2 line-clamp-2 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+            {promotion.name}
+          </h3>
+          {promotion.description && (
+            <p className="mt-3 line-clamp-2 text-sm font-medium leading-6 text-white/85 sm:text-base">
+              {promotion.description}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-auto flex flex-wrap items-end justify-between gap-4 pt-5">
+          <div className="min-w-0 space-y-2">
+            {promotion.code ? (
+              <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-white/16 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-white ring-1 ring-white/24">
+                <TicketPercent className="h-4 w-4 shrink-0" />
+                <span className="truncate">{promotion.code}</span>
+              </div>
+            ) : (
+              validity && <p className="text-sm font-semibold italic text-white/80">Valid until {validity}</p>
+            )}
+            {promotion.code && validity && <p className="text-xs font-semibold italic text-white/75">Valid until {validity}</p>}
           </div>
-        )}
-        <button
-          type="button"
-          className="mt-4 inline-flex h-10 w-fit items-center justify-center rounded-full bg-[var(--color-primary)] px-4 text-sm font-bold text-[#111827] transition hover:bg-[#d99c16]"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onOpenDeals?.();
-          }}
-        >
-          Shop deals
-          <ChevronRight className="ml-1.5 h-4 w-4 stroke-[2.4]" />
-        </button>
+
+          <button
+            type="button"
+            className="inline-flex h-12 shrink-0 items-center justify-center rounded-full bg-white px-5 text-sm font-extrabold text-[#20242e] shadow-[0_8px_18px_rgba(17,24,39,0.18)] transition hover:bg-[#fff7d6]"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenDeals?.();
+            }}
+          >
+            Shop deals
+            <ChevronRight className="ml-1.5 h-4 w-4 stroke-[2.6]" />
+          </button>
+        </div>
       </div>
     </article>
   );
 }
-
 function FlavorCard({ flavor }: { flavor: FlavorSlide }) {
   return (
     <Link

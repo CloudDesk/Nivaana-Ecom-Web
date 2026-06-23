@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import CategoryNavigationRail from "../components/CategoryNavigationRail";
 import {
   buildChildCategoryItems,
+  buildNestedCategoryItems,
   buildTopCategoryItems,
   isKnownCategoryChildValue,
   matchesProductCategory,
@@ -96,8 +97,10 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const subcategory = searchParams.get("subcategory");
   const subsubcategory = searchParams.get("subsubcategory");
   const collection = searchParams.get("collection") || defaultCollection;
+  const offerId = searchParams.get("offerId");
+  const routeTitle = searchParams.get("title");
   const search = searchParams.get("search");
-  const hasActiveFilter = Boolean(category || subcategory || subsubcategory || collection || search);
+  const hasActiveFilter = Boolean(category || subcategory || subsubcategory || collection || offerId || search);
   const currentCategoryRoute = useMemo(() => {
     const nextParams = new URLSearchParams(searchParams);
     const queryString = nextParams.toString();
@@ -203,6 +206,11 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
   const childCategoryItems = useMemo(() => buildChildCategoryItems(products, resolvedCategory), [products, resolvedCategory]);
 
+  const nestedCategoryItems = useMemo(
+    () => buildNestedCategoryItems(products, resolvedCategory, subcategory),
+    [products, resolvedCategory, subcategory]
+  );
+
   const activeChildKey = useMemo(
     () =>
       resolveActiveChildKey({
@@ -213,14 +221,26 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     [childCategoryItems, subcategory, subsubcategory]
   );
 
+  const activeNestedChildKey = useMemo(
+    () =>
+      resolveActiveChildKey({
+        childItems: nestedCategoryItems,
+        subcategory,
+        subsubcategory,
+      }),
+    [nestedCategoryItems, subcategory, subsubcategory]
+  );
+
   const pageTitle = useMemo(() => {
+    if (routeTitle) return routeTitle;
     if (subsubcategory) return formatFilterLabel(subsubcategory);
     if (subcategory) return formatFilterLabel(subcategory);
     if (category) return formatFilterLabel(category);
     if (collection) return formatFilterLabel(collection);
+    if (offerId) return "Special Deals";
     if (search) return search;
     return "Our Products";
-  }, [category, collection, search, subcategory, subsubcategory]);
+  }, [category, collection, offerId, routeTitle, search, subcategory, subsubcategory]);
 
   const listingBannerProducts = useMemo(() => {
     const source = filteredProducts.length > 0 ? filteredProducts : products;
@@ -249,11 +269,14 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     if (collection) {
       return `A focused view into ${formatFilterLabel(collection)}, assembled to make browsing and comparing easier.`;
     }
+    if (offerId) {
+      return "Products connected to the selected deal, gathered here so you can browse and compare quickly.";
+    }
     if (search) {
       return `Products related to ${search}, gathered into one visual shelf so you can scan the strongest matches quickly.`;
     }
     return "A broad Nivaana shelf with category-led picks, everyday staples, and giftable products in one place.";
-  }, [collection, resolvedCategory, search, subcategory, subsubcategory]);
+  }, [collection, offerId, resolvedCategory, search, subcategory, subsubcategory]);
 
   const recentlyViewedProducts = useMemo(() => {
     if (!recentlyViewedIds.length) return [];
@@ -328,10 +351,13 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
         <CategoryNavigationRail
           topItems={topCategoryItems}
           childItems={childCategoryItems}
+          nestedChildItems={nestedCategoryItems}
           activeTopKey={resolvedCategory}
           activeChildKey={activeChildKey}
+          activeNestedChildKey={activeNestedChildKey}
           onTopSelect={selectTopCategory}
           onChildSelect={selectChildCategory}
+          onNestedChildSelect={selectChildCategory}
         />
       </div>
 

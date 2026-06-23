@@ -12,10 +12,13 @@ import { cn } from "../lib/utils";
 interface CategoryNavigationRailProps {
   topItems: CategoryNavTopItem[];
   childItems: CategoryNavChildItem[];
+  nestedChildItems?: CategoryNavChildItem[];
   activeTopKey?: string | null;
   activeChildKey?: string | null;
+  activeNestedChildKey?: string | null;
   onTopSelect: (item: CategoryNavTopItem) => void;
   onChildSelect: (item: CategoryNavChildItem) => void;
+  onNestedChildSelect?: (item: CategoryNavChildItem) => void;
   className?: string;
   childRailRounded?: boolean;
 }
@@ -23,10 +26,13 @@ interface CategoryNavigationRailProps {
 export default function CategoryNavigationRail({
   topItems,
   childItems,
+  nestedChildItems = [],
   activeTopKey,
   activeChildKey,
+  activeNestedChildKey,
   onTopSelect,
   onChildSelect,
+  onNestedChildSelect,
   className,
   childRailRounded = false,
 }: CategoryNavigationRailProps) {
@@ -146,6 +152,54 @@ export default function CategoryNavigationRail({
                     </button>
                   );
                 })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {nestedChildItems.length > 0 && (
+            <motion.div
+              key={`${activeChildKey || "nested"}-nested-rail`}
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -6, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative overflow-hidden border-t border-[#e4ded2] bg-[#ebe7df]"
+            >
+              <div className="overflow-x-auto px-4 py-3 scrollbar-hide sm:px-6 lg:px-8">
+                <div className="flex w-max min-w-full snap-x justify-center gap-2 sm:gap-3">
+                  {nestedChildItems.map((item) => {
+                    const isActive = activeNestedChildKey === item.key;
+
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => (onNestedChildSelect || onChildSelect)(item)}
+                        aria-pressed={isActive}
+                        className={cn(
+                          "inline-flex min-h-10 min-w-fit snap-start items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition",
+                          isActive
+                            ? "border-[#fbbc05] bg-[#fbbc05] text-[#1f2430]"
+                            : "border-[#ddd4c7] bg-white text-[#555b66] hover:border-[#cfc3b4] hover:bg-white"
+                        )}
+                      >
+                        <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#ece8e1]">
+                          <img
+                            src={item.imageSrc}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            onError={(event) => {
+                              event.currentTarget.src = fallbackProduct;
+                            }}
+                          />
+                        </span>
+                        <span className="whitespace-nowrap text-xs font-semibold sm:text-sm">{item.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>

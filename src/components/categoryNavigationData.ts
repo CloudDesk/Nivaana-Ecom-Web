@@ -116,6 +116,13 @@ interface CategoryNavConfig {
     param: CategoryNavParam;
     queryParams?: Partial<Record<"category" | CategoryNavParam, string>>;
     matcher: CategoryMatcher;
+    nestedItems?: Array<{
+      label: string;
+      value: string;
+      param: CategoryNavParam;
+      queryParams?: Partial<Record<"category" | CategoryNavParam, string>>;
+      matcher: CategoryMatcher;
+    }>;
   }>;
 }
 
@@ -190,6 +197,47 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
           includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
           excludeAny: ["diffuser oil", "refill pack"],
         },
+        nestedItems: [
+          {
+            label: "For Car",
+            value: "for_car",
+            param: "subsubcategory",
+            queryParams: {
+              category: "car_room_fresheners",
+              subcategory: "diffuser_machines",
+              subsubcategory: "for_car",
+            },
+            matcher: {
+              includeAny: ["for car", "car diffuser", "car machine", "car"],
+            },
+          },
+          {
+            label: "For Home",
+            value: "for_home",
+            param: "subsubcategory",
+            queryParams: {
+              category: "car_room_fresheners",
+              subcategory: "diffuser_machines",
+              subsubcategory: "for_home",
+            },
+            matcher: {
+              includeAny: ["for home", "home diffuser", "home machine", "room diffuser", "home"],
+            },
+          },
+          {
+            label: "For Hotels & Commercial places",
+            value: "for_hotels_commercial_places",
+            param: "subsubcategory",
+            queryParams: {
+              category: "car_room_fresheners",
+              subcategory: "diffuser_machines",
+              subsubcategory: "for_hotels_commercial_places",
+            },
+            matcher: {
+              includeAny: ["hotel", "hotels", "commercial", "commercial places", "for hotels"],
+            },
+          },
+        ],
       },
     ],
   },
@@ -406,8 +454,8 @@ const childItemMatchesCurrentFilters = (
   const routeSubcategory = item.queryParams?.subcategory;
   const routeSubsubcategory = item.queryParams?.subsubcategory;
 
+  if (routeSubsubcategory) return routeValueMatches(routeSubsubcategory, subsubcategory);
   if (routeSubcategory && routeValueMatches(routeSubcategory, subcategory)) return true;
-  if (routeSubsubcategory && routeValueMatches(routeSubsubcategory, subsubcategory)) return true;
 
   return routeValueMatches(item.value, subcategory) || routeValueMatches(item.value, subsubcategory);
 };
@@ -423,6 +471,17 @@ const configForChildFilter = (subcategory?: string | null, subsubcategory?: stri
         },
         subcategory,
         subsubcategory
+      ) ||
+      item.nestedItems?.some((nestedItem) =>
+        childItemMatchesCurrentFilters(
+          {
+            value: nestedItem.value,
+            param: nestedItem.param,
+            queryParams: nestedItem.queryParams || { category: config.value, subcategory: item.value, [nestedItem.param]: nestedItem.value },
+          },
+          subcategory,
+          subsubcategory
+        )
       )
     )
   );
@@ -443,9 +502,13 @@ export const matchesProductChildCategory = (product: Product, childValue?: strin
   const candidateConfigs = config ? [config] : categoryNavigationConfig;
 
   for (const candidate of candidateConfigs) {
-    const matchedChild = candidate.childItems.find(
-      (item) => routeValueMatches(item.value, childValue) && matchesMatcher(product, item.matcher)
-    );
+    const matchedChild = candidate.childItems.find((item) => {
+      const childMatches = routeValueMatches(item.value, childValue) && matchesMatcher(product, item.matcher);
+      const nestedMatches = item.nestedItems?.some(
+        (nestedItem) => routeValueMatches(nestedItem.value, childValue) && matchesMatcher(product, nestedItem.matcher)
+      );
+      return childMatches || nestedMatches;
+    });
     if (matchedChild) return true;
   }
 
@@ -510,6 +573,32 @@ export const buildChildCategoryItems = (products: Product[], activeCategory?: st
       value: item.value,
       param: item.param,
       queryParams: item.queryParams || { category: config.value, [item.param]: item.value },
+      imageSrc: firstProductImage(matchedProduct),
+    };
+  });
+};
+
+export const buildNestedCategoryItems = (
+  products: Product[],
+  activeCategory?: string | null,
+  activeChildValue?: string | null
+): CategoryNavChildItem[] => {
+  const config = configForCategory(activeCategory);
+  if (!config || !activeChildValue) return [];
+
+  const parentItem = config.childItems.find((item) => routeValueMatches(item.value, activeChildValue));
+  if (!parentItem?.nestedItems?.length) return [];
+
+  return parentItem.nestedItems.map((item) => {
+    const matchedProduct = products.find((product) => matchesMatcher(product, parentItem.matcher) && matchesMatcher(product, item.matcher));
+    const key = `${item.param}:${normalizeFilterKey(parentItem.value)}:${normalizeFilterKey(item.value)}`;
+
+    return {
+      key,
+      label: item.label,
+      value: item.value,
+      param: item.param,
+      queryParams: item.queryParams || { category: config.value, subcategory: parentItem.value, [item.param]: item.value },
       imageSrc: firstProductImage(matchedProduct),
     };
   });
