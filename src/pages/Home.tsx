@@ -25,7 +25,8 @@ import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type Promotion } from "../services/promotionService";
 import { ratingService } from "../services/ratingService";
-import type { Product, Rating } from "../types";
+import { storefrontPageSectionService } from "../services/storefrontPageSectionService";
+import type { Product, Rating, StorefrontMedia, StorefrontPageSection } from "../types";
 import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
 import heroTwo from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
 import fallbackProduct from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
@@ -42,7 +43,9 @@ type HeroSlide = {
   title: string;
   text: string;
   video: string;
+  mobileVideo?: string;
   image: string;
+  mobileImage?: string;
   poster: string;
   fit: "cover" | "contain";
   ctaText: string;
@@ -180,6 +183,8 @@ type CategorySlide = {
   subcategory: string;
   image: string;
   mobileImage?: string;
+  mediaType?: "image" | "video";
+  ctaText?: string;
   to: string;
 };
 
@@ -333,6 +338,15 @@ const categorySlideIntervalMs = 4500;
 const heroTimerRadius = 10;
 const heroTimerCircumference = 2 * Math.PI * heroTimerRadius;
 
+const orderedBySort = <T extends { sort_order?: number }>(items: T[] = []) =>
+  [...items].sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+
+const mediaUrl = (media?: StorefrontMedia) => media?.desktop_url || media?.mobile_url || "";
+const mediaMobileUrl = (media?: StorefrontMedia) => media?.mobile_url || media?.desktop_url || "";
+const mediaFit = (media?: StorefrontMedia): "cover" | "contain" => media?.fit === "contain" ? "contain" : "cover";
+const firstStorefrontSection = (section?: StorefrontPageSection | StorefrontPageSection[]) =>
+  Array.isArray(section) ? section[0] : section;
+
 const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeCategory, setActiveCategory] = useState(0);
@@ -374,9 +388,46 @@ const Home: React.FC = () => {
       }),
   });
 
+  const storefrontConfigQuery = useQuery({
+    queryKey: ["storefront-homepage-config"],
+    queryFn: () => storefrontPageSectionService.getHomepageConfig("home"),
+    staleTime: 60_000,
+  });
+
   const products = useMemo(() => data?.data ?? [], [data?.data]);
   const dealPromotions = useMemo(() => promotionsQuery.data?.data ?? [], [promotionsQuery.data?.data]);
-  const visibleHeroSlides = heroSlides;
+  const storefrontSections = storefrontConfigQuery.data?.data?.sections_by_key;
+  const heroSection = firstStorefrontSection(storefrontSections?.["home.hero"]);
+  const showcaseSection = firstStorefrontSection(storefrontSections?.["home.showcase"]);
+  const heroConfigLoading = storefrontConfigQuery.isLoading || storefrontConfigQuery.isFetching;
+  const heroIntervalMs = heroSection?.attributes.interval_ms || heroSlideIntervalMs;
+  const visibleHeroSlides = useMemo<HeroSlide[]>(() => {
+    const slides = orderedBySort(heroSection?.attributes.slides || [])
+      .filter((item) => item.title?.trim() && mediaUrl(item.media))
+      .map((item, index) => {
+        const primaryButton = item.button || item.buttons?.[0];
+        const isVideo = item.media.type === "video";
+        const desktopUrl = mediaUrl(item.media);
+        const mobileUrl = mediaMobileUrl(item.media);
+
+        return {
+          eyebrow: item.eyebrow || "",
+          title: item.title,
+          text: item.description || "",
+          video: isVideo ? desktopUrl : "",
+          mobileVideo: isVideo ? mobileUrl : "",
+          image: isVideo ? "" : desktopUrl,
+          mobileImage: isVideo ? "" : mobileUrl,
+          poster: isVideo ? heroSlides[index % heroSlides.length]?.poster || heroOne : desktopUrl,
+          fit: mediaFit(item.media),
+          ctaText: primaryButton?.label || "Shop Now",
+          ctaUrl: primaryButton?.url || "/products",
+        };
+      });
+
+    if (slides.length) return slides;
+    return heroConfigLoading ? [] : heroSlides;
+  }, [heroConfigLoading, heroSection?.attributes.slides]);
   const dealConfig: HomeSectionConfig = {};
   const categoryConfig: HomeSectionConfig = {};
   const bestSellerConfig: HomeSectionConfig = {};
@@ -495,6 +546,23 @@ const Home: React.FC = () => {
     }));
   }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
 
+  const showcaseSlides = useMemo<CategorySlide[]>(() => {
+    const items = orderedBySort(showcaseSection?.attributes.items || [])
+      .filter((item) => item.title?.trim() && mediaUrl(item.media))
+      .map((item, index) => ({
+        id: `showcase:${index}:${item.title}`,
+        name: item.eyebrow || "Nivaana",
+        subcategory: item.title,
+        image: mediaUrl(item.media),
+        mobileImage: mediaMobileUrl(item.media),
+        mediaType: item.media.type || "image",
+        ctaText: item.button?.label || "Explore",
+        to: item.button?.url || "/products",
+      }));
+
+    return items.length ? items : categories;
+  }, [categories, showcaseSection?.attributes.items]);
+
   const slide = visibleHeroSlides[wrapIndex(activeSlide, visibleHeroSlides.length)];
 
   useEffect(() => {
@@ -502,20 +570,32 @@ const Home: React.FC = () => {
 
     const timer = window.setTimeout(() => {
       setActiveSlide((current) => wrapIndex(current + 1, visibleHeroSlides.length));
-    }, heroSlideIntervalMs);
+    }, heroIntervalMs);
 
     return () => window.clearTimeout(timer);
+  }, [activeSlide, heroIntervalMs, visibleHeroSlides.length]);
+
+  useEffect(() => {
+    if (activeSlide >= visibleHeroSlides.length) {
+      setActiveSlide(0);
+    }
   }, [activeSlide, visibleHeroSlides.length]);
 
   useEffect(() => {
-    if (categories.length <= 1) return;
+    if (activeCategory >= showcaseSlides.length) {
+      setActiveCategory(0);
+    }
+  }, [activeCategory, showcaseSlides.length]);
+
+  useEffect(() => {
+    if (showcaseSlides.length <= 1) return;
 
     const timer = window.setTimeout(() => {
-      setActiveCategory((current) => wrapIndex(current + 1, categories.length));
+      setActiveCategory((current) => wrapIndex(current + 1, showcaseSlides.length));
     }, categorySlideIntervalMs);
 
     return () => window.clearTimeout(timer);
-  }, [activeCategory, categories.length]);
+  }, [activeCategory, showcaseSlides.length]);
 
   useEffect(() => {
     if (dealPromotions.length <= 1) return;
@@ -582,14 +662,18 @@ const Home: React.FC = () => {
   const visibleCustomerReviews = customerReviews.length
     ? [0, 1, 2].map((offset) => customerReviews[wrapIndex(activeReview + offset, customerReviews.length)])
     : [];
+  const showHeroSkeleton = !visibleHeroSlides.length;
 
   return (
     <div className="min-h-screen bg-white">
       <section className="bg-white pb-3 pt-3 sm:pb-4 sm:pt-5 lg:pb-5 lg:pt-6">
         <div className={heroContainer}>
           <div className="relative w-full overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-card)] sm:rounded-[28px] lg:rounded-[34px]">
-            <div
-              className="relative h-[52svh] min-h-[320px] max-h-[420px] touch-pan-y select-none sm:h-[calc(100svh-15rem)] sm:min-h-[400px] sm:max-h-[540px] md:min-h-[440px] lg:h-[calc(100svh-20rem)] lg:min-h-[460px] lg:max-h-[560px]"
+            {showHeroSkeleton ? (
+              <Skeleton className="h-[52svh] min-h-[320px] max-h-[420px] w-full sm:h-[calc(100svh-15rem)] sm:min-h-[400px] sm:max-h-[540px] md:min-h-[440px] lg:h-[calc(100svh-20rem)] lg:min-h-[460px] lg:max-h-[560px]" />
+            ) : (
+              <div
+                className="relative h-[52svh] min-h-[320px] max-h-[420px] touch-pan-y select-none sm:h-[calc(100svh-15rem)] sm:min-h-[400px] sm:max-h-[540px] md:min-h-[440px] lg:h-[calc(100svh-20rem)] lg:min-h-[460px] lg:max-h-[560px]"
               onClickCapture={(event) => {
                 if (suppressHeroClickRef.current) {
                   if (event.cancelable) event.preventDefault();
@@ -670,15 +754,18 @@ const Home: React.FC = () => {
                         )}
                       />
                     ) : (
-                      <img
-                        src={item.image || item.poster}
-                        alt=""
-                        aria-hidden="true"
-                        className={cn(
-                          "absolute inset-0 h-full w-full",
-                          item.fit === "cover" ? "object-cover" : "object-contain"
-                        )}
-                      />
+                      <picture>
+                        {item.mobileImage && <source media="(max-width: 767px)" srcSet={item.mobileImage} />}
+                        <img
+                          src={item.image || item.poster}
+                          alt=""
+                          aria-hidden="true"
+                          className={cn(
+                            "absolute inset-0 h-full w-full",
+                            item.fit === "cover" ? "object-cover" : "object-contain"
+                          )}
+                        />
+                      </picture>
                     )}
                     <div className="absolute inset-0" style={{ background: theme.overlays.hero }} />
                   </div>
@@ -750,7 +837,7 @@ const Home: React.FC = () => {
                               strokeDasharray={heroTimerCircumference}
                               initial={{ strokeDashoffset: heroTimerCircumference }}
                               animate={{ strokeDashoffset: 0 }}
-                              transition={{ duration: heroSlideIntervalMs / 1000, ease: "linear" }}
+                              transition={{ duration: heroIntervalMs / 1000, ease: "linear" }}
                             />
                           </svg>
                           <span className="absolute h-2.5 w-2.5 rounded-full bg-[#fbbc05]" />
@@ -761,6 +848,7 @@ const Home: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
       </section>
@@ -769,7 +857,7 @@ const Home: React.FC = () => {
         <div className={homeContainer}>
           <CategoryTripleSlider
             activeIndex={activeCategory}
-            categories={categories}
+            categories={showcaseSlides}
             loading={isLoading}
             setActiveIndex={setActiveCategory}
           />
@@ -1333,7 +1421,8 @@ function CategoryTripleSlider({
     setIsDragging(false);
   };
 
-  const positions = [-1, 0, 1];
+  const normalizedActiveIndex = wrapIndex(activeIndex, categories.length);
+  const positions = categories.length >= 3 ? [-1, 0, 1] : categories.length === 2 ? [0, 1] : [0];
   const sideCardScale = 0.9;
   return (
     <div className="relative -mx-4 overflow-hidden px-0 pb-0 pt-0 sm:-mx-6 sm:px-6 lg:-mx-8 lg:overflow-visible lg:px-24 lg:pb-0 lg:pt-1">
@@ -1409,14 +1498,15 @@ function CategoryTripleSlider({
         onPointerCancel={resetDrag}
       >
         {positions.map((position) => {
-          const category = categories[wrapIndex(activeIndex + position, categories.length)];
+          const categoryIndex = wrapIndex(normalizedActiveIndex + position, categories.length);
+          const category = categories[categoryIndex];
           const isCenter = position === 0;
           const cardX = position === -1 ? "-112%" : position === 1 ? "12%" : "-50%";
 
           return (
             <motion.article
-              key={category.id}
-              data-category-index={wrapIndex(activeIndex + position, categories.length)}
+              key={category.id || categoryIndex}
+              data-category-index={categoryIndex}
               role="link"
               tabIndex={0}
               aria-label={`Explore ${category.subcategory}`}
@@ -1451,18 +1541,33 @@ function CategoryTripleSlider({
               )}
             >
               <div className="relative h-full overflow-hidden bg-white">
-                <picture>
-                  <source media="(min-width: 1024px)" srcSet={category.image} />
-                  <motion.img
-                    src={category.mobileImage || category.image}
-                    alt={category.name}
-                    draggable={false}
-                    loading="lazy"
+                {category.mediaType === "video" ? (
+                  <motion.video
+                    src={category.image}
+                    aria-label={category.name}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload={isCenter ? "auto" : "metadata"}
                     animate={{ scale: isCenter ? 1.01 : 1 }}
                     transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                     className="pointer-events-none h-full w-full object-cover object-center"
                   />
-                </picture>
+                ) : (
+                  <picture>
+                    <source media="(min-width: 1024px)" srcSet={category.image} />
+                    <motion.img
+                      src={category.mobileImage || category.image}
+                      alt={category.name}
+                      draggable={false}
+                      loading="lazy"
+                      animate={{ scale: isCenter ? 1.01 : 1 }}
+                      transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                      className="pointer-events-none h-full w-full object-cover object-center"
+                    />
+                  </picture>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
                 <div className="absolute bottom-4 left-5 right-5 z-10 max-w-[calc(100%-2.5rem)] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:left-6 sm:right-6 sm:max-w-[76%]">
                   <p className="line-clamp-1 text-xs font-bold uppercase tracking-wide">{category.name}</p>
@@ -1472,14 +1577,17 @@ function CategoryTripleSlider({
                 </div>
                 <Button
                   type="button"
-                  className="absolute right-4 top-4 z-10 h-8 rounded-full bg-[#fbbc05] px-3 text-xs font-bold text-[#111827] shadow-none hover:bg-[#d99c16] hover:shadow-none sm:h-9 sm:px-4 sm:text-sm"
+                  className={cn(
+                    "absolute right-4 top-4 z-10 h-8 rounded-full bg-[#fbbc05] px-3 text-xs font-bold text-[#111827] shadow-none transition-opacity hover:bg-[#d99c16] hover:shadow-none sm:h-9 sm:px-4 sm:text-sm",
+                    isCenter ? "opacity-100" : "pointer-events-none opacity-0"
+                  )}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
                     openCategory(category);
                   }}
                 >
-                  Explore <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                  {category.ctaText || "Explore"} <ChevronRight className="ml-1 h-3.5 w-3.5" />
                 </Button>
               </div>
             </motion.article>

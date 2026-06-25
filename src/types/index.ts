@@ -87,6 +87,64 @@ export interface HomepagePromotionalConfig {
   sections: Record<string, PromotionalAsset[]>;
 }
 
+export interface StorefrontMedia {
+  type?: "image" | "video";
+  desktop_url: string;
+  mobile_url?: string;
+  fit?: "cover" | "contain";
+  alt?: string;
+}
+
+export interface StorefrontButton {
+  label?: string;
+  url?: string;
+  variant?: string;
+}
+
+export interface StorefrontHeroSlide {
+  sort_order?: number;
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  button?: StorefrontButton;
+  buttons?: StorefrontButton[];
+  media: StorefrontMedia;
+}
+
+export interface StorefrontShowcaseItem {
+  sort_order?: number;
+  eyebrow?: string;
+  title: string;
+  button?: StorefrontButton;
+  media: StorefrontMedia;
+}
+
+export interface StorefrontSectionAttributes {
+  autoplay?: boolean;
+  interval_ms?: number;
+  layout?: string;
+  slides?: StorefrontHeroSlide[];
+  items?: StorefrontShowcaseItem[];
+}
+
+export interface StorefrontPageSection {
+  id: number;
+  page_key: string;
+  section_key: string;
+  section_type: string;
+  name: string;
+  attributes: StorefrontSectionAttributes;
+  sort_order: number;
+  is_active: boolean;
+  version: number;
+}
+
+export interface StorefrontHomepageConfig {
+  page_key: string;
+  sections: StorefrontPageSection[];
+  sections_by_key: Record<string, StorefrontPageSection | StorefrontPageSection[]>;
+}
+
 export interface Rating {
   id: number;
   userid: number | null;
