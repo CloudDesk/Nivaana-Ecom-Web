@@ -63,34 +63,37 @@ const categoryGroups: CategoryGroup[] = [
       { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
     ],
   },
-  {
-    heading: "Personal Care",
-    to: "/products?category=personal_care",
-    links: [
-      { label: "Soaps", to: "/products?subcategory=soaps" },
-      { label: "Facewash", to: "/products?subcategory=facewash" },
-      { label: "Floor Cleaner Concentrates", to: "/products?subcategory=floor_cleaner_concentrates" },
-      { label: "Handwash", to: "/products?subcategory=handwash" },
-    ],
-  },
-  {
-    heading: "Perfumes",
-    to: "/products?category=perfumes",
-    links: [
-      { label: "Pocket Perfumes", to: "/products?subcategory=pocket_perfumes" },
-      { label: "Daily Collection", to: "/products?subcategory=daily_collection" },
-      { label: "Luxury Collection", to: "/products?subcategory=luxury_collection" },
-    ],
-  },
-  {
-    heading: "Daily Rituals",
-    to: "/products?category=daily_rituals",
-    links: [
-      { label: "Fresh Mornings", to: "/products?subcategory=fresh_mornings" },
-      { label: "Relaxation & Calm", to: "/products?subcategory=relaxation_calm" },
-      { label: "Dusky Evenings & Night", to: "/products?subcategory=dusky_evenings_night" },
-    ],
-  },
+  // Hidden for now. Uncomment this block to restore Personal Care and its subcategories.
+  // {
+  //   heading: "Personal Care",
+  //   to: "/products?category=personal_care",
+  //   links: [
+  //     { label: "Soaps", to: "/products?subcategory=soaps" },
+  //     { label: "Facewash", to: "/products?subcategory=facewash" },
+  //     { label: "Floor Cleaner Concentrates", to: "/products?subcategory=floor_cleaner_concentrates" },
+  //     { label: "Handwash", to: "/products?subcategory=handwash" },
+  //   ],
+  // },
+  // Hidden for now. Uncomment this block to restore Perfumes and its subcategories.
+  // {
+  //   heading: "Perfumes",
+  //   to: "/products?category=perfumes",
+  //   links: [
+  //     { label: "Pocket Perfumes", to: "/products?subcategory=pocket_perfumes" },
+  //     { label: "Daily Collection", to: "/products?subcategory=daily_collection" },
+  //     { label: "Luxury Collection", to: "/products?subcategory=luxury_collection" },
+  //   ],
+  // },
+  // Hidden for now. Uncomment this block to restore Daily Rituals and its subcategories.
+  // {
+  //   heading: "Daily Rituals",
+  //   to: "/products?category=daily_rituals",
+  //   links: [
+  //     { label: "Fresh Mornings", to: "/products?subcategory=fresh_mornings" },
+  //     { label: "Relaxation & Calm", to: "/products?subcategory=relaxation_calm" },
+  //     { label: "Dusky Evenings & Night", to: "/products?subcategory=dusky_evenings_night" },
+  //   ],
+  // },
   {
     heading: "Gift Collections",
     to: "/products?category=gift_collections",

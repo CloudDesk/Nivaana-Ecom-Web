@@ -1,11 +1,11 @@
 import {
   Car,
   Flame,
-  Flower2,
+  // Flower2,
   Gift,
-  HeartHandshake,
+  // HeartHandshake,
   Home,
-  Sparkles,
+  // Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
@@ -272,107 +272,110 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
       },
     ],
   },
-  {
-    value: "personal_care",
-    label: "Personal Care",
-    icon: Sparkles,
-    childItems: [
-      {
-        label: "Soaps",
-        value: "soaps",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["soaps", "soap"],
-        },
-      },
-      {
-        label: "Facewash",
-        value: "facewash",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["facewash", "face wash"],
-        },
-      },
-      {
-        label: "Floor Cleaner Concentrates",
-        value: "floor_cleaner_concentrates",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["floor cleaner concentrates", "floor cleaner concentrate"],
-        },
-      },
-      {
-        label: "Handwash",
-        value: "handwash",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["handwash", "hand wash"],
-        },
-      },
-    ],
-  },
-  {
-    value: "perfumes",
-    label: "Perfumes",
-    icon: Flower2,
-    childItems: [
-      {
-        label: "Pocket Perfumes",
-        value: "pocket_perfumes",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["pocket perfumes", "pocket perfume"],
-        },
-      },
-      {
-        label: "Daily Collection",
-        value: "daily_collection",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["daily collection"],
-        },
-      },
-      {
-        label: "Luxury Collection",
-        value: "luxury_collection",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["luxury collection"],
-        },
-      },
-    ],
-  },
-  {
-    value: "daily_rituals",
-    label: "Daily Rituals",
-    icon: HeartHandshake,
-    childItems: [
-      {
-        label: "Fresh Mornings",
-        value: "fresh_mornings",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["fresh mornings", "fresh morning"],
-        },
-      },
-      {
-        label: "Relaxation & Calm",
-        value: "relaxation_calm",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["relaxation calm", "relaxation and calm"],
-        },
-      },
-      {
-        label: "Dusky Evenings & Night",
-        value: "dusky_evenings_night",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["dusky evenings night", "dusky evening", "night ritual"],
-        },
-      },
-    ],
-  },
+  // Hidden for now. Uncomment this block and the Sparkles import to restore Personal Care and its subcategories.
+  // {
+  //   value: "personal_care",
+  //   label: "Personal Care",
+  //   icon: Sparkles,
+  //   childItems: [
+  //     {
+  //       label: "Soaps",
+  //       value: "soaps",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["soaps", "soap"],
+  //       },
+  //     },
+  //     {
+  //       label: "Facewash",
+  //       value: "facewash",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["facewash", "face wash"],
+  //       },
+  //     },
+  //     {
+  //       label: "Floor Cleaner Concentrates",
+  //       value: "floor_cleaner_concentrates",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["floor cleaner concentrates", "floor cleaner concentrate"],
+  //       },
+  //     },
+  //     {
+  //       label: "Handwash",
+  //       value: "handwash",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["handwash", "hand wash"],
+  //       },
+  //     },
+  //   ],
+  // },
+  // Hidden for now. Uncomment this block and the Flower2 import to restore Perfumes and its subcategories.
+  // {
+  //   value: "perfumes",
+  //   label: "Perfumes",
+  //   icon: Flower2,
+  //   childItems: [
+  //     {
+  //       label: "Pocket Perfumes",
+  //       value: "pocket_perfumes",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["pocket perfumes", "pocket perfume"],
+  //       },
+  //     },
+  //     {
+  //       label: "Daily Collection",
+  //       value: "daily_collection",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["daily collection"],
+  //       },
+  //     },
+  //     {
+  //       label: "Luxury Collection",
+  //       value: "luxury_collection",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["luxury collection"],
+  //       },
+  //     },
+  //   ],
+  // },
+  // Hidden for now. Uncomment this block and the HeartHandshake import to restore Daily Rituals and its subcategories.
+  // {
+  //   value: "daily_rituals",
+  //   label: "Daily Rituals",
+  //   icon: HeartHandshake,
+  //   childItems: [
+  //     {
+  //       label: "Fresh Mornings",
+  //       value: "fresh_mornings",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["fresh mornings", "fresh morning"],
+  //       },
+  //     },
+  //     {
+  //       label: "Relaxation & Calm",
+  //       value: "relaxation_calm",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["relaxation calm", "relaxation and calm"],
+  //       },
+  //     },
+  //     {
+  //       label: "Dusky Evenings & Night",
+  //       value: "dusky_evenings_night",
+  //       param: "subcategory",
+  //       matcher: {
+  //         includeAny: ["dusky evenings night", "dusky evening", "night ritual"],
+  //       },
+  //     },
+  //   ],
+  // },
   {
     value: "gift_collections",
     label: "Gift Collections",

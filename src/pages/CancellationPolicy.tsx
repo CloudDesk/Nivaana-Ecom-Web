@@ -19,7 +19,7 @@ const CancellationPolicy: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">1. Order Cancellation</h2>
                 <p className="leading-relaxed">
-                  You may cancel your order for our premium incense sticks, essential oils, and spiritual decor products under the following conditions:
+                  You may cancel your order under the following conditions:
                 </p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
@@ -39,7 +39,7 @@ const CancellationPolicy: React.FC = () => {
                       <li>After order processing begins</li>
                       <li>Once order is shipped</li>
                       <li>Custom or personalized items</li>
-                      <li>Special festival orders</li>
+                      <li>Orders marked as non-cancellable at purchase</li>
                     </ul>
                   </div>
                 </div>
@@ -106,7 +106,7 @@ const CancellationPolicy: React.FC = () => {
                   <li><strong>Net Banking:</strong> 3-5 business days</li>
                   <li><strong>Digital Wallets:</strong> 1-3 business days</li>
                   <li><strong>UPI:</strong> 1-2 business days</li>
-                  <li><strong>Cash on Delivery:</strong> Bank transfer or store credit</li>
+                  <li><strong>Cash on Delivery:</strong> Bank transfer</li>
                 </ul>
               </section>
 
@@ -117,7 +117,7 @@ const CancellationPolicy: React.FC = () => {
                 </p>
                 <ul className="list-disc list-inside ml-4 mt-2 space-y-1">
                   <li>Minor damage to packaging (product intact)</li>
-                  <li>Missing accessories or free gifts</li>
+                  <li>Missing included accessories or items</li>
                   <li>Late delivery (shipping cost refund)</li>
                   <li>Price difference due to promotional pricing</li>
                 </ul>
@@ -128,12 +128,11 @@ const CancellationPolicy: React.FC = () => {
                 <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
                   <p className="font-semibold text-red-800 mb-2">The following items are not eligible for refunds:</p>
                   <ul className="list-disc list-inside ml-4 space-y-1 text-red-700">
-                    <li>Custom or personalized incense sticks</li>
-                    <li>Essential oils that have been opened and used</li>
+                    <li>Custom or personalized products</li>
+                    <li>Products that have been opened and used</li>
                     <li>Items damaged due to customer misuse</li>
                     <li>Products returned after 7 days of delivery</li>
-                    <li>Items purchased during special sales (unless defective)</li>
-                    <li>Gift cards or store credits</li>
+                    <li>Items marked as non-refundable at purchase, unless defective</li>
                   </ul>
                 </div>
               </section>

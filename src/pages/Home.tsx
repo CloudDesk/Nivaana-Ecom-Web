@@ -92,9 +92,12 @@ const categoryFallbacks = [
   { label: "Incense", to: "/products?category=incense" },
   { label: "Home Fragrance", to: "/products?category=home_fragrance" },
   { label: "Car & Room Fresheners", to: "/products?category=car_room_fresheners" },
-  { label: "Personal Care", to: "/products?category=personal_care" },
-  { label: "Perfumes", to: "/products?category=perfumes" },
-  { label: "Daily Rituals", to: "/products?category=daily_rituals" },
+  // Hidden for now. Uncomment to restore Personal Care in fallback category shortcuts.
+  // { label: "Personal Care", to: "/products?category=personal_care" },
+  // Hidden for now. Uncomment to restore Perfumes in fallback category shortcuts.
+  // { label: "Perfumes", to: "/products?category=perfumes" },
+  // Hidden for now. Uncomment to restore Daily Rituals in fallback category shortcuts.
+  // { label: "Daily Rituals", to: "/products?category=daily_rituals" },
   { label: "Gift Collections", to: "/products?category=gift_collections" },
   { label: "Kitchen Accessories", to: "/products?category=kitchen_accessories" },
   { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
