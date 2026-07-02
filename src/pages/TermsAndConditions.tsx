@@ -36,13 +36,13 @@ const TermsAndConditions: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">3. Products and Services</h2>
                 <p className="leading-relaxed">
-                  Nivaana specializes in premium incense sticks, essential oils, and spiritual home decor products. We offer:
+                  Nivaana offers curated fragrance, home, gifting, and lifestyle products through its ecommerce website. Our catalog may include:
                 </p>
                 <ul className="list-disc list-inside ml-4 mt-2 space-y-1">
-                  <li>Handcrafted incense sticks made from natural ingredients</li>
-                  <li>Pure essential oils for aromatherapy and wellness</li>
-                  <li>Spiritual and decorative home accessories</li>
-                  <li>Meditation and wellness products</li>
+                  <li>Home fragrance and freshness products</li>
+                  <li>Gifting and decor products</li>
+                  <li>Lifestyle and wellness-oriented products</li>
+                  <li>Other products listed as available on the website</li>
                 </ul>
               </section>
 
@@ -73,7 +73,7 @@ const TermsAndConditions: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">7. Product Quality and Authenticity</h2>
                 <p className="leading-relaxed">
-                  We guarantee the authenticity and quality of all our products. Our incense sticks are handcrafted using traditional methods, and our essential oils are pure and natural. We source our products from trusted suppliers and artisans.
+                  We work to ensure the authenticity and quality of products listed on our website. Product details, specifications, availability, and usage instructions are provided on the respective product pages.
                 </p>
               </section>
 

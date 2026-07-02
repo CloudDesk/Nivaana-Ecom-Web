@@ -100,7 +100,8 @@ const categoryFallbacks = [
   // { label: "Daily Rituals", to: "/products?category=daily_rituals" },
   { label: "Gift Collections", to: "/products?category=gift_collections" },
   { label: "Kitchen Accessories", to: "/products?category=kitchen_accessories" },
-  { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
+  // Hidden until active product listings are available for PhonePe whitelisting.
+  // { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
   { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
 ];
 

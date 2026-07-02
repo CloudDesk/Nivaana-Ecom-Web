@@ -7,6 +7,7 @@ const quickLinks = [
   { label: 'Home', to: '/' },
   { label: 'Products', to: '/products' },
   { label: 'About Us', to: '/about' },
+  { label: 'Contact Us', to: '/about#contact' },
 ];
 
 const policyLinks = [
@@ -43,28 +44,15 @@ const Footer: React.FC = () => {
             <Link to="/" onClick={handleHomeClick} className="navbar-brand-logo footer-brand-logo mb-3" aria-label="Nivaana home">
               <img src={logoIcon} alt="" className="navbar-brand-icon footer-brand-icon" loading="eager" />
             </Link>
-            <div className="mb-4 max-w-md">
-              <h2 className="text-base font-bold text-[#fbbc05] md:text-lg">Follow us On</h2>
+            <div className="max-w-md space-y-1 text-sm leading-6 text-[#ffe0a0]">
+              <p className="font-semibold text-[#fbbc05]">VIP98 VENTURES LLP</p>
+              <p>516D, Lakshmi Sundaram Nagar</p>
+              <p>Narasingapuram Road, Pandiyanallore Post</p>
+              <p>Sholinghur - 631102, Tamil Nadu</p>
+              <p>Phone: +91 8925662553</p>
+              <p>Email: support@nivaana.com</p>
             </div>
-            <div className="flex space-x-4">
-              <a href="#" aria-label="Follow Nivaana on Instagram" className="text-[#ffe0a0] transition-colors duration-200 hover:text-[#fbbc05]">
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.9" viewBox="0 0 24 24">
-                  <rect x="3" y="3" width="18" height="18" rx="5" />
-                  <circle cx="12" cy="12" r="4" />
-                  <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
-                </svg>
-              </a>
-              <a href="#" aria-label="Follow Nivaana on Facebook" className="text-[#ffe0a0] transition-colors duration-200 hover:text-[#fbbc05]">
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M22 12.06C22 6.51 17.52 2 12 2S2 6.51 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.52 1.49-3.91 3.77-3.91 1.09 0 2.23.2 2.23.2v2.47h-1.26c-1.24 0-1.63.78-1.63 1.57v1.88h2.77l-.44 2.91h-2.33V22C18.34 21.24 22 17.08 22 12.06z" />
-                </svg>
-              </a>
-              <a href="#" aria-label="Follow Nivaana on X" className="text-[#ffe0a0] transition-colors duration-200 hover:text-[#fbbc05]">
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M18.9 2.25h3.31l-7.23 8.26 8.5 11.24h-6.66l-5.22-6.82-5.97 6.82H2.31l7.74-8.84L1.89 2.25h6.83l4.71 6.23 5.47-6.23Zm-1.16 17.52h1.83L7.72 4.13H5.75l11.99 15.64Z" />
-                </svg>
-              </a>
-            </div>
+            {/* Social links hidden until real profile URLs are available for payment approval review. */}
           </div>
 
           {/* Quick Links */}
@@ -76,7 +64,7 @@ const Footer: React.FC = () => {
 
         {/* Bottom Bar */}
         <div className="mt-5 border-t border-[#fbbc05]/20 pt-4 text-center text-sm text-[#ffe0a0] md:mt-6 md:pt-5">
-          <p>&copy; 2024 Nivaana. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Nivaana. All rights reserved.</p>
         </div>
       </div>
     </footer>

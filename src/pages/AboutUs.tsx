@@ -10,7 +10,7 @@ const AboutUs: React.FC = () => {
             About Nivaana
           </h1>
           <p className="text-lg text-secondary-medium-gray">
-            Discover our journey in bringing you premium spiritual products
+            Discover our journey in bringing thoughtfully curated Nivaana products to your home
           </p>
         </div>
       </div>
@@ -24,7 +24,7 @@ const AboutUs: React.FC = () => {
                 Our Mission
               </h2>
               <p className="text-xl text-secondary-medium-gray max-w-3xl mx-auto">
-                To bring you the finest collection of premium incense sticks, essential oils, and spiritual home decor that enhance your sacred space and promote wellness.
+                To bring you a refined collection of home fragrance, freshness, gifting, and lifestyle products that make everyday spaces feel more inviting.
               </p>
             </div>
           </div>
@@ -39,13 +39,13 @@ const AboutUs: React.FC = () => {
               </h2>
               <div className="space-y-4 text-secondary-medium-gray">
                 <p>
-                  Nivaana was born from a deep passion for spiritual wellness and the belief that our surroundings profoundly impact our inner peace. We understand that creating a sacred space is essential for meditation, prayer, and daily mindfulness.
+                  Nivaana was born from a deep passion for thoughtful living and the belief that our surroundings shape how we feel each day. We understand that fragrance, freshness, and carefully chosen products can make a space feel calm, welcoming, and personal.
                 </p>
                 <p>
-                  Our journey began with a simple mission: to curate the finest incense sticks, essential oils, and spiritual decor that help you "Breathe in Bliss" and transform your home into a sanctuary of peace and tranquility.
+                  Our journey began with a simple mission: to curate quality products that help you "Breathe in Bliss" and transform everyday routines into moments of comfort.
                 </p>
                 <p>
-                  Every product in our collection is carefully selected for its quality, authenticity, and ability to enhance your spiritual practice. We work directly with artisans and suppliers who share our commitment to natural ingredients and traditional craftsmanship.
+                  Every product in our collection is carefully selected for quality, usability, and customer value. We work with trusted suppliers who share our commitment to dependable products and responsible service.
                 </p>
               </div>
             </div>
@@ -84,7 +84,7 @@ const AboutUs: React.FC = () => {
                 Premium Quality
               </h3>
               <p className="text-secondary-medium-gray">
-                We source only the finest natural ingredients and work with skilled artisans to ensure every product meets our high standards.
+                We work with trusted suppliers and review products carefully so each listing meets our quality standards.
               </p>
             </div>
 
@@ -99,7 +99,7 @@ const AboutUs: React.FC = () => {
                 Authenticity
               </h3>
               <p className="text-secondary-medium-gray">
-                Every product is authentic and sourced from trusted suppliers who maintain traditional methods and natural ingredients.
+                Every product is sourced from trusted partners and listed with clear details so customers can shop with confidence.
               </p>
             </div>
 
@@ -114,7 +114,7 @@ const AboutUs: React.FC = () => {
                 Spiritual Wellness
               </h3>
               <p className="text-secondary-medium-gray">
-                We believe in the power of aromatherapy and spiritual practices to enhance your mental, emotional, and spiritual well-being.
+                We believe thoughtfully chosen products can make daily routines more comfortable, fresh, and meaningful.
               </p>
             </div>
           </div>
@@ -127,7 +127,7 @@ const AboutUs: React.FC = () => {
               What We Offer
             </h2>
             <p className="text-lg text-secondary-medium-gray max-w-2xl mx-auto">
-              Our carefully curated collection spans three essential categories for your spiritual journey
+              Our carefully curated collection focuses on products currently available through the Nivaana store
             </p>
           </div>
 
@@ -137,16 +137,16 @@ const AboutUs: React.FC = () => {
               <div className="text-center">
                 <div className="text-4xl mb-4">🕯️</div>
                 <h3 className="text-xl font-semibold text-secondary-dark-gray mb-3">
-                  Premium Incense
+                  Home Fragrance
                 </h3>
                 <p className="text-secondary-medium-gray mb-4">
-                  Handcrafted incense sticks and cones made with natural ingredients for meditation and spiritual practices.
+                  Fragrance-led products selected to help homes, rooms, and daily routines feel fresh and inviting.
                 </p>
                 <ul className="text-sm text-secondary-medium-gray text-left space-y-1">
-                  <li>• Sandalwood incense sticks</li>
-                  <li>• Rose petal incense cones</li>
-                  <li>• Jasmine fragrance blends</li>
-                  <li>• Traditional Indian incense</li>
+                  <li>• Premium incense sticks</li>
+                  <li>• Room freshness products</li>
+                  <li>• Fragrance blends</li>
+                  <li>• Wardrobe sachets</li>
                 </ul>
               </div>
             </div>
@@ -156,16 +156,16 @@ const AboutUs: React.FC = () => {
               <div className="text-center">
                 <div className="text-4xl mb-4">🌿</div>
                 <h3 className="text-xl font-semibold text-secondary-dark-gray mb-3">
-                  Essential Oils
+                  Car & Room Fresheners
                 </h3>
                 <p className="text-secondary-medium-gray mb-4">
-                  Pure, therapeutic-grade essential oils for aromatherapy, relaxation, and wellness.
+                  Everyday freshness products designed for cars, rooms, wardrobes, and personal spaces.
                 </p>
                 <ul className="text-sm text-secondary-medium-gray text-left space-y-1">
-                  <li>• Lavender for relaxation</li>
-                  <li>• Eucalyptus for clarity</li>
-                  <li>• Peppermint for energy</li>
-                  <li>• Rosemary for focus</li>
+                  <li>• Premium room mist</li>
+                  <li>• Fragrance sachets</li>
+                  <li>• Diffuser oils</li>
+                  <li>• Freshness essentials</li>
                 </ul>
               </div>
             </div>
@@ -175,16 +175,16 @@ const AboutUs: React.FC = () => {
               <div className="text-center">
                 <div className="text-4xl mb-4">🏺</div>
                 <h3 className="text-xl font-semibold text-secondary-dark-gray mb-3">
-                  Spiritual Decor
+                  Gift Collections
                 </h3>
                 <p className="text-secondary-medium-gray mb-4">
-                  Beautiful decorative elements to create a peaceful and sacred atmosphere in your home.
+                  Giftable and decorative products selected for thoughtful everyday occasions.
                 </p>
                 <ul className="text-sm text-secondary-medium-gray text-left space-y-1">
-                  <li>• Buddha statues</li>
-                  <li>• Meditation cushions</li>
-                  <li>• Spiritual wall art</li>
-                  <li>• Prayer bowls</li>
+                  <li>• Home decor</li>
+                  <li>• Table decor</li>
+                  <li>• Gift-ready products</li>
+                  <li>• Curated selections</li>
                 </ul>
               </div>
             </div>
@@ -192,13 +192,18 @@ const AboutUs: React.FC = () => {
         </section>
 
         {/* Contact Section */}
-        <section className="bg-primary-blue rounded-xl p-8 text-center">
+        <section id="contact" className="bg-primary-blue rounded-xl p-8 text-center scroll-mt-32">
           <h2 className="text-3xl font-bold text-primary-gold mb-4">
-            Join Our Journey
+            Contact Us
           </h2>
-          <p className="text-lg text-primary-gold/80 mb-6 max-w-2xl mx-auto">
-            We're passionate about helping you create moments of peace and serenity. Join thousands of customers who have transformed their spaces with Nivaana.
-          </p>
+          <div className="mx-auto mb-6 max-w-2xl space-y-2 text-primary-gold/85">
+            <p className="font-semibold text-primary-gold">VIP98 VENTURES LLP</p>
+            <p>516D, Lakshmi Sundaram Nagar, Narasingapuram Road, Pandiyanallore Post</p>
+            <p>Sholinghur - 631102, Tamil Nadu</p>
+            <p>Phone: +91 8925662553</p>
+            <p>Email: support@nivaana.com</p>
+            <p>Customer Service Hours: 9 AM - 6 PM (Mon-Sat)</p>
+          </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               href="/products"
@@ -207,10 +212,10 @@ const AboutUs: React.FC = () => {
               Explore Our Products
             </a>
             <a
-              href="/terms"
+              href="mailto:support@nivaana.com"
               className="btn-secondary"
             >
-              Learn More
+              Email Support
             </a>
           </div>
         </section>

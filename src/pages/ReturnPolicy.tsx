@@ -19,7 +19,7 @@ const ReturnPolicy: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">1. Return Policy Overview</h2>
                 <p className="leading-relaxed">
-                  At VIP98 VENTURES LLP, we want you to be completely satisfied with your purchase of our premium incense sticks, essential oils, and spiritual decor products. This policy outlines the conditions and process for returns and refunds.
+                  At VIP98 VENTURES LLP, we want you to be completely satisfied with your purchase. This policy outlines the conditions and process for returns and refunds.
                 </p>
                 
                 <div className="bg-primary-gold/10 p-4 rounded-lg mt-4">
@@ -46,8 +46,8 @@ const ReturnPolicy: React.FC = () => {
                   <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
                     <h3 className="text-lg font-semibold text-red-800 mb-2">❌ Not Eligible</h3>
                     <ul className="space-y-1 text-sm text-red-700">
-                      <li>Opened essential oil bottles</li>
-                      <li>Used incense sticks</li>
+                      <li>Opened consumable or hygiene-sensitive products</li>
+                      <li>Used products</li>
                       <li>Custom/personalized items</li>
                       <li>Items damaged by customer</li>
                       <li>Products returned after 7 days</li>
@@ -174,18 +174,18 @@ const ReturnPolicy: React.FC = () => {
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">9. Special Cases</h2>
                 <div className="space-y-4">
                   <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">Essential Oils</h3>
-                    <p className="text-sm text-yellow-700">Due to safety and hygiene reasons, opened essential oil bottles cannot be returned unless defective.</p>
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">Consumable Products</h3>
+                    <p className="text-sm text-yellow-700">Due to safety and hygiene reasons, opened consumable products cannot be returned unless defective.</p>
                   </div>
                   
                   <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">Incense Sticks</h3>
-                    <p className="text-sm text-yellow-700">Used incense sticks cannot be returned. Only unopened packages are eligible for return.</p>
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">Used Products</h3>
+                    <p className="text-sm text-yellow-700">Used products cannot be returned. Only unopened packages are eligible for return unless the item is defective.</p>
                   </div>
                   
                   <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">Spiritual Decor</h3>
-                    <p className="text-sm text-yellow-700">Fragile decor items must be returned in original packaging with proper protection.</p>
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">Fragile Items</h3>
+                    <p className="text-sm text-yellow-700">Fragile items must be returned in original packaging with proper protection.</p>
                   </div>
                 </div>
               </section>

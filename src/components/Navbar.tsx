@@ -40,15 +40,17 @@ const categoryGroups: CategoryGroup[] = [
     to: "/products?category=incense",
     links: [
       { label: "Premium Incense Sticks", to: "/products?category=incense&subcategory=premium_incense_sticks" },
-      { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
-      { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
+      // Hidden until active product listings are available for PhonePe whitelisting.
+      // { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
+      // { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
     ],
   },
   {
     heading: "Home Fragrance",
     to: "/products?category=home_fragrance",
     links: [
-      { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
+      // Hidden until active product listings are available for PhonePe whitelisting.
+      // { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
       { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
       { label: "Wardrobe Sachets", to: "/products?category=home_fragrance&subcategory=wardrobe_sachets" },
     ],
@@ -59,8 +61,9 @@ const categoryGroups: CategoryGroup[] = [
     links: [
       { label: "Premium Room Mist", to: "/products?category=car_room_fresheners&subcategory=premium_room_mist" },
       { label: "Diffuser Oils", to: "/products?category=car_room_fresheners&subcategory=diffuser_oils" },
-      { label: "Diffuser Oil Refill Pack", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
-      { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
+      // Hidden until active product listings are available for PhonePe whitelisting.
+      // { label: "Diffuser Oil Refill Pack", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
+      // { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
     ],
   },
   // Hidden for now. Uncomment this block to restore Personal Care and its subcategories.

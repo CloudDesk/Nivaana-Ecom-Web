@@ -140,22 +140,23 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
           includeAny: ["premium incense sticks", "premium incense", "premium_incense_sticks"],
         },
       },
-      {
-        label: "Dhoops",
-        value: "dhoops",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["dhoop", "dhoops", "dhoop sticks", "premium dhoop sticks"],
-        },
-      },
-      {
-        label: "Havan Cups",
-        value: "havan_cups",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["havan cups", "havan cup", "premium havan cups"],
-        },
-      },
+      // Hidden until active product listings are available for PhonePe whitelisting.
+      // {
+      //   label: "Dhoops",
+      //   value: "dhoops",
+      //   param: "subcategory",
+      //   matcher: {
+      //     includeAny: ["dhoop", "dhoops", "dhoop sticks", "premium dhoop sticks"],
+      //   },
+      // },
+      // {
+      //   label: "Havan Cups",
+      //   value: "havan_cups",
+      //   param: "subcategory",
+      //   matcher: {
+      //     includeAny: ["havan cups", "havan cup", "premium havan cups"],
+      //   },
+      // },
     ],
   },
   {
@@ -181,64 +182,65 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
           excludeAny: ["refill pack", "diffuser machine", "diffusers", "essential oil", "essential oils"],
         },
       },
-      {
-        label: "Diffuser Oil Refill Pack",
-        value: "diffuser_oil_refill_pack_for_machines",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["diffuser oil refill pack for machines", "diffuser oil refill", "refill pack for machines"],
-        },
-      },
-      {
-        label: "Diffuser Machines",
-        value: "diffuser_machines",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
-          excludeAny: ["diffuser oil", "refill pack"],
-        },
-        nestedItems: [
-          {
-            label: "For Car",
-            value: "for_car",
-            param: "subsubcategory",
-            queryParams: {
-              category: "car_room_fresheners",
-              subcategory: "diffuser_machines",
-              subsubcategory: "for_car",
-            },
-            matcher: {
-              includeAny: ["for car", "car diffuser", "car machine", "car"],
-            },
-          },
-          {
-            label: "For Home",
-            value: "for_home",
-            param: "subsubcategory",
-            queryParams: {
-              category: "car_room_fresheners",
-              subcategory: "diffuser_machines",
-              subsubcategory: "for_home",
-            },
-            matcher: {
-              includeAny: ["for home", "home diffuser", "home machine", "room diffuser", "home"],
-            },
-          },
-          {
-            label: "For Hotels & Commercial places",
-            value: "for_hotels_commercial_places",
-            param: "subsubcategory",
-            queryParams: {
-              category: "car_room_fresheners",
-              subcategory: "diffuser_machines",
-              subsubcategory: "for_hotels_commercial_places",
-            },
-            matcher: {
-              includeAny: ["hotel", "hotels", "commercial", "commercial places", "for hotels"],
-            },
-          },
-        ],
-      },
+      // Hidden until active product listings are available for PhonePe whitelisting.
+      // {
+      //   label: "Diffuser Oil Refill Pack",
+      //   value: "diffuser_oil_refill_pack_for_machines",
+      //   param: "subcategory",
+      //   matcher: {
+      //     includeAny: ["diffuser oil refill pack for machines", "diffuser oil refill", "refill pack for machines"],
+      //   },
+      // },
+      // {
+      //   label: "Diffuser Machines",
+      //   value: "diffuser_machines",
+      //   param: "subcategory",
+      //   matcher: {
+      //     includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
+      //     excludeAny: ["diffuser oil", "refill pack"],
+      //   },
+      //   nestedItems: [
+      //     {
+      //       label: "For Car",
+      //       value: "for_car",
+      //       param: "subsubcategory",
+      //       queryParams: {
+      //         category: "car_room_fresheners",
+      //         subcategory: "diffuser_machines",
+      //         subsubcategory: "for_car",
+      //       },
+      //       matcher: {
+      //         includeAny: ["for car", "car diffuser", "car machine", "car"],
+      //       },
+      //     },
+      //     {
+      //       label: "For Home",
+      //       value: "for_home",
+      //       param: "subsubcategory",
+      //       queryParams: {
+      //         category: "car_room_fresheners",
+      //         subcategory: "diffuser_machines",
+      //         subsubcategory: "for_home",
+      //       },
+      //       matcher: {
+      //         includeAny: ["for home", "home diffuser", "home machine", "room diffuser", "home"],
+      //       },
+      //     },
+      //     {
+      //       label: "For Hotels & Commercial places",
+      //       value: "for_hotels_commercial_places",
+      //       param: "subsubcategory",
+      //       queryParams: {
+      //         category: "car_room_fresheners",
+      //         subcategory: "diffuser_machines",
+      //         subsubcategory: "for_hotels_commercial_places",
+      //       },
+      //       matcher: {
+      //         includeAny: ["hotel", "hotels", "commercial", "commercial places", "for hotels"],
+      //       },
+      //     },
+      //   ],
+      // },
     ],
   },
   {
@@ -246,14 +248,15 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
     label: "Home Fragrance",
     icon: Home,
     childItems: [
-      {
-        label: "Essential Oils",
-        value: "essential_oils",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["essential oils", "essential oil"],
-        },
-      },
+      // Hidden until active product listings are available for PhonePe whitelisting.
+      // {
+      //   label: "Essential Oils",
+      //   value: "essential_oils",
+      //   param: "subcategory",
+      //   matcher: {
+      //     includeAny: ["essential oils", "essential oil"],
+      //   },
+      // },
       {
         label: "Fragrance Blends",
         value: "fragrance_blends",

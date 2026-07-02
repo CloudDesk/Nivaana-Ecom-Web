@@ -52,7 +52,6 @@ const CancellationPolicy: React.FC = () => {
                   <li>Call our customer service at +91 8925662553</li>
                   <li>Email us at support@nivaana.com</li>
                   <li>Use the cancellation option in your order confirmation email</li>
-                  <li>Contact us through our website chat support</li>
                 </ul>
                 
                 <div className="bg-primary-gold/10 p-4 rounded-lg mt-4">

@@ -19,7 +19,7 @@ const ShippingPolicy: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">1. Shipping Areas</h2>
                 <p className="leading-relaxed">
-                  We currently ship our premium incense sticks, essential oils, and spiritual decor products across India. We are committed to delivering your sacred wellness products safely to your doorstep.
+                  We currently ship eligible Nivaana products across India. We are committed to delivering your orders safely to your doorstep.
                 </p>
                 <div className="bg-primary-gold/10 p-4 rounded-lg mt-4">
                   <p className="font-semibold text-primary-blue">Shipping Coverage:</p>
@@ -85,12 +85,12 @@ const ShippingPolicy: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">5. Special Handling for Fragile Products</h2>
                 <p className="leading-relaxed">
-                  Our incense sticks, essential oils, and spiritual decor items require special care during shipping:
+                  Certain products may require special care during shipping:
                 </p>
                 <ul className="list-disc list-inside ml-4 mt-2 space-y-1">
-                  <li>Essential oils are packaged in leak-proof containers</li>
-                  <li>Incense sticks are wrapped in protective materials</li>
-                  <li>Fragile decor items are packed with extra cushioning</li>
+                  <li>Liquid products are packaged in leak-resistant containers where applicable</li>
+                  <li>Delicate products are wrapped in protective materials</li>
+                  <li>Fragile items are packed with extra cushioning</li>
                   <li>Temperature-sensitive products are handled with care</li>
                 </ul>
               </section>

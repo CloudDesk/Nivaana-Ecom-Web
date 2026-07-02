@@ -126,11 +126,11 @@ const formatReviewDate = (value?: number | null) => {
 };
 
 const productImages = (product?: Product) => {
-  const images = [
-    ...(product?.large ?? []),
-    ...(product?.medium ?? []),
-    ...(product?.small ?? []),
-  ].filter(Boolean);
+  const images = product?.large?.length
+    ? product.large
+    : product?.medium?.length
+      ? product.medium
+      : product?.small ?? [];
 
   return Array.from(new Set(images.length ? images : [fallbackProduct]));
 };
