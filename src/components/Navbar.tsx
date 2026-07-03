@@ -40,17 +40,15 @@ const categoryGroups: CategoryGroup[] = [
     to: "/products?category=incense",
     links: [
       { label: "Premium Incense Sticks", to: "/products?category=incense&subcategory=premium_incense_sticks" },
-      // Hidden until active product listings are available for PhonePe whitelisting.
-      // { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
-      // { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
+      { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
+      { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
     ],
   },
   {
     heading: "Home Fragrance",
     to: "/products?category=home_fragrance",
     links: [
-      // Hidden until active product listings are available for PhonePe whitelisting.
-      // { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
+      { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
       { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
       { label: "Wardrobe Sachets", to: "/products?category=home_fragrance&subcategory=wardrobe_sachets" },
     ],
@@ -61,42 +59,38 @@ const categoryGroups: CategoryGroup[] = [
     links: [
       { label: "Premium Room Mist", to: "/products?category=car_room_fresheners&subcategory=premium_room_mist" },
       { label: "Diffuser Oils", to: "/products?category=car_room_fresheners&subcategory=diffuser_oils" },
-      // Hidden until active product listings are available for PhonePe whitelisting.
-      // { label: "Diffuser Oil Refill Pack", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
-      // { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
+      { label: "Diffuser Oil Refill Pack", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
+      { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
     ],
   },
-  // Hidden for now. Uncomment this block to restore Personal Care and its subcategories.
-  // {
-  //   heading: "Personal Care",
-  //   to: "/products?category=personal_care",
-  //   links: [
-  //     { label: "Soaps", to: "/products?subcategory=soaps" },
-  //     { label: "Facewash", to: "/products?subcategory=facewash" },
-  //     { label: "Floor Cleaner Concentrates", to: "/products?subcategory=floor_cleaner_concentrates" },
-  //     { label: "Handwash", to: "/products?subcategory=handwash" },
-  //   ],
-  // },
-  // Hidden for now. Uncomment this block to restore Perfumes and its subcategories.
-  // {
-  //   heading: "Perfumes",
-  //   to: "/products?category=perfumes",
-  //   links: [
-  //     { label: "Pocket Perfumes", to: "/products?subcategory=pocket_perfumes" },
-  //     { label: "Daily Collection", to: "/products?subcategory=daily_collection" },
-  //     { label: "Luxury Collection", to: "/products?subcategory=luxury_collection" },
-  //   ],
-  // },
-  // Hidden for now. Uncomment this block to restore Daily Rituals and its subcategories.
-  // {
-  //   heading: "Daily Rituals",
-  //   to: "/products?category=daily_rituals",
-  //   links: [
-  //     { label: "Fresh Mornings", to: "/products?subcategory=fresh_mornings" },
-  //     { label: "Relaxation & Calm", to: "/products?subcategory=relaxation_calm" },
-  //     { label: "Dusky Evenings & Night", to: "/products?subcategory=dusky_evenings_night" },
-  //   ],
-  // },
+  {
+    heading: "Personal Care",
+    to: "/products?category=personal_care",
+    links: [
+      { label: "Soaps", to: "/products?subcategory=soaps" },
+      { label: "Facewash", to: "/products?subcategory=facewash" },
+      { label: "Floor Cleaner Concentrates", to: "/products?subcategory=floor_cleaner_concentrates" },
+      { label: "Handwash", to: "/products?subcategory=handwash" },
+    ],
+  },
+  {
+    heading: "Perfumes",
+    to: "/products?category=perfumes",
+    links: [
+      { label: "Pocket Perfumes", to: "/products?subcategory=pocket_perfumes" },
+      { label: "Daily Collection", to: "/products?subcategory=daily_collection" },
+      { label: "Luxury Collection", to: "/products?subcategory=luxury_collection" },
+    ],
+  },
+  {
+    heading: "Daily Rituals",
+    to: "/products?category=daily_rituals",
+    links: [
+      { label: "Fresh Mornings", to: "/products?subcategory=fresh_mornings" },
+      { label: "Relaxation & Calm", to: "/products?subcategory=relaxation_calm" },
+      { label: "Dusky Evenings & Night", to: "/products?subcategory=dusky_evenings_night" },
+    ],
+  },
   {
     heading: "Gift Collections",
     to: "/products?category=gift_collections",

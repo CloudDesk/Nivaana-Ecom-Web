@@ -1,11 +1,11 @@
 import {
   Car,
   Flame,
-  // Flower2,
+  Flower2,
   Gift,
-  // HeartHandshake,
+  HeartHandshake,
   Home,
-  // Sparkles,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
@@ -140,23 +140,22 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
           includeAny: ["premium incense sticks", "premium incense", "premium_incense_sticks"],
         },
       },
-      // Hidden until active product listings are available for PhonePe whitelisting.
-      // {
-      //   label: "Dhoops",
-      //   value: "dhoops",
-      //   param: "subcategory",
-      //   matcher: {
-      //     includeAny: ["dhoop", "dhoops", "dhoop sticks", "premium dhoop sticks"],
-      //   },
-      // },
-      // {
-      //   label: "Havan Cups",
-      //   value: "havan_cups",
-      //   param: "subcategory",
-      //   matcher: {
-      //     includeAny: ["havan cups", "havan cup", "premium havan cups"],
-      //   },
-      // },
+      {
+        label: "Dhoops",
+        value: "dhoops",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["dhoop", "dhoops", "dhoop sticks", "premium dhoop sticks"],
+        },
+      },
+      {
+        label: "Havan Cups",
+        value: "havan_cups",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["havan cups", "havan cup", "premium havan cups"],
+        },
+      },
     ],
   },
   {
@@ -182,65 +181,64 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
           excludeAny: ["refill pack", "diffuser machine", "diffusers", "essential oil", "essential oils"],
         },
       },
-      // Hidden until active product listings are available for PhonePe whitelisting.
-      // {
-      //   label: "Diffuser Oil Refill Pack",
-      //   value: "diffuser_oil_refill_pack_for_machines",
-      //   param: "subcategory",
-      //   matcher: {
-      //     includeAny: ["diffuser oil refill pack for machines", "diffuser oil refill", "refill pack for machines"],
-      //   },
-      // },
-      // {
-      //   label: "Diffuser Machines",
-      //   value: "diffuser_machines",
-      //   param: "subcategory",
-      //   matcher: {
-      //     includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
-      //     excludeAny: ["diffuser oil", "refill pack"],
-      //   },
-      //   nestedItems: [
-      //     {
-      //       label: "For Car",
-      //       value: "for_car",
-      //       param: "subsubcategory",
-      //       queryParams: {
-      //         category: "car_room_fresheners",
-      //         subcategory: "diffuser_machines",
-      //         subsubcategory: "for_car",
-      //       },
-      //       matcher: {
-      //         includeAny: ["for car", "car diffuser", "car machine", "car"],
-      //       },
-      //     },
-      //     {
-      //       label: "For Home",
-      //       value: "for_home",
-      //       param: "subsubcategory",
-      //       queryParams: {
-      //         category: "car_room_fresheners",
-      //         subcategory: "diffuser_machines",
-      //         subsubcategory: "for_home",
-      //       },
-      //       matcher: {
-      //         includeAny: ["for home", "home diffuser", "home machine", "room diffuser", "home"],
-      //       },
-      //     },
-      //     {
-      //       label: "For Hotels & Commercial places",
-      //       value: "for_hotels_commercial_places",
-      //       param: "subsubcategory",
-      //       queryParams: {
-      //         category: "car_room_fresheners",
-      //         subcategory: "diffuser_machines",
-      //         subsubcategory: "for_hotels_commercial_places",
-      //       },
-      //       matcher: {
-      //         includeAny: ["hotel", "hotels", "commercial", "commercial places", "for hotels"],
-      //       },
-      //     },
-      //   ],
-      // },
+      {
+        label: "Diffuser Oil Refill Pack",
+        value: "diffuser_oil_refill_pack_for_machines",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["diffuser oil refill pack for machines", "diffuser oil refill", "refill pack for machines"],
+        },
+      },
+      {
+        label: "Diffuser Machines",
+        value: "diffuser_machines",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
+          excludeAny: ["diffuser oil", "refill pack"],
+        },
+        nestedItems: [
+          {
+            label: "For Car",
+            value: "for_car",
+            param: "subsubcategory",
+            queryParams: {
+              category: "car_room_fresheners",
+              subcategory: "diffuser_machines",
+              subsubcategory: "for_car",
+            },
+            matcher: {
+              includeAny: ["for car", "car diffuser", "car machine", "car"],
+            },
+          },
+          {
+            label: "For Home",
+            value: "for_home",
+            param: "subsubcategory",
+            queryParams: {
+              category: "car_room_fresheners",
+              subcategory: "diffuser_machines",
+              subsubcategory: "for_home",
+            },
+            matcher: {
+              includeAny: ["for home", "home diffuser", "home machine", "room diffuser", "home"],
+            },
+          },
+          {
+            label: "For Hotels & Commercial places",
+            value: "for_hotels_commercial_places",
+            param: "subsubcategory",
+            queryParams: {
+              category: "car_room_fresheners",
+              subcategory: "diffuser_machines",
+              subsubcategory: "for_hotels_commercial_places",
+            },
+            matcher: {
+              includeAny: ["hotel", "hotels", "commercial", "commercial places", "for hotels"],
+            },
+          },
+        ],
+      },
     ],
   },
   {
@@ -248,15 +246,14 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
     label: "Home Fragrance",
     icon: Home,
     childItems: [
-      // Hidden until active product listings are available for PhonePe whitelisting.
-      // {
-      //   label: "Essential Oils",
-      //   value: "essential_oils",
-      //   param: "subcategory",
-      //   matcher: {
-      //     includeAny: ["essential oils", "essential oil"],
-      //   },
-      // },
+      {
+        label: "Essential Oils",
+        value: "essential_oils",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["essential oils", "essential oil"],
+        },
+      },
       {
         label: "Fragrance Blends",
         value: "fragrance_blends",
@@ -275,110 +272,107 @@ const categoryNavigationConfig: CategoryNavConfig[] = [
       },
     ],
   },
-  // Hidden for now. Uncomment this block and the Sparkles import to restore Personal Care and its subcategories.
-  // {
-  //   value: "personal_care",
-  //   label: "Personal Care",
-  //   icon: Sparkles,
-  //   childItems: [
-  //     {
-  //       label: "Soaps",
-  //       value: "soaps",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["soaps", "soap"],
-  //       },
-  //     },
-  //     {
-  //       label: "Facewash",
-  //       value: "facewash",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["facewash", "face wash"],
-  //       },
-  //     },
-  //     {
-  //       label: "Floor Cleaner Concentrates",
-  //       value: "floor_cleaner_concentrates",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["floor cleaner concentrates", "floor cleaner concentrate"],
-  //       },
-  //     },
-  //     {
-  //       label: "Handwash",
-  //       value: "handwash",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["handwash", "hand wash"],
-  //       },
-  //     },
-  //   ],
-  // },
-  // Hidden for now. Uncomment this block and the Flower2 import to restore Perfumes and its subcategories.
-  // {
-  //   value: "perfumes",
-  //   label: "Perfumes",
-  //   icon: Flower2,
-  //   childItems: [
-  //     {
-  //       label: "Pocket Perfumes",
-  //       value: "pocket_perfumes",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["pocket perfumes", "pocket perfume"],
-  //       },
-  //     },
-  //     {
-  //       label: "Daily Collection",
-  //       value: "daily_collection",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["daily collection"],
-  //       },
-  //     },
-  //     {
-  //       label: "Luxury Collection",
-  //       value: "luxury_collection",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["luxury collection"],
-  //       },
-  //     },
-  //   ],
-  // },
-  // Hidden for now. Uncomment this block and the HeartHandshake import to restore Daily Rituals and its subcategories.
-  // {
-  //   value: "daily_rituals",
-  //   label: "Daily Rituals",
-  //   icon: HeartHandshake,
-  //   childItems: [
-  //     {
-  //       label: "Fresh Mornings",
-  //       value: "fresh_mornings",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["fresh mornings", "fresh morning"],
-  //       },
-  //     },
-  //     {
-  //       label: "Relaxation & Calm",
-  //       value: "relaxation_calm",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["relaxation calm", "relaxation and calm"],
-  //       },
-  //     },
-  //     {
-  //       label: "Dusky Evenings & Night",
-  //       value: "dusky_evenings_night",
-  //       param: "subcategory",
-  //       matcher: {
-  //         includeAny: ["dusky evenings night", "dusky evening", "night ritual"],
-  //       },
-  //     },
-  //   ],
-  // },
+  {
+    value: "personal_care",
+    label: "Personal Care",
+    icon: Sparkles,
+    childItems: [
+      {
+        label: "Soaps",
+        value: "soaps",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["soaps", "soap"],
+        },
+      },
+      {
+        label: "Facewash",
+        value: "facewash",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["facewash", "face wash"],
+        },
+      },
+      {
+        label: "Floor Cleaner Concentrates",
+        value: "floor_cleaner_concentrates",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["floor cleaner concentrates", "floor cleaner concentrate"],
+        },
+      },
+      {
+        label: "Handwash",
+        value: "handwash",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["handwash", "hand wash"],
+        },
+      },
+    ],
+  },
+  {
+    value: "perfumes",
+    label: "Perfumes",
+    icon: Flower2,
+    childItems: [
+      {
+        label: "Pocket Perfumes",
+        value: "pocket_perfumes",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["pocket perfumes", "pocket perfume"],
+        },
+      },
+      {
+        label: "Daily Collection",
+        value: "daily_collection",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["daily collection"],
+        },
+      },
+      {
+        label: "Luxury Collection",
+        value: "luxury_collection",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["luxury collection"],
+        },
+      },
+    ],
+  },
+  {
+    value: "daily_rituals",
+    label: "Daily Rituals",
+    icon: HeartHandshake,
+    childItems: [
+      {
+        label: "Fresh Mornings",
+        value: "fresh_mornings",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["fresh mornings", "fresh morning"],
+        },
+      },
+      {
+        label: "Relaxation & Calm",
+        value: "relaxation_calm",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["relaxation calm", "relaxation and calm"],
+        },
+      },
+      {
+        label: "Dusky Evenings & Night",
+        value: "dusky_evenings_night",
+        param: "subcategory",
+        matcher: {
+          includeAny: ["dusky evenings night", "dusky evening", "night ritual"],
+        },
+      },
+    ],
+  },
   {
     value: "gift_collections",
     label: "Gift Collections",
