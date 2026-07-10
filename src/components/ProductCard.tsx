@@ -22,7 +22,7 @@ interface ProductCardProps {
 }
 
 const getProductImage = (product: Product) =>
-  product.medium?.[0] || product.small?.[0] || product.large?.[0] || fallbackProduct;
+  product.large?.[0] || product.medium?.[0] || product.small?.[0] || fallbackProduct;
 
 const getFinalPrice = (product: Product) => Math.max(product.price - product.discount, 0);
 
