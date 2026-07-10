@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -124,6 +124,9 @@ const INDIAN_STATES = [
 
 const Checkout: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const buyNowProductId = Number(searchParams.get("buyNow"));
+  const isBuyNowCheckout = Number.isFinite(buyNowProductId) && buyNowProductId > 0;
   const [session] = useState(() => sessionService.getSession());
   const user = session?.user;
   const userId = user?.id;
@@ -171,12 +174,19 @@ const Checkout: React.FC = () => {
   const cartQuery = useQuery({
     queryKey: ["cart", userId],
     queryFn: () => cartService.getCart(userId!),
-    enabled: Boolean(userId),
+    enabled: Boolean(userId && !isBuyNowCheckout),
   });
 
   const productsQuery = useQuery({
     queryKey: ["checkout-products"],
     queryFn: () => platformProductService.getProducts(1, 100),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const buyNowProductQuery = useQuery({
+    queryKey: ["checkout-buy-now-product", buyNowProductId],
+    queryFn: () => platformProductService.getProduct(buyNowProductId),
+    enabled: isBuyNowCheckout,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -187,17 +197,32 @@ const Checkout: React.FC = () => {
   });
 
   const addresses = addressesQuery.data?.data ?? [];
-  const cartItems = (cartQuery.data?.data ?? []).filter((item) => item.iscart);
+  const allCartItems = (cartQuery.data?.data ?? []).filter((item) => item.iscart);
   const products = productsQuery.data?.data ?? [];
+  const buyNowProduct = buyNowProductQuery.data?.data ?? products.find((product) => product.id === buyNowProductId);
+  const cartItems = isBuyNowCheckout
+    ? buyNowProduct
+      ? [{
+          id: buyNowProduct.id,
+          productid: buyNowProduct.id,
+          userid: userId ?? 0,
+          quantity: 1,
+          iscart: true,
+          iswishlist: false,
+        }]
+      : []
+    : allCartItems;
 
   const enrichedItems = useMemo(
     () =>
       cartItems.map((item) => ({
         item,
         quantity: quantityFor(item.quantity),
-        product: products.find((product) => product.id === item.productid),
+        product: item.productid === buyNowProductId && buyNowProduct
+          ? buyNowProduct
+          : products.find((product) => product.id === item.productid),
       })),
-    [cartItems, products]
+    [buyNowProduct, buyNowProductId, cartItems, products]
   );
 
   const promotionRows = useMemo(
@@ -224,7 +249,7 @@ const Checkout: React.FC = () => {
   const activeEvaluationsQuery = useQuery({
     queryKey: ["checkout-active-promotion-evaluations", userId, cartSignature],
     queryFn: () => promotionService.getActiveEvaluations(userId!),
-    enabled: Boolean(userId && promotionRows.length > 0),
+    enabled: Boolean(userId && promotionRows.length > 0 && !isBuyNowCheckout),
     staleTime: 1000 * 15,
   });
 
@@ -600,7 +625,7 @@ const Checkout: React.FC = () => {
     );
   }
 
-  if (cartQuery.isLoading || productsQuery.isLoading) {
+  if (cartQuery.isLoading || productsQuery.isLoading || (isBuyNowCheckout && buyNowProductQuery.isLoading)) {
     return (
       <main className="grid min-h-screen place-items-center bg-[var(--color-surface)] px-4">
         <div className="flex items-center gap-3 rounded-[var(--radius-md)] bg-white p-5 text-sm font-semibold text-[var(--color-secondary)] shadow-[var(--shadow-card)]">
@@ -616,7 +641,9 @@ const Checkout: React.FC = () => {
       <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
         <section className="mx-auto max-w-3xl rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <PackageCheck className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
-          <h1 className="mt-4 text-2xl font-bold text-[var(--color-text)]">Your cart is empty</h1>
+          <h1 className="mt-4 text-2xl font-bold text-[var(--color-text)]">
+            {isBuyNowCheckout ? "This product is not available for checkout" : "Your cart is empty"}
+          </h1>
           <Link to="/products" className="mt-6 inline-flex">
             <Button>Shop Products</Button>
           </Link>
@@ -928,7 +955,7 @@ function extractProductValidationErrors(error: unknown): Record<number, string> 
     const backendMessage = typeof validationError.error === "string" ? validationError.error : "";
 
     if (Number.isFinite(available) && Number.isFinite(requested)) {
-      messages[productId] = `${productName}: only ${available} available, but cart has ${requested}.`;
+      messages[productId] = `${productName}: requested quantity exceeds the available stock.`;
       return messages;
     }
 

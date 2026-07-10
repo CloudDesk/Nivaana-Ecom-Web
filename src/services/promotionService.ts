@@ -19,6 +19,8 @@ export interface Promotion {
   discount_type?: string | null;
   discount_value?: number | null;
   action?: PromotionAction | null;
+  actions?: PromotionAction[] | null;
+  conditions?: PromotionCondition[] | null;
 }
 
 export interface PromotionAction {
@@ -26,10 +28,19 @@ export interface PromotionAction {
   value?: number | boolean;
   max_discount?: number;
   min_order_value?: number;
+  minimum_order_value?: number;
   buy_quantity?: number;
   get_quantity?: number;
   free_product_id?: string;
   max_free_items?: number;
+  [key: string]: unknown;
+}
+
+export interface PromotionCondition {
+  attribute?: string;
+  field?: string;
+  operator?: string;
+  value?: string | number | boolean | string[] | number[];
   [key: string]: unknown;
 }
 
@@ -80,6 +91,13 @@ export interface ApplicablePromotion {
   end_date?: number | string | null;
   timezone?: string | null;
   action?: PromotionAction | null;
+  actions?: PromotionAction[] | null;
+  conditions?: PromotionCondition[] | null;
+  min_order_value?: number | null;
+  minimum_order_value?: number | null;
+  is_free_shipping?: boolean;
+  is_shipping_discount?: boolean;
+  shipping_info?: Record<string, unknown> | null;
   discountInfo?: DiscountInfo;
   mode?: string;
   expiresAt?: string;

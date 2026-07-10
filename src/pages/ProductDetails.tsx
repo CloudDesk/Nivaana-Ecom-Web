@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   Gift,
   Heart,
   IndianRupee,
@@ -52,7 +53,7 @@ import type { Product, Rating } from "../types";
 import { cn } from "../lib/utils";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { saveRecentlyViewedProductId } from "../lib/recentlyViewed";
-import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
+import { getAvailableStock, isLowStock, isOutOfStock, stockLimitMessage, stockStatusLabel } from "../lib/stock";
 
 const formatLabel = (value?: string | null) =>
   value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "Nivaana";
@@ -87,10 +88,15 @@ const splitDescriptionPoints = (product: Product) => {
 
 const productOfferItems = (product: Product, promotions: Promotion[] = []) => {
   if (promotions.length > 0) {
-    return promotions.slice(0, 4).map((promotion) => {
+    const offerLines = promotions.map((promotion) => {
+      const name = promotion.name?.trim() || "Offer";
+      const description = promotion.description?.trim();
+      const hasUniqueDescription = description && description.toLowerCase() !== name.toLowerCase();
       const code = promotion.code ? ` Use code ${promotion.code}.` : "";
-      return `${promotion.name}${promotion.description ? ` - ${promotion.description}` : "."}${code}`;
+      return `${name}${hasUniqueDescription ? ` - ${description}` : "."}${code}`;
     });
+
+    return Array.from(new Set(offerLines)).slice(0, 4);
   }
 
   const price = finalPrice(product);
@@ -372,40 +378,81 @@ const ProductDetails: React.FC = () => {
     }
   };
 
+  const ensureProductInCart = async (incrementExisting: boolean) => {
+    if (!product) return;
+    const currentQuantity = Number(userCartItem?.quantity ?? guestCartItem?.quantity ?? 0);
+    const quantityToAdd = incrementExisting || currentQuantity <= 0 ? 1 : 0;
+    const requestedQuantity = currentQuantity + quantityToAdd;
+
+    if (productOutOfStock) {
+      throw new Error("This item is currently out of stock. You can save it to wishlist.");
+    }
+
+    if (requestedQuantity > availableStock) {
+      throw new Error(stockLimitMessage(availableStock));
+    }
+
+    if (!session) {
+      if (quantityToAdd > 0) {
+        guestStoreService.addToCart(product.id, quantityToAdd);
+      }
+      return cartItem || quantityToAdd === 0 ? "Cart quantity updated." : "Added to cart.";
+    }
+
+    await cartService.upsert({
+      id: userCartItem?.id ?? userWishlistItem?.id,
+      productid: product.id,
+      userid: session.user.id,
+      quantity: clampQuantity(requestedQuantity, availableStock),
+      iscart: true,
+      iswishlist: Boolean(wishlistItem),
+    });
+
+    return cartItem || quantityToAdd === 0 ? "Cart quantity updated." : "Added to cart.";
+  };
+
   const addToCart = useMutation<string | undefined>({
-    mutationFn: async () => {
+    mutationFn: () => ensureProductInCart(true),
+    onSuccess: (successMessage) => {
+      queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+      queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
+      if (successMessage) toast.success(successMessage);
+    },
+    onError: handleMutationError,
+  });
+
+  const checkoutProduct = useMutation<string | undefined, Error, "checkout" | "buy-now">({
+    mutationFn: async (action) => {
+      if (action === "checkout") {
+        return ensureProductInCart(false);
+      }
+
       if (!product) return;
-      const quantityToAdd = 1;
-      const requestedQuantity = Number(userCartItem?.quantity ?? guestCartItem?.quantity ?? 0) + quantityToAdd;
 
       if (productOutOfStock) {
         throw new Error("This item is currently out of stock. You can save it to wishlist.");
       }
 
-      if (requestedQuantity > availableStock) {
+      if (availableStock < 1) {
         throw new Error(stockLimitMessage(availableStock));
       }
 
-      if (!session) {
-        guestStoreService.addToCart(product.id, quantityToAdd);
-        return cartItem ? "Cart quantity updated." : "Added to cart.";
-      }
-
-      const nextQuantity = clampQuantity(requestedQuantity, availableStock);
-      await cartService.upsert({
-        id: userCartItem?.id ?? userWishlistItem?.id,
-        productid: product.id,
-        userid: session.user.id,
-        quantity: nextQuantity,
-        iscart: true,
-        iswishlist: Boolean(wishlistItem),
-      });
-      return cartItem ? "Cart quantity updated." : "Added to cart.";
+      return "Ready for checkout.";
     },
-    onSuccess: (successMessage) => {
-      queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
-      queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
-      if (successMessage) toast.success(successMessage);
+    onSuccess: (_, action) => {
+      if (action === "checkout") {
+        queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+        queryClient.invalidateQueries({ queryKey: ["wishlist", session?.user.id] });
+      }
+      if (action === "buy-now") {
+        toast.success("Ready for checkout.");
+      }
+      const checkoutPath = `/checkout?buyNow=${product?.id}`;
+      if (session) {
+        navigate(checkoutPath);
+      } else {
+        navigate(`/login?redirect=${encodeURIComponent(checkoutPath)}`);
+      }
     },
     onError: handleMutationError,
   });
@@ -728,8 +775,7 @@ const ProductDetails: React.FC = () => {
                 <Star className="h-4 w-4 fill-[var(--color-primary)] text-[var(--color-primary)]" />
                 {rating.toFixed(1)}
               </span>
-              <span>{(product.soldquantity || 0).toLocaleString("en-IN")} sold</span>
-              <span>{availableStock} available</span>
+              <span>{stockStatusLabel(product)}</span>
             </div>
 
             <div className="mt-4 min-w-0 break-words text-sm leading-7 text-[var(--color-muted)]">
@@ -771,7 +817,7 @@ const ProductDetails: React.FC = () => {
                   </div>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 {cartItem ? (
                   <div className="inline-flex h-11 w-[124px] items-center justify-between overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] sm:w-[150px]">
                     <button
@@ -804,6 +850,14 @@ const ProductDetails: React.FC = () => {
                     <span className="hidden sm:inline">{productOutOfStock ? "Out of Stock" : "Add to Cart"}</span>
                   </Button>
                 )}
+                <Button
+                  className="h-11 w-11 gap-2 px-0 sm:w-auto sm:px-4"
+                  disabled={productOutOfStock || checkoutProduct.isPending || addToCart.isPending}
+                  onClick={() => checkoutProduct.mutate("buy-now")}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  <span className="hidden sm:inline">Buy Now</span>
+                </Button>
                 <Button
                   variant="secondary"
                   className="h-11 w-11 gap-2 px-0 sm:w-auto sm:px-4"

@@ -21,6 +21,8 @@ import {
   clearSelectedCartPromotion,
   getAppliedPromotionSummary,
   getPromotionCartTotals,
+  isFreeShippingPromotion,
+  isFreeShippingPromotionEligible,
   isFreeShippingAppliedPromotion,
   productUnitPrice,
   readSelectedCartPromotion,
@@ -57,8 +59,8 @@ const uniquePromotions = (promotions: ApplicablePromotion[]) => {
 
 const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.promotion_id || 0);
 
-const isFreeShippingOffer = (promotion: ApplicablePromotion) =>
-  promotion.type === "FREE_SHIPPING" || promotion.action?.type === "FREE_SHIPPING";
+const isFreeShippingOffer = (promotion: ApplicablePromotion) => isFreeShippingPromotion(promotion);
+const guestPromotionUserId = "guest-web";
 
 const Cart: React.FC = () => {
   const queryClient = useQueryClient();
@@ -226,10 +228,10 @@ const Cart: React.FC = () => {
   const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
 
   const promotionOffersQuery = useQuery({
-    queryKey: ["cart-promotion-offers", session?.user.id, cartSignature],
+    queryKey: ["cart-promotion-offers", session?.user.id ?? guestPromotionUserId, cartSignature],
     queryFn: () =>
       promotionService.getRecommendedOffers({
-        userId: String(session!.user.id),
+        userId: String(session?.user.id ?? guestPromotionUserId),
         cartItems: promotionRows.map((row) => ({
           productId: String(row.productid),
           qty: row.quantity,
@@ -241,7 +243,7 @@ const Cart: React.FC = () => {
         channel: "web",
         geo: "IN",
       }),
-    enabled: Boolean(session && promotionRows.length > 0),
+    enabled: Boolean(promotionRows.length > 0),
     staleTime: 1000 * 60,
   });
 
@@ -251,6 +253,25 @@ const Cart: React.FC = () => {
     enabled: Boolean(session && promotionRows.length > 0),
     staleTime: 1000 * 30,
   });
+
+  const promotionCandidates = useMemo(() => {
+    const offers = promotionOffersQuery.data?.data;
+    if (!offers) return [];
+
+    return uniquePromotions(
+      [
+        offers.bestCoupon,
+        ...offers.eligibleCoupons,
+        ...offers.autoAppliedPromotions,
+        ...offers.stackablePromotions,
+      ].filter((promotion): promotion is ApplicablePromotion => Boolean(promotion && promotionId(promotion) > 0))
+    );
+  }, [promotionOffersQuery.data]);
+
+  const promotionDetailsById = useMemo(
+    () => new Map(promotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
+    [promotionCandidates]
+  );
 
   const backendEvaluation = useMemo(() => {
     const offerEvaluation = promotionOffersQuery.data?.data?.currentEvaluation;
@@ -269,8 +290,22 @@ const Cart: React.FC = () => {
   }, [activeEvaluationsQuery.data, cartTotals.total, promotionOffersQuery.data]);
 
   const backendAppliedPromotions = useMemo(
-    () => backendEvaluation?.applied_promotions ?? [],
-    [backendEvaluation?.applied_promotions]
+    () =>
+      (backendEvaluation?.applied_promotions ?? []).map((promotion) => {
+        const offerDetails = promotionDetailsById.get(appliedPromotionId(promotion));
+        return offerDetails
+          ? {
+              ...promotion,
+              action: offerDetails.action,
+              actions: offerDetails.actions,
+              conditions: offerDetails.conditions,
+              description: offerDetails.description,
+              min_order_value: offerDetails.min_order_value,
+              minimum_order_value: offerDetails.minimum_order_value,
+            }
+          : promotion;
+      }),
+    [backendEvaluation?.applied_promotions, promotionDetailsById]
   );
   const backendAppliedIds = useMemo(
     () => new Set(backendAppliedPromotions.map(appliedPromotionId).filter((id) => id > 0)),
@@ -281,7 +316,20 @@ const Cart: React.FC = () => {
     backendAppliedPromotions.length > 0
       ? backendAppliedPromotions
       : selectedPromotionApplies
-        ? selectedPromotion?.appliedPromotions ?? []
+        ? (selectedPromotion?.appliedPromotions ?? []).map((promotion) => {
+            const offerDetails = promotionDetailsById.get(appliedPromotionId(promotion));
+            return offerDetails
+              ? {
+                  ...promotion,
+                  action: offerDetails.action,
+                  actions: offerDetails.actions,
+                  conditions: offerDetails.conditions,
+                  description: offerDetails.description,
+                  min_order_value: offerDetails.min_order_value,
+                  minimum_order_value: offerDetails.minimum_order_value,
+                }
+              : promotion;
+          })
         : [];
   const fallbackPromotionDiscount =
     backendEvaluation && backendAppliedPromotions.length === 0
@@ -300,20 +348,6 @@ const Cart: React.FC = () => {
     selectedPromotionApplies && selectedPromotion?.appliedPromotions?.some((promotion) => !isFreeShippingAppliedPromotion(promotion))
   );
   const hasNormalPromotionApplied = selectedNormalPromotionApplied || promotionSummary.normalPromotions.length > 0;
-
-  const promotionCandidates = useMemo(() => {
-    const offers = promotionOffersQuery.data?.data;
-    if (!offers) return [];
-
-    return uniquePromotions(
-      [
-        offers.bestCoupon,
-        ...offers.eligibleCoupons,
-        ...offers.autoAppliedPromotions,
-        ...offers.stackablePromotions,
-      ].filter((promotion): promotion is ApplicablePromotion => Boolean(promotion && promotionId(promotion) > 0))
-    );
-  }, [promotionOffersQuery.data]);
 
   useEffect(() => {
     if (!session?.user.id || !backendEvaluation || backendAppliedPromotions.length === 0 || !cartSignature) return;
@@ -695,7 +729,7 @@ const Cart: React.FC = () => {
                 </div>
               </div>
 
-              {session && (
+              {promotionRows.length > 0 && (
                 <div className="mt-5 border-t border-[var(--color-border)] pt-5">
                   <div className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
                     <BadgePercent className="h-4 w-4 text-[var(--color-secondary)]" />
@@ -734,17 +768,23 @@ const Cart: React.FC = () => {
                     <div className="mt-3 space-y-2">
                       {promotionCandidates.map((promotion) => {
                         const freeShippingOffer = isFreeShippingOffer(promotion);
+                        const freeShippingEligible =
+                          !freeShippingOffer || isFreeShippingPromotionEligible(promotion, cartTotals.subtotal);
+                        const freeShippingApplied =
+                          freeShippingOffer && freeShippingEligible && promotionSummary.effectiveShipping === 0;
                         const isApplied =
-                          backendAppliedIds.has(promotionId(promotion)) ||
-                          (selectedPromotionApplies && selectedPromotion?.promotionId === promotionId(promotion)) ||
-                          promotion.promotionState === "applied";
+                          freeShippingApplied ||
+                          (freeShippingEligible &&
+                          (backendAppliedIds.has(promotionId(promotion)) ||
+                            (selectedPromotionApplies && selectedPromotion?.promotionId === promotionId(promotion)) ||
+                            promotion.promotionState === "applied"));
                         return (
                           <PromotionOffer
                             key={promotionId(promotion)}
                             promotion={promotion}
                             isPending={applyPromotionMutation.isPending}
                             isApplied={isApplied}
-                            isDisabled={hasNormalPromotionApplied && !isApplied && !freeShippingOffer}
+                            isDisabled={!session || !freeShippingEligible || (hasNormalPromotionApplied && !isApplied && !freeShippingOffer)}
                             onApply={() => applyPromotionMutation.mutate(promotion)}
                           />
                         );
@@ -797,10 +837,10 @@ function PromotionOffer({
           )}
         </div>
         <Button
-          className={`h-9 gap-1.5 px-3 text-xs ${
+          className={`h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs shadow-none ${
             isApplied
-              ? "!border !border-[var(--color-primary)] !bg-[var(--color-primary)]/25 !text-[var(--color-text)]"
-              : ""
+              ? "!border !border-green-200 !bg-green-50 !text-green-700 hover:!bg-green-50"
+              : "!border !border-[var(--color-primary)]/40 !bg-[var(--color-primary)]/20 !text-[var(--color-secondary)] hover:!bg-[var(--color-primary)]/30"
           }`}
           disabled={isPending || isApplied || isDisabled}
           variant={isApplied ? "secondary" : "primary"}

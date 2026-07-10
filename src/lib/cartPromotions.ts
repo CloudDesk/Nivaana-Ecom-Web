@@ -2,6 +2,7 @@ import type { AppliedPromotion } from "../services/promotionService";
 import type { Product } from "../types";
 
 const SELECTED_PROMOTION_KEY = "nivaana_selected_cart_promotion";
+const FREE_SHIPPING_MINIMUM = 500;
 
 export interface PromotionCartRow {
   cartRecordId?: number | string;
@@ -61,6 +62,23 @@ export type PromotionEvaluationCartItem = PromotionCartData["items"][number] & {
   cart_record_id: string;
 };
 
+type FreeShippingPromotionLike = {
+  promotion_id?: number | null;
+  type?: string | null;
+  name?: string | null;
+  description?: string | null;
+  promotion_name?: string | null;
+  promotion_type?: string | null;
+  is_free_shipping?: boolean;
+  is_shipping_discount?: boolean;
+  action?: Record<string, unknown> | null;
+  actions?: Array<Record<string, unknown>> | null;
+  conditions?: Array<Record<string, unknown>> | null;
+  shipping_info?: Record<string, unknown> | null;
+  min_order_value?: unknown;
+  minimum_order_value?: unknown;
+};
+
 export const productUnitPrice = (product?: Product) =>
   product ? Math.max(Number(product.price || 0) - Number(product.discount || 0), 0) : 0;
 
@@ -68,7 +86,7 @@ export const getPromotionCartTotals = (rows: PromotionCartRow[]): CartPromotionT
   const mrpTotal = rows.reduce((sum, row) => sum + Number(row.product?.price || 0) * row.quantity, 0);
   const subtotal = rows.reduce((sum, row) => sum + productUnitPrice(row.product) * row.quantity, 0);
   const productDiscount = rows.reduce((sum, row) => sum + Number(row.product?.discount || 0) * row.quantity, 0);
-  const shipping = subtotal > 0 && subtotal < 999 ? 40 : 0;
+  const shipping = subtotal > 0 && subtotal < FREE_SHIPPING_MINIMUM ? 40 : 0;
 
   return {
     mrpTotal,
@@ -126,20 +144,94 @@ export const cartPromotionSignature = (rows: PromotionCartRow[]) =>
     .join("|");
 
 export const isFreeShippingAppliedPromotion = (promotion?: AppliedPromotion | null) =>
-  Boolean(
-    promotion &&
-      (promotion.is_free_shipping ||
-        promotion.promotion_type === "FREE_SHIPPING" ||
-        promotion.is_shipping_discount ||
-        promotion.shipping_info)
+  isFreeShippingPromotion(promotion);
+
+export const isFreeShippingPromotion = (promotion?: FreeShippingPromotionLike | null) => {
+  if (!promotion) return false;
+
+  const normalizedType = String(promotion.type ?? promotion.promotion_type ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+  const actionTypes = [
+    promotion.action?.type,
+    ...(promotion.actions ?? []).map((action) => action?.type),
+  ]
+    .filter(Boolean)
+    .map((type) => String(type).trim().toUpperCase().replace(/[\s-]+/g, "_"));
+
+  return Boolean(
+    promotion.is_free_shipping ||
+      promotion.is_shipping_discount ||
+      promotion.shipping_info ||
+      normalizedType === "FREE_SHIPPING" ||
+      actionTypes.includes("FREE_SHIPPING")
   );
+};
+
+const numericPromotionValue = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+export const freeShippingMinimumOrderValue = (
+  promotion?: FreeShippingPromotionLike | null
+) => {
+  const action = promotion?.action;
+  const actions = promotion?.actions ?? [];
+  const shippingInfo = promotion?.shipping_info;
+  const conditionMinimums =
+    promotion?.conditions
+      ?.filter((condition) => {
+        const attribute = String(condition.attribute ?? condition.field ?? "").toLowerCase();
+        const operator = String(condition.operator ?? "").toUpperCase();
+        return (
+          /cart|order|subtotal|total/.test(attribute) &&
+          /total|value|amount|subtotal/.test(attribute) &&
+          ["GTE", "GT", ">=", ">"].includes(operator)
+        );
+      })
+      .map((condition) => numericPromotionValue(condition.value))
+      .filter((value) => value > 0) ?? [];
+  const textMinimums = [promotion?.name, promotion?.promotion_name, promotion?.description]
+    .map((value) => {
+      const match = String(value ?? "").match(/(?:₹|rs\.?\s*)\s*([0-9][0-9,]*)|([0-9][0-9,]*)\s*(?:₹|rs\.?)/i);
+      return numericPromotionValue(match?.[1] ?? match?.[2]);
+    })
+    .filter((value) => value > 0);
+
+  return Math.max(
+    numericPromotionValue(action?.min_order_value),
+    numericPromotionValue(action?.minimum_order_value),
+    ...actions.flatMap((item) => [
+      numericPromotionValue(item?.min_order_value),
+      numericPromotionValue(item?.minimum_order_value),
+    ]),
+    numericPromotionValue(promotion?.min_order_value),
+    numericPromotionValue(promotion?.minimum_order_value),
+    ...conditionMinimums,
+    numericPromotionValue(shippingInfo?.min_order_value),
+    numericPromotionValue(shippingInfo?.minimum_order_value),
+    ...textMinimums
+  );
+};
+
+export const isFreeShippingPromotionEligible = (
+  promotion: FreeShippingPromotionLike | null | undefined,
+  subtotal: number
+) => {
+  const minimumOrderValue = freeShippingMinimumOrderValue(promotion);
+  return minimumOrderValue <= 0 || subtotal >= minimumOrderValue;
+};
 
 export const getAppliedPromotionSummary = (
   totals: CartPromotionTotals,
   appliedPromotions: AppliedPromotion[],
   fallbackDiscount = 0
 ): PromotionDiscountSummary => {
-  const freeShippingPromotions = appliedPromotions.filter(isFreeShippingAppliedPromotion);
+  const freeShippingPromotions = appliedPromotions.filter(
+    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.subtotal)
+  );
   const normalPromotions = appliedPromotions.filter((promotion) => !isFreeShippingAppliedPromotion(promotion));
   const normalDiscountFromPromotions = normalPromotions.reduce(
     (sum, promotion) => sum + Number(promotion.discount_amount || 0),

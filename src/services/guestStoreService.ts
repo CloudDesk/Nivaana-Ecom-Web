@@ -114,17 +114,54 @@ export const guestStoreService = {
     const items = readItems();
     if (!items.length) return;
 
-    await Promise.all(
-      items.map((item) =>
-        cartService.upsert({
-          productid: item.productid,
-          userid: userId,
-          quantity: Math.max(item.quantity, 1),
-          iscart: item.iscart,
-          iswishlist: item.iswishlist,
-        })
-      )
-    );
+    const [cartResponse, wishlistResponse] = await Promise.all([
+      cartService.getCart(userId).catch(() => ({ data: [] })),
+      cartService.getWishlist(userId).catch(() => ({ data: [] })),
+    ]);
+
+    const existingCartByProduct = new Map(cartResponse.data.map((item) => [item.productid, item]));
+    const existingWishlistByProduct = new Map(wishlistResponse.data.map((item) => [item.productid, item]));
+
+    const operations = items.flatMap((item) => {
+      const requests = [];
+
+      if (item.iscart) {
+        const existingCartItem = existingCartByProduct.get(item.productid);
+        requests.push(
+          cartService.upsert({
+            id: existingCartItem?.id,
+            productid: item.productid,
+            userid: userId,
+            quantity: Math.max((existingCartItem?.quantity ?? 0) + item.quantity, 1),
+            iscart: true,
+            iswishlist: false,
+          })
+        );
+      }
+
+      if (item.iswishlist) {
+        const existingWishlistItem = existingWishlistByProduct.get(item.productid);
+        requests.push(
+          cartService.upsert({
+            id: existingWishlistItem?.id,
+            productid: item.productid,
+            userid: userId,
+            quantity: Math.max(existingWishlistItem?.quantity ?? item.quantity, 1),
+            iscart: false,
+            iswishlist: true,
+          })
+        );
+      }
+
+      return requests;
+    });
+
+    const results = await Promise.allSettled(operations);
+    const failedMerges = results.filter((result) => result.status === "rejected");
+
+    if (failedMerges.length > 0) {
+      throw new Error("Some guest cart items could not be moved to your account.");
+    }
 
     this.clear();
   },
