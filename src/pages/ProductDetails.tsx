@@ -597,7 +597,7 @@ const ProductDetails: React.FC = () => {
           <div className="min-w-0 self-start">
             <div className="lg:mx-auto lg:w-full lg:max-w-[560px] xl:max-w-[620px]">
               <div
-                className="min-w-0 cursor-grab touch-pan-y select-none overflow-hidden rounded-[2.25rem] bg-white active:cursor-grabbing lg:rounded-[3.5rem]"
+                className="min-w-0 cursor-grab touch-pan-y select-none overflow-hidden bg-white active:cursor-grabbing"
               onWheel={(event) => {
                 if (images.length <= 1 || mainImageWheelLockRef.current) return;
                 if (Math.abs(event.deltaX) < 28 || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.2) return;
@@ -654,7 +654,7 @@ const ProductDetails: React.FC = () => {
                 draggable={false}
                 animate={{ x: mainImageDragOffset }}
                 transition={mainImageDragOffset === 0 ? { type: "spring", stiffness: 260, damping: 28 } : { duration: 0 }}
-                className="pointer-events-none block h-[360px] w-full max-w-full rounded-[2.25rem] bg-white object-contain sm:h-[520px] lg:h-[520px] lg:rounded-[3.5rem] xl:h-[560px]"
+                className="pointer-events-none block h-[360px] w-full max-w-full bg-white object-contain sm:h-[520px] lg:h-[520px] xl:h-[560px]"
                 onError={(event: React.SyntheticEvent<HTMLImageElement>) => {
                   event.currentTarget.src = fallbackProduct;
                 }}
