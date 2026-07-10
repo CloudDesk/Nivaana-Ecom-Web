@@ -174,7 +174,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false, ima
           alt={displayName}
           loading="lazy"
           className={cn(
-            "relative z-10 h-full w-full object-contain object-center transition duration-500 group-hover:scale-[1.025]",
+            "relative z-10 h-full w-full object-cover object-center transition duration-500 group-hover:scale-[1.025]",
             imageFit === "cover" && "p-0"
           )}
         />
