@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Navigate, Routes, Route, useLocation } from 'r
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import MetaPixelPageViews from './components/MetaPixelPageViews';
 import { GuestOnlyRoute, ProtectedRoute } from './components/RouteGuards';
 import Home from './pages/Home';
 import Products from './pages/Products';
@@ -67,6 +68,7 @@ function App() {
   return (
     <Router>
       <ScrollToTop />
+      <MetaPixelPageViews />
       <ToastProvider />
       <AppLayout />
     </Router>
