@@ -2,7 +2,7 @@ import {
   AnimatePresence,
   motion,
 } from "framer-motion";
-import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import { productFallback as fallbackProduct } from "../assets/config.js";
 import type {
   CategoryNavChildItem,
   CategoryNavTopItem,

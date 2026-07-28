@@ -9,7 +9,7 @@ import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/toastApi";
-import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { ApiResponse, CartItem, Product } from "../types";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
