@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
-import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { Product } from "../types";
 
 interface CategoryShowcaseBannerProps {

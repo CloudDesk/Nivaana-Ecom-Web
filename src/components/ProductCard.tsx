@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, ShoppingBag, Star } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Product } from "../types";
-import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import { productFallback as fallbackProduct } from "../assets/config.js";
 import { Button } from "./ui/button";
 import { cartService } from "../services/cartService";
 import { sessionService } from "../services/sessionService";

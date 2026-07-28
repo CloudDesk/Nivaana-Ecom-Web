@@ -1,0 +1,64 @@
+{
+  "project": "nivaana",
+  "uploadedAt": "2026-07-21",
+  "buckets": {
+    "sit": "nivaana-ecom-assets-sit",
+    "prod": "nivaana-ecom-assets-prod"
+  },
+  "basePaths": {
+    "sit": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home",
+    "prod": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home"
+  },
+  "assets": [
+    {
+      "localFile": "src/assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png"
+    },
+    {
+      "localFile": "src/assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/Gemini_Generated_Image_fmqf65fmqf65fmqf.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/Gemini_Generated_Image_fmqf65fmqf65fmqf.png"
+    },
+    {
+      "localFile": "src/assets/carfreshner_desktopview_categorycarousel.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/carfreshner_desktopview_categorycarousel.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/carfreshner_desktopview_categorycarousel.png"
+    },
+    {
+      "localFile": "src/assets/carfreshner_mobileview_category_carousel.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/carfreshner_mobileview_category_carousel.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/carfreshner_mobileview_category_carousel.png"
+    },
+    {
+      "localFile": "src/assets/Fragranceandblends.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/Fragranceandblends.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/Fragranceandblends.png"
+    },
+    {
+      "localFile": "src/assets/kitchenaccessories.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/kitchenaccessories.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/kitchenaccessories.png"
+    },
+    {
+      "localFile": "src/assets/i_need_a_video_for_the_hero_co.mp4",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/i_need_a_video_for_the_hero_co.mp4",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/i_need_a_video_for_the_hero_co.mp4"
+    },
+    {
+      "localFile": "src/assets/I_need_a_video_with_insence_st.mp4",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/I_need_a_video_with_insence_st.mp4",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/I_need_a_video_with_insence_st.mp4"
+    },
+    {
+      "localFile": "src/assets/Need_to_genarate_a_video_in_la.mp4",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/Need_to_genarate_a_video_in_la.mp4",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/Need_to_genarate_a_video_in_la.mp4"
+    },
+    {
+      "localFile": "src/assets/new_brand_logo_google_yellow.png",
+      "sitUrl": "https://storage.googleapis.com/nivaana-ecom-assets-sit/web/home/new_brand_logo_google_yellow.png",
+      "prodUrl": "https://storage.googleapis.com/nivaana-ecom-assets-prod/web/home/new_brand_logo_google_yellow.png"
+    }
+  ]
+}

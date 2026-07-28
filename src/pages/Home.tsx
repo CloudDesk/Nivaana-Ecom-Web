@@ -27,16 +27,18 @@ import { promotionService, type Promotion } from "../services/promotionService";
 import { ratingService } from "../services/ratingService";
 import { storefrontPageSectionService } from "../services/storefrontPageSectionService";
 import type { Product, Rating, StorefrontMedia, StorefrontPageSection } from "../types";
-import heroOne from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
-import heroTwo from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
-import fallbackProduct from "../assets/Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png";
-import carFreshenerCategoryDesktop from "../assets/carfreshner_desktopview_categorycarousel.png";
-import carFreshenerCategoryMobile from "../assets/carfreshner_mobileview_category_carousel.png";
-import fragranceBlendsCategory from "../assets/Fragranceandblends.png";
-import kitchenAccessoriesCategory from "../assets/kitchenaccessories.png";
-import heroVideoOne from "../assets/i_need_a_video_for_the_hero_co.mp4";
-import heroVideoTwo from "../assets/I_need_a_video_with_insence_st.mp4";
-import heroVideoFour from "../assets/Need_to_genarate_a_video_in_la.mp4";
+import {
+  carFreshenerCategoryDesktop,
+  carFreshenerCategoryMobile,
+  fragranceBlendsCategory,
+  heroPrimaryPoster,
+  heroSecondaryPoster,
+  heroVideoIncense,
+  heroVideoLuxury,
+  heroVideoPrimary,
+  homeFallbackProduct,
+  kitchenAccessoriesCategory,
+} from "../assets/config.js";
 
 type HeroSlide = {
   eyebrow: string;
@@ -57,9 +59,9 @@ const heroSlides: HeroSlide[] = [
     eyebrow: "Up to 35% Off",
     title: "Discover Your Perfect Ritual",
     text: "Premium incense, oils, and fresheners curated for calm homes, focused workdays, and sacred everyday moments.",
-    video: heroVideoOne,
+    video: heroVideoPrimary,
     image: "",
-    poster: heroOne,
+    poster: heroPrimaryPoster,
     fit: "cover",
     ctaText: "Shop Now",
     ctaUrl: "/products",
@@ -68,9 +70,9 @@ const heroSlides: HeroSlide[] = [
     eyebrow: "New Fragrance Edits",
     title: "A Room That Feels Like Stillness",
     text: "Layer warm woods, florals, and clean aromatics across your home with Nivaana's signature blends.",
-    video: heroVideoTwo,
+    video: heroVideoIncense,
     image: "",
-    poster: heroTwo,
+    poster: heroSecondaryPoster,
     fit: "cover",
     ctaText: "Shop Now",
     ctaUrl: "/products",
@@ -79,9 +81,9 @@ const heroSlides: HeroSlide[] = [
     eyebrow: "Luxury Home Rituals",
     title: "Let Fragrance Move Through The Space",
     text: "A cinematic Nivaana edit for incense, candles, oils, and quiet moments that make a room feel complete.",
-    video: heroVideoFour,
+    video: heroVideoLuxury,
     image: "",
-    poster: heroTwo,
+    poster: heroSecondaryPoster,
     fit: "cover",
     ctaText: "Shop Now",
     ctaUrl: "/products",
@@ -141,7 +143,7 @@ const customerReviewFallbacks: CustomerReview[] = [
     rating: 5,
     review:
       "From the first spray, I knew this would be a favorite. The scent is elegant, warm, and makes my room feel like a high-end boutique.",
-    image: heroOne,
+    image: heroPrimaryPoster,
   },
   {
     id: 2,
@@ -157,7 +159,7 @@ const customerReviewFallbacks: CustomerReview[] = [
     rating: 5,
     review:
       "I have tried so many home fragrances, but this one stands out. It is soft, comforting, and stays with me all day without overpowering.",
-    image: heroTwo,
+    image: heroSecondaryPoster,
   },
   {
     id: 4,
@@ -214,7 +216,7 @@ const usableImage = (images?: string[] | null) =>
   images?.find((image) => image && !/example|placeholder/i.test(image));
 
 const productImage = (product?: Product) =>
-  usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || fallbackProduct;
+  usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || homeFallbackProduct;
 
 const flavorListingQuery = (flavor: string) => `/products?subsubcategory=${encodeURIComponent(flavor)}`;
 
@@ -418,7 +420,7 @@ const Home: React.FC = () => {
           mobileVideo: isVideo ? mobileUrl : "",
           image: isVideo ? "" : desktopUrl,
           mobileImage: isVideo ? "" : mobileUrl,
-          poster: isVideo ? heroSlides[index % heroSlides.length]?.poster || heroOne : desktopUrl,
+          poster: isVideo ? heroSlides[index % heroSlides.length]?.poster || heroPrimaryPoster : desktopUrl,
           fit: mediaFit(item.media),
           ctaText: primaryButton?.label || "Shop Now",
           ctaUrl: primaryButton?.url || "/products",
@@ -540,7 +542,7 @@ const Home: React.FC = () => {
       id: `fallback:${category.label.toLowerCase()}`,
       name: "Nivaana",
       subcategory: category.label,
-      image: categoryCarouselImage(category.label) || fallbackProduct,
+      image: categoryCarouselImage(category.label) || homeFallbackProduct,
       mobileImage: categoryCarouselMobileImage(category.label),
       to: category.to,
     }));

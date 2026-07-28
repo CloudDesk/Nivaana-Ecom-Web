@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import logoIcon from "../assets/new_brand_logo_google_yellow.png";
+import { brandLogoGoogleYellow as logoIcon } from "../assets/config.js";
 import { theme } from "../config/theme.config";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";

@@ -42,7 +42,7 @@ import { toast } from "../components/toastApi";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import { productFallback as fallbackProduct } from "../assets/config.js";
 import { cartService } from "../services/cartService";
 import { guestStoreService } from "../services/guestStoreService";
 import { platformProductService } from "../services/productPlatformService";

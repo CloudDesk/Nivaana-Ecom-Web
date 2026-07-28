@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
-import logoIcon from '../assets/new_brand_logo_google_yellow.png';
+import { brandLogoGoogleYellow as logoIcon } from '../assets/config.js';
 
 const quickLinks = [
   { label: 'Home', to: '/' },
