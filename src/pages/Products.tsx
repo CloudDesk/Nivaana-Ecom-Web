@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import CategoryNavigationRail from "../components/CategoryNavigationRail";
 import {
@@ -39,39 +39,9 @@ const filterKeyVariants = (value?: string | null) => {
   return new Set([key, key.replace(/(^|_)and(_|$)/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_")]);
 };
 
-const filterAliases: Record<string, string[]> = {
-  aromatherapy_wellness: ["aromatherapy_&_wellness"],
-  bath: ["soaps", "facewash", "handwash"],
-  car_room_fresheners: ["car_&_room_fresheners"],
-  dhoops: ["premium_dhoop_sticks"],
-  diffuser_oils: ["fragrance_blends"],
-  diffuser_oil_refill_pack_for_machines: ["diffuser_oils"],
-  floor_cleaner_concentrates: ["bath"],
-  fragrance_sachets: ["wardrobe_sachets"],
-  gift_collections: ["home_decor", "table_decor"],
-  home_decor: ["gift_collections"],
-  havan_cups: ["premium_havan_cups"],
-  incense_sticks: ["incense", "premium_incense_sticks"],
-  premium_room_mist: ["room_fresheners", "car_fresheners"],
-  room_mist: ["room_fresheners", "premium_room_mist"],
-  wardrobe_sachets: ["fragrance_sachets"],
-};
-
-const filterQueryVariants = (value?: string | null) => {
-  const keys = new Set(filterKeyVariants(value));
-
-  [...keys].forEach((key) => {
-    filterAliases[key]?.forEach((alias) => {
-      filterKeyVariants(alias).forEach((aliasKey) => keys.add(aliasKey));
-    });
-  });
-
-  return keys;
-};
-
 const filterValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
   Boolean(filterValue) &&
-  [...filterKeyVariants(productValue)].some((productKey) => filterQueryVariants(filterValue).has(productKey));
+  [...filterKeyVariants(productValue)].some((productKey) => filterKeyVariants(filterValue).has(productKey));
 
 const listValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
   Boolean(filterValue) &&
@@ -115,8 +85,15 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       lastPage.pagination?.hasNext && lastPage.pagination.page < lastPage.pagination.totalPages
         ? lastPage.pagination.page + 1
         : undefined,
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60,
   });
+
+  const categoryTreeQuery = useQuery({
+    queryKey: ["product-category-tree", "sortorder-v3"],
+    queryFn: () => platformProductService.getCategoryTree(),
+    staleTime: 1000 * 60,
+  });
+  const categoryTree = categoryTreeQuery.data?.data;
 
   const products = useMemo(
     () => (productsQuery.data?.pages ?? []).flatMap((page) => page.data ?? []),
@@ -132,7 +109,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
     if (subcategory) {
       result = result.filter((product) =>
-        isKnownCategoryChildValue(subcategory, category)
+        isKnownCategoryChildValue(categoryTree, subcategory, category)
           ? matchesProductChildCategory(product, subcategory, category)
           : filterValueMatches(product.subcategory, subcategory) ||
             filterValueMatches(product.subsubcategory, subcategory) ||
@@ -144,7 +121,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     if (subsubcategory) {
       result = result.filter(
         (product) =>
-          (isKnownCategoryChildValue(subsubcategory, category)
+          (isKnownCategoryChildValue(categoryTree, subsubcategory, category)
             ? matchesProductChildCategory(product, subsubcategory, category)
             : filterValueMatches(product.subsubcategory, subsubcategory) ||
               filterValueMatches(product.fragnancetype, subsubcategory) ||
@@ -189,26 +166,30 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     }
 
     return result;
-  }, [category, collection, products, search, subcategory, subsubcategory]);
+  }, [category, categoryTree, collection, products, search, subcategory, subsubcategory]);
 
   const resolvedCategory = useMemo(
     () =>
       resolveActiveCategory({
+        tree: categoryTree,
         products,
         category,
         subcategory,
         subsubcategory,
       }),
-    [category, products, subcategory, subsubcategory]
+    [category, categoryTree, products, subcategory, subsubcategory]
   );
 
-  const topCategoryItems = useMemo(() => buildTopCategoryItems(), []);
+  const topCategoryItems = useMemo(() => buildTopCategoryItems(categoryTree), [categoryTree]);
 
-  const childCategoryItems = useMemo(() => buildChildCategoryItems(products, resolvedCategory), [products, resolvedCategory]);
+  const childCategoryItems = useMemo(
+    () => buildChildCategoryItems(products, categoryTree, resolvedCategory),
+    [categoryTree, products, resolvedCategory]
+  );
 
   const nestedCategoryItems = useMemo(
-    () => buildNestedCategoryItems(products, resolvedCategory, subcategory),
-    [products, resolvedCategory, subcategory]
+    () => buildNestedCategoryItems(products, categoryTree, resolvedCategory, subcategory),
+    [categoryTree, products, resolvedCategory, subcategory]
   );
 
   const activeChildKey = useMemo(
@@ -329,15 +310,13 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       !hasActiveFilter ||
       productsQuery.isLoading ||
       productsQuery.isFetchingNextPage ||
-      !productsQuery.hasNextPage ||
-      filteredProducts.length > 0
+      !productsQuery.hasNextPage
     ) {
       return;
     }
 
     productsQuery.fetchNextPage();
   }, [
-    filteredProducts.length,
     hasActiveFilter,
     productsQuery.fetchNextPage,
     productsQuery.hasNextPage,

@@ -1,5 +1,4 @@
 import {
-  Car,
   Flame,
   Flower2,
   Gift,
@@ -9,79 +8,57 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import fallbackProduct from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
-import type { Product } from "../types";
-
-const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
+import type {
+  Product,
+  ProductCategoryCount,
+  ProductCategoryTree,
+  ProductSubcategoryCount,
+} from "../types";
 
 const normalizeFilterKey = (value?: string | null) =>
-  normalize(value)
+  (value || "")
+    .trim()
+    .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, "_");
 
-const normalizeSearchText = (value?: string | null) =>
-  normalize(value)
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-
-const filterKeyVariants = (value?: string | null) => {
-  const key = normalizeFilterKey(value);
-  if (!key) return new Set<string>();
-
-  return new Set([key, key.replace(/(^|_)and(_|$)/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_")]);
-};
-
-const routeAliases: Record<string, string[]> = {
-  aromatherapy_wellness: ["aromatherapy_&_wellness"],
-  car_room_fresheners: ["car_&_room_fresheners"],
-  dhoops: ["dhoop_sticks", "premium_dhoop_sticks"],
-  gift_collections: ["home_decor"],
-  havan_cups: ["premium_havan_cups"],
-  home_decor: ["gift_collections"],
-  premium_room_mist: ["room_fresheners", "room_freshners"],
-  wardrobe_sachets: ["fragrance_sachets"],
-};
-
-const routeVariants = (value?: string | null) => {
-  const keys = new Set(filterKeyVariants(value));
-
-  [...keys].forEach((key) => {
-    routeAliases[key]?.forEach((alias) => {
-      filterKeyVariants(alias).forEach((aliasKey) => keys.add(aliasKey));
-    });
-  });
-
-  return keys;
-};
-
-const routeValueMatches = (left?: string | null, right?: string | null) =>
-  Boolean(left && right) && [...filterKeyVariants(left)].some((key) => routeVariants(right).has(key));
+const valuesMatch = (left?: string | null, right?: string | null) =>
+  Boolean(left && right) && normalizeFilterKey(left) === normalizeFilterKey(right);
 
 const firstProductImage = (product?: Product) =>
   product?.large?.[0] || product?.medium?.[0] || product?.small?.[0] || fallbackProduct;
 
-const productSearchText = (product?: Product | null) =>
-  normalizeSearchText(
-    [
-      product?.name,
-      product?.category,
-      product?.subcategory,
-      product?.subsubcategory,
-      product?.fragnancetype,
-    ]
-      .filter(Boolean)
-      .join(" ")
+const categoryIcons: LucideIcon[] = [Flame, Home, Sparkles, Flower2, HeartHandshake, Gift];
+
+const visibleCategories = (tree?: ProductCategoryTree | null) =>
+  (tree?.categories ?? []).filter((category) => category.id && category.label);
+
+const categoryForValue = (tree?: ProductCategoryTree | null, value?: string | null) =>
+  visibleCategories(tree).find((category) => valuesMatch(category.id, value));
+
+const subcategoryForValue = (
+  tree?: ProductCategoryTree | null,
+  categoryValue?: string | null,
+  subcategoryValue?: string | null
+) =>
+  categoryForValue(tree, categoryValue)?.subcategories.find(
+    (subcategory) => valuesMatch(subcategory.id, subcategoryValue)
   );
 
-const productContainsTerm = (product: Product, term: string) => {
-  const normalizedTerm = normalizeSearchText(term);
-  if (!normalizedTerm) return false;
-  const haystack = productSearchText(product);
-  return haystack.includes(normalizedTerm);
-};
+const productForTaxonomy = (
+  products: Product[],
+  category?: string | null,
+  subcategory?: string | null,
+  subsubcategory?: string | null
+) =>
+  products.find(
+    (product) =>
+      (!category || valuesMatch(product.category, category)) &&
+      (!subcategory || valuesMatch(product.subcategory, subcategory)) &&
+      (!subsubcategory || valuesMatch(product.subsubcategory, subsubcategory))
+  );
 
 export type CategoryNavParam = "subcategory" | "subsubcategory";
 
@@ -101,507 +78,134 @@ export interface CategoryNavChildItem {
   imageSrc: string;
 }
 
-interface CategoryMatcher {
-  includeAny: string[];
-  excludeAny?: string[];
-}
+export const buildTopCategoryItems = (tree?: ProductCategoryTree | null): CategoryNavTopItem[] =>
+  visibleCategories(tree).map(({ id, label }, index) => ({
+    key: id,
+    value: id,
+    label,
+    icon: categoryIcons[index % categoryIcons.length],
+  }));
 
-interface CategoryNavConfig {
-  value: string;
-  label: string;
-  icon: LucideIcon;
-  childItems: Array<{
-    label: string;
-    value: string;
-    param: CategoryNavParam;
-    queryParams?: Partial<Record<"category" | CategoryNavParam, string>>;
-    matcher: CategoryMatcher;
-    nestedItems?: Array<{
-      label: string;
-      value: string;
-      param: CategoryNavParam;
-      queryParams?: Partial<Record<"category" | CategoryNavParam, string>>;
-      matcher: CategoryMatcher;
-    }>;
-  }>;
-}
+export const buildCategoryGroups = (tree?: ProductCategoryTree | null) =>
+  visibleCategories(tree).map((category) => ({
+    heading: category.label,
+    to: `/products?category=${encodeURIComponent(category.id)}`,
+    links: category.subcategories
+      .filter((subcategory) => subcategory.id && subcategory.label)
+      .map((subcategory) => ({
+        label: subcategory.label,
+        to: `/products?category=${encodeURIComponent(category.id)}&subcategory=${encodeURIComponent(subcategory.id)}`,
+        children: subcategory.subsubcategories
+          .filter((item) => item.id && item.label)
+          .map((item) => ({
+            label: item.label,
+            to: `/products?category=${encodeURIComponent(category.id)}&subcategory=${encodeURIComponent(
+              subcategory.id
+            )}&subsubcategory=${encodeURIComponent(item.id)}`,
+          })),
+      })),
+  }));
 
-const categoryNavigationConfig: CategoryNavConfig[] = [
-  {
-    value: "incense",
-    label: "Incense",
-    icon: Flame,
-    childItems: [
-      {
-        label: "Premium Incense Sticks",
-        value: "premium_incense_sticks",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["premium incense sticks", "premium incense", "premium_incense_sticks"],
-        },
-      },
-      {
-        label: "Dhoops",
-        value: "dhoops",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["dhoop", "dhoops", "dhoop sticks", "premium dhoop sticks"],
-        },
-      },
-      {
-        label: "Havan Cups",
-        value: "havan_cups",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["havan cups", "havan cup", "premium havan cups"],
-        },
-      },
-    ],
-  },
-  {
-    value: "car_room_fresheners",
-    label: "Car & Room Fresheners",
-    icon: Car,
-    childItems: [
-      {
-        label: "Premium Room Mist",
-        value: "premium_room_mist",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["room mist", "room freshener", "room fresheners", "room freshners"],
-          excludeAny: ["car freshener", "car fresheners", "diffuser", "fragrance sachet", "fragrance sachets", "premium fragrance sachet", "wardrobe sachet", "wardrobe sachets", "sachet"],
-        },
-      },
-      {
-        label: "Diffuser Oils",
-        value: "diffuser_oils",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["diffuser oils", "diffuser oil", "fragrance blends", "fragrance blend", "aromatic blends"],
-          excludeAny: ["refill pack", "diffuser machine", "diffusers", "essential oil", "essential oils"],
-        },
-      },
-      {
-        label: "Diffuser Oil Refill Pack",
-        value: "diffuser_oil_refill_pack_for_machines",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["diffuser oil refill pack for machines", "diffuser oil refill", "refill pack for machines"],
-        },
-      },
-      {
-        label: "Diffuser Machines",
-        value: "diffuser_machines",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["diffuser machines", "diffuser machine", "diffusers"],
-          excludeAny: ["diffuser oil", "refill pack"],
-        },
-        nestedItems: [
-          {
-            label: "For Car",
-            value: "for_car",
-            param: "subsubcategory",
-            queryParams: {
-              category: "car_room_fresheners",
-              subcategory: "diffuser_machines",
-              subsubcategory: "for_car",
-            },
-            matcher: {
-              includeAny: ["for car", "car diffuser", "car machine", "car"],
-            },
-          },
-          {
-            label: "For Home",
-            value: "for_home",
-            param: "subsubcategory",
-            queryParams: {
-              category: "car_room_fresheners",
-              subcategory: "diffuser_machines",
-              subsubcategory: "for_home",
-            },
-            matcher: {
-              includeAny: ["for home", "home diffuser", "home machine", "room diffuser", "home"],
-            },
-          },
-          {
-            label: "For Hotels & Commercial places",
-            value: "for_hotels_commercial_places",
-            param: "subsubcategory",
-            queryParams: {
-              category: "car_room_fresheners",
-              subcategory: "diffuser_machines",
-              subsubcategory: "for_hotels_commercial_places",
-            },
-            matcher: {
-              includeAny: ["hotel", "hotels", "commercial", "commercial places", "for hotels"],
-            },
-          },
-        ],
-      },
-    ],
-  },
-  {
-    value: "home_fragrance",
-    label: "Home Fragrance",
-    icon: Home,
-    childItems: [
-      {
-        label: "Essential Oils",
-        value: "essential_oils",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["essential oils", "essential oil"],
-        },
-      },
-      {
-        label: "Fragrance Blends",
-        value: "fragrance_blends",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["fragrance blends", "fragrance blend"],
-        },
-      },
-      {
-        label: "Wardrobe Sachets",
-        value: "wardrobe_sachets",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["wardrobe sachets", "wardrobe sachet", "fragrance sachets", "fragrance sachet"],
-        },
-      },
-    ],
-  },
-  {
-    value: "personal_care",
-    label: "Personal Care",
-    icon: Sparkles,
-    childItems: [
-      {
-        label: "Soaps",
-        value: "soaps",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["soaps", "soap"],
-        },
-      },
-      {
-        label: "Facewash",
-        value: "facewash",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["facewash", "face wash"],
-        },
-      },
-      {
-        label: "Floor Cleaner Concentrates",
-        value: "floor_cleaner_concentrates",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["floor cleaner concentrates", "floor cleaner concentrate"],
-        },
-      },
-      {
-        label: "Handwash",
-        value: "handwash",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["handwash", "hand wash"],
-        },
-      },
-    ],
-  },
-  {
-    value: "perfumes",
-    label: "Perfumes",
-    icon: Flower2,
-    childItems: [
-      {
-        label: "Pocket Perfumes",
-        value: "pocket_perfumes",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["pocket perfumes", "pocket perfume"],
-        },
-      },
-      {
-        label: "Daily Collection",
-        value: "daily_collection",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["daily collection"],
-        },
-      },
-      {
-        label: "Luxury Collection",
-        value: "luxury_collection",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["luxury collection"],
-        },
-      },
-    ],
-  },
-  {
-    value: "daily_rituals",
-    label: "Daily Rituals",
-    icon: HeartHandshake,
-    childItems: [
-      {
-        label: "Fresh Mornings",
-        value: "fresh_mornings",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["fresh mornings", "fresh morning"],
-        },
-      },
-      {
-        label: "Relaxation & Calm",
-        value: "relaxation_calm",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["relaxation calm", "relaxation and calm"],
-        },
-      },
-      {
-        label: "Dusky Evenings & Night",
-        value: "dusky_evenings_night",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["dusky evenings night", "dusky evening", "night ritual"],
-        },
-      },
-    ],
-  },
-  {
-    value: "gift_collections",
-    label: "Gift Collections",
-    icon: Gift,
-    childItems: [
-      {
-        label: "Home Decor",
-        value: "home_decor",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["home decor", "home_decor"],
-        },
-      },
-      {
-        label: "Table Decor",
-        value: "table_decor",
-        param: "subcategory",
-        matcher: {
-          includeAny: ["table decor", "table_decor"],
-        },
-      },
-    ],
-  },
-];
+export const matchesProductCategory = (product: Product, categoryValue?: string | null) =>
+  valuesMatch(product.category, categoryValue);
 
-const configForCategory = (categoryValue?: string | null) =>
-  categoryNavigationConfig.find((item) => routeValueMatches(item.value, categoryValue));
+export const matchesProductChildCategory = (
+  product: Product,
+  childValue?: string | null,
+  categoryValue?: string | null
+) =>
+  (!categoryValue || matchesProductCategory(product, categoryValue)) &&
+  (valuesMatch(product.subcategory, childValue) || valuesMatch(product.subsubcategory, childValue));
 
-const matchesMatcher = (product: Product, matcher: CategoryMatcher) => {
-  const hasInclude = matcher.includeAny.some((term) => productContainsTerm(product, term));
-  if (!hasInclude) return false;
-  if (matcher.excludeAny?.some((term) => productContainsTerm(product, term))) return false;
-  return true;
-};
-
-const findChildConfigByValue = (value?: string | null) => {
-  if (!value) return null;
-
-  for (const config of categoryNavigationConfig) {
-    const item = config.childItems.find((child) => routeValueMatches(child.value, value));
-    if (item) return { config, item };
-  }
-
-  return null;
-};
-
-const categoryContainsChildValue = (categoryValue?: string | null, childValue?: string | null) => {
-  const config = configForCategory(categoryValue);
-  if (!config || !childValue) return false;
-  return config.childItems.some((item) => routeValueMatches(item.value, childValue));
-};
-
-const categoryConfigForProduct = (product?: Product | null) => {
-  if (!product) return null;
-
-  for (const config of categoryNavigationConfig) {
-    if (config.childItems.some((item) => matchesMatcher(product, item.matcher))) {
-      return config;
-    }
-  }
-
-  return null;
-};
-
-const childConfigForProduct = (product?: Product | null, categoryValue?: string | null) => {
-  if (!product) return null;
-
-  const config = categoryValue ? configForCategory(categoryValue) : categoryConfigForProduct(product);
-  if (!config) return null;
-
-  return config.childItems.find((item) => matchesMatcher(product, item.matcher)) || null;
-};
-
-const childItemMatchesCurrentFilters = (
-  item: Pick<CategoryNavChildItem, "value" | "param" | "queryParams">,
-  subcategory?: string | null,
-  subsubcategory?: string | null
-) => {
-  const routeSubcategory = item.queryParams?.subcategory;
-  const routeSubsubcategory = item.queryParams?.subsubcategory;
-
-  if (routeSubsubcategory) return routeValueMatches(routeSubsubcategory, subsubcategory);
-  if (routeSubcategory && routeValueMatches(routeSubcategory, subcategory)) return true;
-
-  return routeValueMatches(item.value, subcategory) || routeValueMatches(item.value, subsubcategory);
-};
-
-const configForChildFilter = (subcategory?: string | null, subsubcategory?: string | null) =>
-  categoryNavigationConfig.find((config) =>
-    config.childItems.some((item) =>
-      childItemMatchesCurrentFilters(
-        {
-          value: item.value,
-          param: item.param,
-          queryParams: item.queryParams || { category: config.value, [item.param]: item.value },
-        },
-        subcategory,
-        subsubcategory
-      ) ||
-      item.nestedItems?.some((nestedItem) =>
-        childItemMatchesCurrentFilters(
-          {
-            value: nestedItem.value,
-            param: nestedItem.param,
-            queryParams: nestedItem.queryParams || { category: config.value, subcategory: item.value, [nestedItem.param]: nestedItem.value },
-          },
-          subcategory,
-          subsubcategory
-        )
-      )
-    )
-  );
-
-export const buildTopCategoryItems = (): CategoryNavTopItem[] =>
-  categoryNavigationConfig.map(({ value, label, icon }) => ({ key: value, value, label, icon }));
-
-export const matchesProductCategory = (product: Product, categoryValue?: string | null) => {
-  const config = configForCategory(categoryValue);
-  if (!config) return false;
-  return config.childItems.some((item) => matchesMatcher(product, item.matcher));
-};
-
-export const matchesProductChildCategory = (product: Product, childValue?: string | null, categoryValue?: string | null) => {
-  if (!childValue) return false;
-
-  const config = categoryValue ? configForCategory(categoryValue) : undefined;
-  const candidateConfigs = config ? [config] : categoryNavigationConfig;
-
-  for (const candidate of candidateConfigs) {
-    const matchedChild = candidate.childItems.find((item) => {
-      const childMatches = routeValueMatches(item.value, childValue) && matchesMatcher(product, item.matcher);
-      const nestedMatches = item.nestedItems?.some(
-        (nestedItem) => routeValueMatches(nestedItem.value, childValue) && matchesMatcher(product, nestedItem.matcher)
-      );
-      return childMatches || nestedMatches;
-    });
-    if (matchedChild) return true;
-  }
-
-  return false;
-};
-
-export const resolveProductListingParams = (product?: Product | null) => {
-  const categoryConfig = categoryConfigForProduct(product);
-  const childConfig = childConfigForProduct(product, categoryConfig?.value);
-
-  if (!categoryConfig) {
-    return {
-      category: null,
-      subcategory: null,
-      subsubcategory: null,
-    };
-  }
-
-  return {
-    category: categoryConfig.value,
-    subcategory: childConfig?.param === "subcategory" ? childConfig.value : null,
-    subsubcategory: childConfig?.param === "subsubcategory" ? childConfig.value : null,
-  };
-};
+export const resolveProductListingParams = (product?: Product | null) => ({
+  category: product?.category || null,
+  subcategory: product?.subcategory || null,
+  subsubcategory: product?.subsubcategory || null,
+});
 
 export const resolveActiveCategory = ({
+  tree,
   products,
   category,
   subcategory,
   subsubcategory,
 }: {
+  tree?: ProductCategoryTree | null;
   products: Product[];
   category?: string | null;
   subcategory?: string | null;
   subsubcategory?: string | null;
 }) => {
-  if (category && configForCategory(category)) return configForCategory(category)?.value || null;
-  if (!subcategory && !subsubcategory) return null;
+  const directCategory = categoryForValue(tree, category);
+  if (directCategory) return directCategory.id;
 
-  const matchedConfig = configForChildFilter(subcategory, subsubcategory);
-  if (matchedConfig) return matchedConfig.value;
+  const taxonomyCategory = visibleCategories(tree).find((candidate) =>
+    candidate.subcategories.some(
+      (child) =>
+        valuesMatch(child.id, subcategory) ||
+        child.subsubcategories.some((nested) => valuesMatch(nested.id, subsubcategory || subcategory))
+    )
+  );
+  if (taxonomyCategory) return taxonomyCategory.id;
 
-  const childFilter = subsubcategory || subcategory;
-  const matchedProduct = childFilter
-    ? products.find((product) => matchesProductChildCategory(product, childFilter))
-    : undefined;
-
-  return categoryConfigForProduct(matchedProduct)?.value || null;
+  const matchedProduct = products.find(
+    (product) =>
+      valuesMatch(product.subcategory, subcategory) ||
+      valuesMatch(product.subsubcategory, subsubcategory || subcategory)
+  );
+  return matchedProduct?.category || category || null;
 };
 
-export const buildChildCategoryItems = (products: Product[], activeCategory?: string | null): CategoryNavChildItem[] => {
-  const config = configForCategory(activeCategory);
-  if (!config) return [];
+const childItem = (
+  products: Product[],
+  category: ProductCategoryCount,
+  subcategory: ProductSubcategoryCount
+): CategoryNavChildItem => ({
+  key: `subcategory:${normalizeFilterKey(subcategory.id)}`,
+  label: subcategory.label,
+  value: subcategory.id,
+  param: "subcategory",
+  queryParams: { category: category.id, subcategory: subcategory.id },
+  imageSrc: firstProductImage(productForTaxonomy(products, category.id, subcategory.id)),
+});
 
-  return config.childItems.map((item) => {
-    const matchedProduct = products.find((product) => matchesMatcher(product, item.matcher));
-    const key = `${item.param}:${normalizeFilterKey(item.value)}`;
+export const buildChildCategoryItems = (
+  products: Product[],
+  tree?: ProductCategoryTree | null,
+  activeCategory?: string | null
+): CategoryNavChildItem[] => {
+  const category = categoryForValue(tree, activeCategory);
+  if (!category) return [];
 
-    return {
-      key,
-      label: item.label,
-      value: item.value,
-      param: item.param,
-      queryParams: item.queryParams || { category: config.value, [item.param]: item.value },
-      imageSrc: firstProductImage(matchedProduct),
-    };
-  });
+  return category.subcategories
+    .filter((subcategory) => subcategory.id && subcategory.label)
+    .map((subcategory) => childItem(products, category, subcategory));
 };
 
 export const buildNestedCategoryItems = (
   products: Product[],
+  tree?: ProductCategoryTree | null,
   activeCategory?: string | null,
   activeChildValue?: string | null
 ): CategoryNavChildItem[] => {
-  const config = configForCategory(activeCategory);
-  if (!config || !activeChildValue) return [];
+  const category = categoryForValue(tree, activeCategory);
+  const subcategory = subcategoryForValue(tree, activeCategory, activeChildValue);
+  if (!category || !subcategory) return [];
 
-  const parentItem = config.childItems.find((item) => routeValueMatches(item.value, activeChildValue));
-  if (!parentItem?.nestedItems?.length) return [];
-
-  return parentItem.nestedItems.map((item) => {
-    const matchedProduct = products.find((product) => matchesMatcher(product, parentItem.matcher) && matchesMatcher(product, item.matcher));
-    const key = `${item.param}:${normalizeFilterKey(parentItem.value)}:${normalizeFilterKey(item.value)}`;
-
-    return {
-      key,
+  return subcategory.subsubcategories
+    .filter((item) => item.id && item.label)
+    .map((item) => ({
+      key: `subsubcategory:${normalizeFilterKey(subcategory.id)}:${normalizeFilterKey(item.id)}`,
       label: item.label,
-      value: item.value,
-      param: item.param,
-      queryParams: item.queryParams || { category: config.value, subcategory: parentItem.value, [item.param]: item.value },
-      imageSrc: firstProductImage(matchedProduct),
-    };
-  });
+      value: item.id,
+      param: "subsubcategory" as const,
+      queryParams: {
+        category: category.id,
+        subcategory: subcategory.id,
+        subsubcategory: item.id,
+      },
+      imageSrc: firstProductImage(productForTaxonomy(products, category.id, subcategory.id, item.id)),
+    }));
 };
 
 export const resolveActiveChildKey = ({
@@ -615,24 +219,23 @@ export const resolveActiveChildKey = ({
   subcategory?: string | null;
   subsubcategory?: string | null;
 }) => {
-  if (subsubcategory) {
-    return childItems.find((item) => childItemMatchesCurrentFilters(item, subcategory, subsubcategory))?.key || null;
-  }
-
-  if (subcategory) {
-    return childItems.find((item) => childItemMatchesCurrentFilters(item, subcategory, subsubcategory))?.key || null;
-  }
-
-  if (!product) return null;
-
-  const productParams = resolveProductListingParams(product);
-  const activeValue = productParams.subsubcategory || productParams.subcategory;
-
-  return childItems.find((item) => routeValueMatches(item.value, activeValue))?.key || null;
+  const activeValue = subsubcategory || subcategory || product?.subsubcategory || product?.subcategory;
+  return childItems.find((item) => valuesMatch(item.value, activeValue))?.key || null;
 };
 
-export const isKnownCategoryChildValue = (value?: string | null, categoryValue?: string | null) => {
+export const isKnownCategoryChildValue = (
+  tree?: ProductCategoryTree | null,
+  value?: string | null,
+  categoryValue?: string | null
+) => {
   if (!value) return false;
-  if (categoryValue) return categoryContainsChildValue(categoryValue, value);
-  return Boolean(findChildConfigByValue(value));
+  const categories = categoryValue ? [categoryForValue(tree, categoryValue)].filter(Boolean) : visibleCategories(tree);
+
+  return categories.some((category) =>
+    category!.subcategories.some(
+      (subcategory) =>
+        valuesMatch(subcategory.id, value) ||
+        subcategory.subsubcategories.some((nested) => valuesMatch(nested.id, value))
+    )
+  );
 };

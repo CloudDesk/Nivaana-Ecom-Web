@@ -201,7 +201,13 @@ const ProductDetails: React.FC = () => {
   const categoryNavProductsQuery = useQuery({
     queryKey: ["category-navigation-products"],
     queryFn: () => platformProductService.getProducts(1, 1000),
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60,
+  });
+
+  const categoryTreeQuery = useQuery({
+    queryKey: ["product-category-tree", "sortorder-v3"],
+    queryFn: () => platformProductService.getCategoryTree(),
+    staleTime: 1000 * 60,
   });
 
   const publicPromotionsQuery = useQuery({
@@ -243,6 +249,7 @@ const ProductDetails: React.FC = () => {
   }, []);
 
   const product = productQuery.data;
+  const categoryTree = categoryTreeQuery.data?.data;
   const categoryNavProducts = useMemo(() => {
     const catalogProducts = categoryNavProductsQuery.data?.data ?? [];
     if (!product) return catalogProducts;
@@ -270,13 +277,15 @@ const ProductDetails: React.FC = () => {
   const maxQuantity = Math.max(availableStock, 0);
   const productListingParams = useMemo(() => resolveProductListingParams(product), [product]);
   const activeCategoryKey = useMemo(
-    () => productListingParams.category ?? resolveActiveCategory({ products: categoryNavProducts }),
-    [categoryNavProducts, productListingParams.category]
+    () =>
+      productListingParams.category ??
+      resolveActiveCategory({ tree: categoryTree, products: categoryNavProducts }),
+    [categoryNavProducts, categoryTree, productListingParams.category]
   );
-  const categoryNavTopItems = useMemo(() => buildTopCategoryItems(), []);
+  const categoryNavTopItems = useMemo(() => buildTopCategoryItems(categoryTree), [categoryTree]);
   const categoryNavChildItems = useMemo(
-    () => buildChildCategoryItems(categoryNavProducts, activeCategoryKey),
-    [activeCategoryKey, categoryNavProducts]
+    () => buildChildCategoryItems(categoryNavProducts, categoryTree, activeCategoryKey),
+    [activeCategoryKey, categoryNavProducts, categoryTree]
   );
   const activeCategoryChildKey = useMemo(
     () =>

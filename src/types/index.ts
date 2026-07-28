@@ -27,6 +27,35 @@ export interface Product {
   pack: string | null;
 }
 
+export interface ProductCategoryCount {
+  id: string;
+  label: string;
+  count: number;
+  sortOrder?: number | null;
+  subcategories: ProductSubcategoryCount[];
+}
+
+export interface ProductSubcategoryCount {
+  id: string;
+  label: string;
+  count: number;
+  sortOrder?: number | null;
+  subsubcategories: ProductSubsubcategoryCount[];
+}
+
+export interface ProductSubsubcategoryCount {
+  id: string;
+  label: string;
+  count: number;
+  sortOrder?: number | null;
+}
+
+export interface ProductCategoryTree {
+  platform: string;
+  totalProducts: number;
+  categories: ProductCategoryCount[];
+}
+
 export interface BannerItem {
   id: number;
   title: string;

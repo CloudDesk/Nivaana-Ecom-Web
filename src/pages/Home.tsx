@@ -88,19 +88,6 @@ const heroSlides: HeroSlide[] = [
   },
 ];
 
-const categoryFallbacks = [
-  { label: "Incense", to: "/products?category=incense" },
-  { label: "Home Fragrance", to: "/products?category=home_fragrance" },
-  { label: "Car & Room Fresheners", to: "/products?category=car_room_fresheners" },
-  { label: "Personal Care", to: "/products?category=personal_care" },
-  { label: "Perfumes", to: "/products?category=perfumes" },
-  { label: "Daily Rituals", to: "/products?category=daily_rituals" },
-  { label: "Gift Collections", to: "/products?category=gift_collections" },
-  { label: "Kitchen Accessories", to: "/products?category=kitchen_accessories" },
-  { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
-  { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
-];
-
 const marqueeBrands = Array.from({ length: 36 }, () => "NIVAANA");
 
 const whyNivaanaFeatures = [
@@ -534,16 +521,7 @@ const Home: React.FC = () => {
         return a.name.localeCompare(b.name);
       })
       .slice(0, limit);
-    if (fromApi.length) return fromApi;
-
-    return categoryFallbacks.slice(0, limit).map((category) => ({
-      id: `fallback:${category.label.toLowerCase()}`,
-      name: "Nivaana",
-      subcategory: category.label,
-      image: categoryCarouselImage(category.label) || fallbackProduct,
-      mobileImage: categoryCarouselMobileImage(category.label),
-      to: category.to,
-    }));
+    return fromApi;
   }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
 
   const showcaseSlides = useMemo<CategorySlide[]>(() => {
@@ -1288,7 +1266,7 @@ function MidPromoBanner() {
     <section className="bg-white py-8 sm:py-10 lg:py-12">
       <div className={homeContainer}>
         <Link
-          to="/products?category=car_room_fresheners"
+          to="/products"
           className="group relative block min-h-[360px] overflow-hidden rounded-[22px] bg-[#f3f2ef] shadow-[0_18px_46px_rgba(17,24,39,0.08)] sm:min-h-[420px] lg:min-h-[500px] lg:rounded-[30px]"
           aria-label="Discover Nivaana car and room fresheners"
         >

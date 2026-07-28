@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -20,83 +20,8 @@ import { cartService } from "../services/cartService";
 import { guestStoreService } from "../services/guestStoreService";
 import { platformProductService } from "../services/productPlatformService";
 import { getUserDisplayName, sessionService } from "../services/sessionService";
+import { buildCategoryGroups } from "./categoryNavigationData";
 import { Button } from "./ui/button";
-
-type CategoryLink = {
-  label: string;
-  to: string;
-  children?: CategoryLink[];
-};
-
-type CategoryGroup = {
-  heading: string;
-  to: string;
-  links: CategoryLink[];
-};
-
-const categoryGroups: CategoryGroup[] = [
-  {
-    heading: "Incense",
-    to: "/products?category=incense",
-    links: [
-      { label: "Premium Incense Sticks", to: "/products?category=incense&subcategory=premium_incense_sticks" },
-      { label: "Dhoops", to: "/products?category=incense&subcategory=dhoops" },
-      { label: "Havan Cups", to: "/products?category=incense&subcategory=havan_cups" },
-    ],
-  },
-  {
-    heading: "Home Fragrance",
-    to: "/products?category=home_fragrance",
-    links: [
-      { label: "Essential Oils", to: "/products?category=home_fragrance&subcategory=essential_oils" },
-      { label: "Fragrance Blends", to: "/products?category=home_fragrance&subcategory=fragrance_blends" },
-      { label: "Wardrobe Sachets", to: "/products?category=home_fragrance&subcategory=wardrobe_sachets" },
-    ],
-  },
-  {
-    heading: "Car & Room Fresheners",
-    to: "/products?category=car_room_fresheners",
-    links: [
-      { label: "Premium Room Mist", to: "/products?category=car_room_fresheners&subcategory=premium_room_mist" },
-      { label: "Diffuser Oils", to: "/products?category=car_room_fresheners&subcategory=diffuser_oils" },
-      { label: "Diffuser Oil Refill Pack", to: "/products?category=car_room_fresheners&subcategory=diffuser_oil_refill_pack_for_machines" },
-      { label: "Diffuser Machines", to: "/products?category=car_room_fresheners&subcategory=diffuser_machines" },
-    ],
-  },
-  {
-    heading: "Personal Care",
-    to: "/products?category=personal_care",
-    links: [
-      { label: "Soaps", to: "/products?subcategory=soaps" },
-      { label: "Facewash", to: "/products?subcategory=facewash" },
-      { label: "Floor Cleaner Concentrates", to: "/products?subcategory=floor_cleaner_concentrates" },
-      { label: "Handwash", to: "/products?subcategory=handwash" },
-    ],
-  },
-  {
-    heading: "Perfumes",
-    to: "/products?category=perfumes",
-    links: [
-      { label: "Pocket Perfumes", to: "/products?subcategory=pocket_perfumes" },
-      { label: "Daily Collection", to: "/products?subcategory=daily_collection" },
-      { label: "Luxury Collection", to: "/products?subcategory=luxury_collection" },
-    ],
-  },
-  {
-    heading: "Daily Rituals",
-    to: "/products?category=daily_rituals",
-    links: [
-      { label: "Fresh Mornings", to: "/products?subcategory=fresh_mornings" },
-      { label: "Relaxation & Calm", to: "/products?subcategory=relaxation_calm" },
-      { label: "Dusky Evenings & Night", to: "/products?subcategory=dusky_evenings_night" },
-    ],
-  },
-  {
-    heading: "Gift Collections",
-    to: "/products?category=gift_collections",
-    links: [],
-  },
-];
 
 const countDistinctProducts = (items: Array<{ productid: number }>) =>
   new Set(items.map((item) => item.productid)).size;
@@ -135,8 +60,18 @@ const Navbar: React.FC = () => {
   const { data: productResponse } = useQuery({
     queryKey: ["navbar-search-products"],
     queryFn: () => platformProductService.getProducts(1, 50),
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60,
   });
+
+  const categoryTreeQuery = useQuery({
+    queryKey: ["product-category-tree", "sortorder-v3"],
+    queryFn: () => platformProductService.getCategoryTree(),
+    staleTime: 1000 * 60,
+  });
+  const categoryGroups = useMemo(
+    () => buildCategoryGroups(categoryTreeQuery.data?.data),
+    [categoryTreeQuery.data?.data]
+  );
 
   const cartQuery = useQuery({
     queryKey: ["cart", session?.user.id],
