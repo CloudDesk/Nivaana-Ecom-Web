@@ -1,0 +1,63 @@
+name: Firebase Hosting Branch Deploy
+
+on:
+  push:
+    branches:
+      - SIT
+      - PROD
+
+concurrency:
+  group: firebase-hosting-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Select environment
+        run: |
+          case "$GITHUB_REF_NAME" in
+            SIT)
+              echo "BUILD_SCRIPT=build:sit" >> "$GITHUB_ENV"
+              echo "HOSTING_TARGET=hosting:sit" >> "$GITHUB_ENV"
+              ;;
+            PROD)
+              echo "BUILD_SCRIPT=build:prod" >> "$GITHUB_ENV"
+              echo "HOSTING_TARGET=hosting:prod" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Unsupported branch: $GITHUB_REF_NAME"
+              exit 1
+              ;;
+          esac
+
+      - name: Build
+        run: npm run "$BUILD_SCRIPT"
+
+      - name: Authenticate Firebase
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "Missing FIREBASE_SERVICE_ACCOUNT_NIVAANA_ECOM_WEB GitHub secret."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NIVAANA_ECOM_WEB }}
+
+      - name: Deploy
+        run: npx firebase-tools@13.22.1 deploy --only "$HOSTING_TARGET" --project nivaana-ecom-web --non-interactive

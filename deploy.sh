@@ -5,7 +5,14 @@
 
 set -e  # Exit on any error
 
-echo "🚀 Starting Nivaana E-commerce Deployment Process..."
+DEPLOY_ENV="${1:-prod}"
+
+if [[ "$DEPLOY_ENV" != "prod" && "$DEPLOY_ENV" != "sit" ]]; then
+    echo "Usage: ./deploy.sh [prod|sit]"
+    exit 1
+fi
+
+echo "🚀 Starting Nivaana E-commerce ${DEPLOY_ENV^^} Deployment Process..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -63,7 +70,7 @@ npm run lint
 
 # Build the project
 print_status "Building the project..."
-npm run build
+npm run "build:$DEPLOY_ENV"
 
 # Check if build was successful
 if [ ! -d "dist" ]; then
@@ -74,17 +81,22 @@ fi
 print_success "Build completed successfully!"
 
 # Deploy to Firebase
-print_status "Deploying to Firebase Hosting..."
-firebase deploy --only hosting
+print_status "Deploying to Firebase Hosting target: $DEPLOY_ENV..."
+firebase deploy --only "hosting:$DEPLOY_ENV" --project nivaana-ecom-web
 
 print_success "🎉 Deployment completed successfully!"
-print_status "Your app is now live at: https://nivaana-ecom-web.web.app"
+if [[ "$DEPLOY_ENV" == "sit" ]]; then
+    APP_URL="https://nivaana-ecom-web-sit.web.app"
+else
+    APP_URL="https://nivaana-ecom-web.web.app"
+fi
+print_status "Your app is now live at: $APP_URL"
 
 # Optional: Open the deployed site
 read -p "Would you like to open the deployed site? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    open https://nivaana-ecom-web.web.app
+    open "$APP_URL"
 fi
 
 echo "✨ Deployment process completed!"

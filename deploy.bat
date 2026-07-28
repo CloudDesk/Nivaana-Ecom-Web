@@ -2,7 +2,16 @@
 REM Nivaana E-commerce Firebase Deployment Script for Windows
 REM This script automates the build and deployment process
 
-echo 🚀 Starting Nivaana E-commerce Deployment Process...
+set DEPLOY_ENV=%1
+if "%DEPLOY_ENV%"=="" set DEPLOY_ENV=prod
+
+if /i not "%DEPLOY_ENV%"=="prod" if /i not "%DEPLOY_ENV%"=="sit" (
+    echo Usage: deploy.bat [prod^|sit]
+    pause
+    exit /b 1
+)
+
+echo 🚀 Starting Nivaana E-commerce %DEPLOY_ENV% Deployment Process...
 
 REM Check if Firebase CLI is installed
 firebase --version >nul 2>&1
@@ -41,7 +50,7 @@ npm run lint
 
 REM Build the project
 echo [INFO] Building the project...
-npm run build
+npm run build:%DEPLOY_ENV%
 
 REM Check if build was successful
 if not exist "dist" (
@@ -53,16 +62,18 @@ if not exist "dist" (
 echo [SUCCESS] Build completed successfully!
 
 REM Deploy to Firebase
-echo [INFO] Deploying to Firebase Hosting...
-firebase deploy --only hosting
+echo [INFO] Deploying to Firebase Hosting target: %DEPLOY_ENV%...
+firebase deploy --only hosting:%DEPLOY_ENV% --project nivaana-ecom-web
 
 echo [SUCCESS] 🎉 Deployment completed successfully!
-echo [INFO] Your app is now live at: https://nivaana-ecom-web.web.app
+set APP_URL=https://nivaana-ecom-web.web.app
+if /i "%DEPLOY_ENV%"=="sit" set APP_URL=https://nivaana-ecom-web-sit.web.app
+echo [INFO] Your app is now live at: %APP_URL%
 
 REM Optional: Open the deployed site
 set /p choice="Would you like to open the deployed site? (y/n): "
 if /i "%choice%"=="y" (
-    start https://nivaana-ecom-web.web.app
+    start %APP_URL%
 )
 
 echo ✨ Deployment process completed!

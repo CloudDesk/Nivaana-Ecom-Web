@@ -1,6 +1,18 @@
 {
   "projects": {
     "default": "nivaana-ecom-web"
-  }
+  },
+  "targets": {
+    "nivaana-ecom-web": {
+      "hosting": {
+        "prod": [
+          "nivaana-ecom-web"
+        ],
+        "sit": [
+          "nivaana-ecom-web-sit"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
-
