@@ -11,8 +11,10 @@ const Login: React.FC = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [mobile, setMobile] = useState("");
+  const [name, setName] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [requiresName, setRequiresName] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const session = sessionService.getSession();
@@ -36,7 +38,8 @@ const Login: React.FC = () => {
     setMessage("");
 
     try {
-      await authService.requestOTP(Number(mobile));
+      const response = await authService.requestOTP(Number(mobile));
+      setRequiresName(Boolean(response.data.requiresName ?? response.data.isNewUser));
       setOtpSent(true);
       setMessage("OTP sent successfully.");
     } catch {
@@ -53,11 +56,16 @@ const Login: React.FC = () => {
       return;
     }
 
+    if (requiresName && name.trim().replace(/\s+/g, " ").length < 2) {
+      setMessage("Please enter your name.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
     try {
-      await authService.verifyOTP(Number(mobile), Number(otp));
+      await authService.verifyOTP(Number(mobile), Number(otp), requiresName ? name : undefined);
       const session = sessionService.getSession();
       if (session) {
         await guestStoreService.mergeToUser(session.user.id);
@@ -112,21 +120,42 @@ const Login: React.FC = () => {
           <p className="mt-2 text-sm text-[#9b9188]">We'll send a one-time password to this number.</p>
 
           {otpSent && (
-            <div className="mt-5">
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="otp">
-                One-Time Password
-              </label>
-              <input
-                id="otp"
-                value={otp}
-                onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                placeholder="4-digit OTP"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
-                required
-              />
-            </div>
+            <>
+              {requiresName && (
+                <div className="mt-5">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="name">
+                    Customer Name
+                  </label>
+                  <input
+                    id="name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value.slice(0, 100))}
+                    placeholder="Enter your full name"
+                    autoComplete="name"
+                    minLength={2}
+                    maxLength={100}
+                    className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="mt-5">
+                <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="otp">
+                  One-Time Password
+                </label>
+                <input
+                  id="otp"
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="4-digit OTP"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                  required
+                />
+              </div>
+            </>
           )}
 
           {message && <p className="mt-4 text-sm font-medium text-[#766c63]">{message}</p>}

@@ -24,6 +24,7 @@ import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type Promotion } from "../services/promotionService";
+import { sessionService } from "../services/sessionService";
 import { ratingService } from "../services/ratingService";
 import { storefrontPageSectionService } from "../services/storefrontPageSectionService";
 import type { Product, Rating, StorefrontMedia, StorefrontPageSection } from "../types";
@@ -365,16 +366,19 @@ const Home: React.FC = () => {
     queryFn: () => ratingService.getRatings(1, 12),
   });
 
+  const homeSession = sessionService.getSession();
   const promotionsQuery = useQuery({
-    queryKey: ["home-promotion-deals"],
+    queryKey: ["home-promotion-deals", homeSession?.user.id],
     queryFn: () =>
-      promotionService.list({
-        channel: "web",
-        geo: "IN",
-        status: "active",
-        visibility: "public",
-        limit: 10,
-      }),
+      homeSession
+        ? promotionService.mine("web")
+        : promotionService.list({
+            channel: "web",
+            geo: "IN",
+            status: "active",
+            visibility: "public",
+            limit: 10,
+          }),
   });
 
   const storefrontConfigQuery = useQuery({
@@ -1641,6 +1645,13 @@ function DealTripleSlider({
       return;
     }
 
+    if (
+      promotion.application_mode === "click_to_apply" ||
+      promotion.application_mode === "code_entry"
+    ) {
+      navigate("/promotions");
+      return;
+    }
     navigate(promotionProductListPath(promotion));
   };
 
@@ -2028,7 +2039,11 @@ function DealCard({
               onOpenDeals?.();
             }}
           >
-            Shop deals
+            {promotion.application_mode === "click_to_apply"
+              ? "Apply offer"
+              : promotion.application_mode === "code_entry"
+                ? "Use code"
+                : "Shop deals"}
             <ChevronRight className="ml-1.5 h-4 w-4 stroke-[2.6]" />
           </button>
         </div>

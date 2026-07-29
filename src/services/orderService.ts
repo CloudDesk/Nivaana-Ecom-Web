@@ -5,6 +5,11 @@ export interface OrderSummary {
   id?: number;
   orderid?: string;
   orderamount?: number;
+  productamount?: number;
+  discountamount?: number;
+  promotion_discount_total?: number;
+  original_total?: number;
+  shipping_cost?: number;
   orderstatus?: string;
   createddate?: number;
   modifieddate?: number;

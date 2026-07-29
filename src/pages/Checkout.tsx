@@ -21,7 +21,8 @@ import { cartService } from "../services/cartService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type AppliedPromotion } from "../services/promotionService";
-import { getUserDisplayName, sessionService } from "../services/sessionService";
+import { sessionService } from "../services/sessionService";
+import { userService } from "../services/userService";
 import { Button } from "../components/ui/button";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { Product } from "../types";
@@ -43,9 +44,9 @@ import {
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
-const emptyAddressForm = (userId: number, mobileNumber: number): AddressPayload => ({
+const emptyAddressForm = (userId: number, mobileNumber: number, customerName = ""): AddressPayload => ({
   userid: userId,
-  name: "",
+  name: customerName,
   mobilenumber: mobileNumber || 0,
   pincode: 0,
   doornumber: "",
@@ -131,11 +132,12 @@ const Checkout: React.FC = () => {
   const user = session?.user;
   const userId = user?.id;
   const userMobile = Number(user?.usermobilenumber ?? 0);
+  const storedCustomerName = [user?.firstname?.trim(), user?.lastname?.trim()].filter(Boolean).join(" ");
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
   const [addressForm, setAddressForm] = useState<AddressPayload>(() =>
-    emptyAddressForm(user?.id ?? 0, Number(user?.usermobilenumber ?? 0))
+    emptyAddressForm(user?.id ?? 0, Number(user?.usermobilenumber ?? 0), storedCustomerName)
   );
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -147,10 +149,10 @@ const Checkout: React.FC = () => {
 
   useEffect(() => {
     if (userId) {
-      setAddressForm(emptyAddressForm(userId, userMobile));
+      setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
       setSelectedPromotion(readSelectedCartPromotion(userId));
     }
-  }, [userId, userMobile]);
+  }, [storedCustomerName, userId, userMobile]);
 
   useEffect(() => {
     if (!statusMessage && !errorMessage) {
@@ -248,12 +250,22 @@ const Checkout: React.FC = () => {
 
   const activeEvaluationsQuery = useQuery({
     queryKey: ["checkout-active-promotion-evaluations", userId, cartSignature],
-    queryFn: () => promotionService.getActiveEvaluations(userId!),
-    enabled: Boolean(userId && promotionRows.length > 0 && !isBuyNowCheckout),
+    queryFn: () =>
+      promotionService.evaluateAutomatic({
+        userId: String(userId),
+        cartItems: promotionEvaluationItems,
+        currentTotal: total,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      }),
+    enabled: Boolean(userId && promotionRows.length > 0),
     staleTime: 1000 * 15,
   });
 
-  const backendEvaluation = activeEvaluationsQuery.data?.data?.evaluations?.[0] ?? null;
+  // evaluateAutomatic is scoped to the current cart signature. Using the first
+  // user-level active evaluation can attach prices/promotions from an older cart.
+  const backendEvaluation = activeEvaluationsQuery.data?.data ?? null;
   const backendAppliedPromotions = backendEvaluation?.applied_promotions ?? [];
   const manualAppliedPromotion = backendAppliedPromotions.find(
     (promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion) && appliedPromotionId(promotion) > 0
@@ -442,8 +454,24 @@ const Checkout: React.FC = () => {
     }
   }, [addresses, addressesQuery.isLoading, selectedAddressId]);
 
+  const persistMissingCustomerName = async (name: string) => {
+    const currentUser = session?.user;
+    if (!session || !currentUser || currentUser.firstname?.trim()) return;
+
+    const response = await userService.updateProfile(currentUser.id, {
+      firstname: name.trim().replace(/\s+/g, " "),
+    });
+    sessionService.saveSession({
+      ...session,
+      user: response.data,
+    });
+  };
+
   const createAddressMutation = useMutation({
-    mutationFn: (payload: AddressPayload) => addressService.create(payload),
+    mutationFn: async (payload: AddressPayload) => {
+      await persistMissingCustomerName(payload.name);
+      return addressService.create(payload);
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
       setSelectedAddressId(response.data.id);
@@ -452,7 +480,7 @@ const Checkout: React.FC = () => {
       setStatusMessage("Address saved.");
       setErrorMessage("");
       if (userId) {
-        setAddressForm(emptyAddressForm(userId, userMobile));
+        setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
       }
     },
     onError: () => {
@@ -462,8 +490,10 @@ const Checkout: React.FC = () => {
   });
 
   const updateAddressMutation = useMutation({
-    mutationFn: ({ addressId, payload }: { addressId: number; payload: AddressPayload }) =>
-      addressService.update(addressId, payload),
+    mutationFn: async ({ addressId, payload }: { addressId: number; payload: AddressPayload }) => {
+      await persistMissingCustomerName(payload.name);
+      return addressService.update(addressId, payload);
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
       setSelectedAddressId(response.data.id);
@@ -472,7 +502,7 @@ const Checkout: React.FC = () => {
       setStatusMessage("Address updated.");
       setErrorMessage("");
       if (userId) {
-        setAddressForm(emptyAddressForm(userId, userMobile));
+        setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
       }
     },
     onError: () => {
@@ -501,7 +531,7 @@ const Checkout: React.FC = () => {
       if (editingAddressId === addressId) {
         setEditingAddressId(null);
         if (userId) {
-          setAddressForm(emptyAddressForm(userId, userMobile));
+          setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
         }
       }
       setStatusMessage("Address deleted.");
@@ -521,6 +551,12 @@ const Checkout: React.FC = () => {
         throw new Error("Select a delivery address before payment.");
       }
 
+      const payerName = selectedAddress.name.trim().replace(/\s+/g, " ");
+      if (payerName.length < 2) {
+        throw new Error("Enter the customer name in the selected delivery address before payment.");
+      }
+      await persistMissingCustomerName(payerName);
+
       if (checkoutStockIssues.length > 0) {
         throw new Error(`Cannot process payment. ${checkoutStockIssues.length} product(s) have stock issues.`);
       }
@@ -534,7 +570,6 @@ const Checkout: React.FC = () => {
         throw new Error("Some cart items are missing product details. Please refresh the cart and try again.");
       }
 
-      const payerName = selectedAddress.name.trim() || getUserDisplayName(user) || "Nivaana Customer";
       const payerMobile = String(selectedAddress.mobilenumber).replace(/\D/g, "");
       const orderItems = buildOrderItems(enrichedItems, user.id, selectedAddress.id);
 
@@ -549,7 +584,7 @@ const Checkout: React.FC = () => {
         transaction: {
           amount: Number(checkoutTotal.toFixed(2)),
           mobilenumber: payerMobile,
-          name: payerName.replace(/[^a-zA-Z ]/g, "").trim() || "Nivaana Customer",
+          name: payerName.replace(/[^a-zA-Z ]/g, "").trim(),
           productid: orderItems.map((item) => item.productid),
           transactionfor: "product",
           userId: user.id,
@@ -567,7 +602,7 @@ const Checkout: React.FC = () => {
         if (data.merchantTransactionId) {
           localStorage.setItem(PENDING_TRANSACTION_KEY, data.merchantTransactionId);
         }
-        window.location.assign(redirectUrl);
+        window.location.replace(redirectUrl);
         return;
       }
 

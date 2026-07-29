@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, ReceiptText, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -14,7 +14,20 @@ const getStatusText = (data?: PaymentResponseData | null) =>
 
 const isSuccessfulPayment = (data?: PaymentResponseData | null) => {
   const statusText = getStatusText(data).toLowerCase();
-  return Boolean(data?.success) || statusText.includes("success") || statusText.includes("completed");
+  const paymentSucceeded =
+    statusText === "success" ||
+    statusText.includes("payment_success") ||
+    statusText.includes("completed");
+  return paymentSucceeded && data?.orderCreation?.status !== "failed";
+};
+
+const isPendingPayment = (data?: PaymentResponseData | null) => {
+  const statusText = getStatusText(data).toLowerCase();
+  return (
+    statusText.includes("pending") ||
+    statusText.includes("initiated") ||
+    statusText.includes("processing")
+  );
 };
 
 const formatCurrency = (value?: number | string | null, source: "rupees" | "paise" = "rupees", showZero = false) => {
@@ -124,6 +137,7 @@ const findMatchingTransaction = (order: OrderSummary, transactions: TransactionR
 
 const Payments: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [session] = useState(() => sessionService.getSession());
   const [statusData, setStatusData] = useState<PaymentResponseData | null>(null);
@@ -192,6 +206,8 @@ const Payments: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["payments", session.user.id] });
           queryClient.invalidateQueries({ queryKey: ["payment-transactions", session.user.id] });
         }
+
+        window.setTimeout(() => navigate("/", { replace: true }), 1200);
       }
     },
     onError: (error) => {
@@ -210,6 +226,16 @@ const Payments: React.FC = () => {
     );
     statusMutation.mutate(returnedMerchantTransactionId);
   }, [returnedMerchantTransactionId, returnedPaymentStatus, statusData, statusMutation]);
+
+  useEffect(() => {
+    if (!returnedMerchantTransactionId || !isPendingPayment(statusData)) return;
+
+    const timer = window.setTimeout(() => {
+      setStatusData(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [returnedMerchantTransactionId, statusData]);
 
   if (!session) {
     return (

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgePercent, CheckCircle2, Loader2, ShoppingBag, Sparkles, Tag, TicketPercent, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cartService } from "../services/cartService";
@@ -13,6 +13,11 @@ import {
 } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
 import type { Product } from "../types";
+import {
+  buildPromotionCartData,
+  buildPromotionEvaluationCartItems,
+} from "../lib/cartPromotions";
+import { toast } from "../components/toastApi";
 
 const formatCurrency = (value?: number | null) => `Rs. ${Math.max(Number(value || 0), 0).toLocaleString("en-IN")}`;
 
@@ -67,6 +72,7 @@ const publicPromotionKey = (promotion: Promotion) => `${promotion.id}-${promotio
 const Promotions: React.FC = () => {
   const session = sessionService.getSession();
   const userId = session?.user.id;
+  const queryClient = useQueryClient();
 
   const cartQuery = useQuery({
     queryKey: ["cart", userId],
@@ -82,20 +88,40 @@ const Promotions: React.FC = () => {
   });
 
   const publicPromotionsQuery = useQuery({
-    queryKey: ["public-promotions", userId],
-    queryFn: () =>
-      promotionService.list({
-        userid: userId,
-        channel: "web",
-        geo: "IN",
-        status: "active",
-        visibility: "public",
-        limit: 30,
-      }),
+    queryKey: ["my-promotions", userId],
+    queryFn: () => promotionService.mine("web"),
+    enabled: Boolean(userId),
   });
 
   const cartItems = useMemo(() => (cartQuery.data?.data ?? []).filter((item) => item.iscart), [cartQuery.data]);
   const products = productsQuery.data?.data ?? [];
+  const promotionRows = useMemo(
+    () =>
+      cartItems
+        .map((item) => {
+          const product = products.find((row) => row.id === item.productid);
+          if (!product) return null;
+          return {
+            cartRecordId: item.id ?? item.productid,
+            productid: item.productid,
+            product,
+            quantity: quantityFor(item.quantity),
+          };
+        })
+        .filter(
+          (row): row is NonNullable<typeof row> =>
+            Boolean(row && row.quantity > 0)
+        ),
+    [cartItems, products]
+  );
+  const promotionCartData = useMemo(
+    () => buildPromotionCartData(promotionRows),
+    [promotionRows]
+  );
+  const promotionEvaluationItems = useMemo(
+    () => buildPromotionEvaluationCartItems(promotionRows),
+    [promotionRows]
+  );
   const recommendationItems = useMemo(
     () =>
       cartItems
@@ -127,6 +153,41 @@ const Promotions: React.FC = () => {
         geo: "IN",
       }),
     enabled: Boolean(userId && recommendationItems.length > 0 && products.length > 0),
+  });
+
+  const applyPromotionMutation = useMutation({
+    mutationFn: async (promotion: Promotion) => {
+      if (!userId || promotionEvaluationItems.length === 0) {
+        throw new Error("Add products to your cart before applying this promotion.");
+      }
+      await promotionService.evaluateAutomatic({
+        userId: String(userId),
+        cartItems: promotionEvaluationItems,
+        currentTotal: promotionCartData.total,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+      return promotionService.evaluate({
+        cartId: `cart-${userId}`,
+        userId: String(userId),
+        promotionId: promotion.id,
+        cartData: promotionCartData,
+        cartItems: promotionEvaluationItems,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+    },
+    onSuccess: (_response, promotion) => {
+      toast.success(`${promotion.name} applied to your cart.`);
+      queryClient.invalidateQueries({ queryKey: ["promotion-offers", userId] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Could not apply this promotion."
+      );
+    },
   });
 
   if (!session) {
@@ -268,10 +329,19 @@ const Promotions: React.FC = () => {
 
             {publicPromotions.length > 0 && (
               <section>
-                <SectionHeading icon={<Tag className="h-5 w-5" />} title="Public Promotions" />
+                <SectionHeading icon={<Tag className="h-5 w-5" />} title="Available Promotions" />
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {publicPromotions.map((promotion) => (
-                    <PublicPromotionCard key={publicPromotionKey(promotion)} promotion={promotion} />
+                    <PublicPromotionCard
+                      key={publicPromotionKey(promotion)}
+                      promotion={promotion}
+                      canApply={hasCartContext}
+                      isApplying={
+                        applyPromotionMutation.isPending &&
+                        applyPromotionMutation.variables?.id === promotion.id
+                      }
+                      onApply={() => applyPromotionMutation.mutate(promotion)}
+                    />
                   ))}
                 </div>
               </section>
@@ -369,15 +439,45 @@ function AppliedPromotionCard({ promotion }: { promotion: AppliedPromotion }) {
   );
 }
 
-function PublicPromotionCard({ promotion }: { promotion: Promotion }) {
+function PublicPromotionCard({
+  promotion,
+  canApply,
+  isApplying,
+  onApply,
+}: {
+  promotion: Promotion;
+  canApply: boolean;
+  isApplying: boolean;
+  onApply: () => void;
+}) {
   const validity = formatDate(promotion.end_date, promotion.timezone);
-  const discountValue = Number(promotion.discount_value || 0);
+  const discountValue = Number(
+    typeof promotion.action?.value === "number"
+      ? promotion.action.value
+      : promotion.discount_value || 0
+  );
+  const discountType = promotion.action?.type || promotion.discount_type || "";
+  const minimumCartCondition = promotion.conditions?.find(
+    (condition) =>
+      (condition.attribute || condition.field) === "cart.total_value" &&
+      condition.operator === "GTE"
+  );
+  const minimumCart = Number(
+    minimumCartCondition?.value ||
+      promotion.action?.min_order_value ||
+      promotion.action?.minimum_order_value ||
+      0
+  );
 
   return (
     <article className="flex min-h-56 flex-col rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-start justify-between gap-3">
         <span className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
-          {promotion.auto_apply ? "Auto Apply" : "Public"}
+          {promotion.application_mode === "automatic"
+            ? "Auto Apply"
+            : promotion.application_mode === "code_entry"
+              ? "Voucher Code"
+              : "Tap to Apply"}
         </span>
         {promotion.code && (
           <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-bold text-[var(--color-text)]">
@@ -391,10 +491,29 @@ function PublicPromotionCard({ promotion }: { promotion: Promotion }) {
         {discountValue > 0 && (
           <PromotionMeta
             label="Value"
-            value={promotion.discount_type?.toLowerCase().includes("percent") ? `${discountValue}%` : formatCurrency(discountValue)}
+            value={discountType.toLowerCase().includes("percent") ? `${discountValue}%` : formatCurrency(discountValue)}
           />
         )}
+        {minimumCart > 0 && (
+          <PromotionMeta label="Minimum cart" value={formatCurrency(minimumCart)} />
+        )}
         {validity && <PromotionMeta label="Valid until" value={validity} />}
+        {promotion.application_mode === "click_to_apply" && (
+          <Button
+            className="mt-3 w-full"
+            disabled={!canApply || isApplying}
+            onClick={onApply}
+          >
+            {isApplying ? "Applying..." : canApply ? "Apply to cart" : "Add items to apply"}
+          </Button>
+        )}
+        {promotion.application_mode === "code_entry" && (
+          <Link to="/cart" className="mt-3 block">
+            <Button variant="secondary" className="w-full">
+              Use code in cart
+            </Button>
+          </Link>
+        )}
       </div>
     </article>
   );

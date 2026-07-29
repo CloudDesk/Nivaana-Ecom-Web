@@ -9,6 +9,7 @@ export interface Promotion {
   type: string;
   code?: string | null;
   auto_apply?: boolean;
+  application_mode?: "automatic" | "click_to_apply" | "code_entry";
   start_date?: number | string | null;
   end_date?: number | string | null;
   timezone?: string | null;
@@ -236,6 +237,10 @@ class PromotionService {
     if (params.visibility) queryParams.set("visibility", params.visibility);
 
     return apiService.get<Promotion[]>(`/promotions?${queryParams.toString()}`);
+  }
+
+  mine(channel: string = "web"): Promise<ApiResponse<Promotion[]>> {
+    return apiService.get<Promotion[]>(`/promotions/mine?channel=${encodeURIComponent(channel)}`);
   }
 
   getRecommendedOffers(payload: RecommendationRequest): Promise<ApiResponse<RecommendationData>> {

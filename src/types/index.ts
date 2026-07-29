@@ -209,10 +209,17 @@ export interface OTPRequest {
 export interface OTPVerifyRequest {
   usermobilenumber: number;
   otp: number;
+  firstname?: string;
 }
 
 export interface OTPRequestResponse {
   message: string;
+  mobileNumber?: number;
+  otpSent?: boolean;
+  expiresIn?: number;
+  canResendAfter?: number;
+  isNewUser?: boolean;
+  requiresName?: boolean;
 }
 
 export interface OTPVerifyResponse {
