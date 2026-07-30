@@ -10,6 +10,9 @@ export interface AuthSession {
   user: User;
 }
 
+export const hasRequiredUserName = (user?: User | null) =>
+  Boolean(user?.firstname?.trim() && user.firstname.trim().length >= 2);
+
 export const getUserDisplayName = (user?: User | null) => {
   if (!user) return "";
 

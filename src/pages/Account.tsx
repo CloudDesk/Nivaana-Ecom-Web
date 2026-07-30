@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Check, CreditCard, Heart, LogOut, MapPin, PackageCheck, Pencil, ShoppingBag, TicketPercent, Trash2, UserRound, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Check, CreditCard, Heart, Info, LogOut, MapPin, PackageCheck, Pencil, ShoppingBag, TicketPercent, Trash2, UserRound, X } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { getUserDisplayName, sessionService, type AuthSession } from "../services/sessionService";
+import { getUserDisplayName, hasRequiredUserName, sessionService, type AuthSession } from "../services/sessionService";
 import { userService } from "../services/userService";
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [session, setSession] = useState<AuthSession | null>(() => sessionService.getSession());
   const [isEditingName, setIsEditingName] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -20,6 +21,14 @@ const Account: React.FC = () => {
     window.addEventListener("nivaana-session-change", refresh);
     return () => window.removeEventListener("nivaana-session-change", refresh);
   }, []);
+
+  useEffect(() => {
+    if (session && !hasRequiredUserName(session.user)) {
+      setFirstName(session.user.firstname?.trim() || "");
+      setLastName(session.user.lastname?.trim() || "");
+      setIsEditingName(true);
+    }
+  }, [session]);
 
   const handleLogout = () => {
     sessionService.clearSession();
@@ -36,6 +45,7 @@ const Account: React.FC = () => {
   };
 
   const cancelNameEdit = () => {
+    if (!hasRequiredUserName(session?.user)) return;
     setIsEditingName(false);
     setNameError("");
   };
@@ -47,8 +57,8 @@ const Account: React.FC = () => {
     const trimmedFirstName = firstName.trim();
     const trimmedLastName = lastName.trim();
 
-    if (!trimmedFirstName && !trimmedLastName) {
-      setNameError("Please enter at least one name.");
+    if (trimmedFirstName.length < 2) {
+      setNameError("First name is required and must contain at least 2 characters.");
       setNameMessage("");
       return;
     }
@@ -75,6 +85,20 @@ const Account: React.FC = () => {
       setSession({ ...session, user: updatedUser });
       setIsEditingName(false);
       setNameMessage("Name updated successfully.");
+
+      const routeState =
+        location.state && typeof location.state === "object"
+          ? (location.state as { from?: unknown })
+          : null;
+      const returnTo =
+        typeof routeState?.from === "string" &&
+        routeState.from.startsWith("/") &&
+        !routeState.from.startsWith("/account")
+          ? routeState.from
+          : null;
+      if (returnTo) {
+        navigate(returnTo, { replace: true });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to update name. Please try again.";
       setNameError(message);
@@ -101,6 +125,7 @@ const Account: React.FC = () => {
   }
 
   const user = session.user;
+  const requiresName = !hasRequiredUserName(user);
   const displayName = getUserDisplayName(user);
   const email = user.useremail?.trim();
   const mobile = user.usermobilenumber?.toString();
@@ -111,6 +136,20 @@ const Account: React.FC = () => {
         <h1 className="text-3xl font-bold text-[var(--color-text)]">My Account</h1>
         <p className="mt-2 text-sm text-[var(--color-muted)]">Manage your Nivaana profile and shopping shortcuts.</p>
 
+        {requiresName && (
+          <div className="mt-6 flex items-start gap-3 rounded-[var(--radius-md)] border border-amber-300 bg-amber-50 p-4 text-amber-950" role="status">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-200" aria-hidden="true">
+              <Info className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-bold">Complete your profile</p>
+              <p className="mt-1 text-sm leading-6">
+                Your name is mandatory for orders, invoices, delivery, and payment verification. Enter your first name below to continue.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
           <section className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-6 shadow-[var(--shadow-card)]">
             <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
@@ -119,7 +158,9 @@ const Account: React.FC = () => {
             <div className="mt-5 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Profile name</p>
-                <h2 className="mt-1 break-words text-xl font-bold text-[var(--color-text)]">{displayName}</h2>
+                <h2 className="mt-1 break-words text-xl font-bold text-[var(--color-text)]">
+                  {requiresName ? "Name required" : displayName}
+                </h2>
               </div>
               {!isEditingName && (
                 <button
@@ -137,7 +178,7 @@ const Account: React.FC = () => {
               <form className="mt-4 space-y-3" onSubmit={handleNameUpdate}>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]" htmlFor="account-first-name">
-                    First name
+                    First name <span className="text-red-600">*</span>
                   </label>
                   <input
                     id="account-first-name"
@@ -146,6 +187,8 @@ const Account: React.FC = () => {
                     className="mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                     placeholder="Enter first name"
                     autoComplete="given-name"
+                    minLength={2}
+                    required
                   />
                 </div>
                 <div>
@@ -161,15 +204,17 @@ const Account: React.FC = () => {
                     autoComplete="family-name"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className={requiresName ? "" : "grid grid-cols-2 gap-2"}>
                   <Button type="submit" className="gap-2 px-3" disabled={savingName}>
                     <Check className="h-4 w-4" />
                     {savingName ? "Saving" : "Save"}
                   </Button>
-                  <Button type="button" variant="ghost" className="gap-2 px-3" onClick={cancelNameEdit} disabled={savingName}>
-                    <X className="h-4 w-4" />
-                    Cancel
-                  </Button>
+                  {!requiresName && (
+                    <Button type="button" variant="ghost" className="gap-2 px-3" onClick={cancelNameEdit} disabled={savingName}>
+                      <X className="h-4 w-4" />
+                      Cancel
+                    </Button>
+                  )}
                 </div>
               </form>
             )}

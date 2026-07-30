@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { sessionService } from "../services/sessionService";
+import { hasRequiredUserName, sessionService } from "../services/sessionService";
 
 const routeTarget = (location: ReturnType<typeof useLocation>) =>
   `${location.pathname}${location.search}${location.hash}`;
@@ -11,6 +11,16 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!session) {
     return <Navigate to="/login" replace state={{ from: routeTarget(location) }} />;
+  }
+
+  if (!hasRequiredUserName(session.user) && location.pathname !== "/account") {
+    return (
+      <Navigate
+        to="/account?completeProfile=1"
+        replace
+        state={{ from: routeTarget(location) }}
+      />
+    );
   }
 
   return children;
