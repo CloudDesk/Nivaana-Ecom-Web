@@ -369,16 +369,8 @@ const Home: React.FC = () => {
   const homeSession = sessionService.getSession();
   const promotionsQuery = useQuery({
     queryKey: ["home-promotion-deals", homeSession?.user.id],
-    queryFn: () =>
-      homeSession
-        ? promotionService.mine("web")
-        : promotionService.list({
-            channel: "web",
-            geo: "IN",
-            status: "active",
-            visibility: "public",
-            limit: 10,
-          }),
+    queryFn: () => promotionService.mine("web"),
+    enabled: Boolean(homeSession),
   });
 
   const storefrontConfigQuery = useQuery({

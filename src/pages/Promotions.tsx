@@ -254,7 +254,7 @@ const Promotions: React.FC = () => {
               <Notice
                 tone="error"
                 title="Could not check cart-specific promotions"
-                text="Public active promotions are still shown below."
+                text="Your active logged-in promotions are still shown below."
               />
             )}
 
