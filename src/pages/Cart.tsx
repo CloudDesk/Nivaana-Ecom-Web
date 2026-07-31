@@ -1119,7 +1119,8 @@ function PromotionOffer({
 }) {
   const discountValue = Number(promotion.discount_value || promotion.discountInfo?.discountAmount || 0);
   const freeShipping = isFreeShippingOffer(promotion);
-  const percentageDiscount = promotion.discount_type?.toLowerCase().includes("percent");
+  const discountType = `${promotion.type || ""} ${promotion.discount_type || ""} ${promotion.action?.type || ""}`.toLowerCase();
+  const percentageDiscount = discountType.includes("percent");
   const potentialSavings = Number(
     promotion.discountInfo?.discountAmount ||
       (percentageDiscount ? 0 : discountValue)

@@ -635,21 +635,25 @@ function applicableBenefit(promotion: ApplicablePromotion) {
     return "FREE SHIPPING";
   }
 
+  const type = `${promotion.type || ""} ${promotion.discount_type || ""} ${promotion.action?.type || ""}`.toLowerCase();
+  const percentageDiscount = type.includes("percent");
+  const configuredValue =
+    promotion.discount_value ??
+    (typeof promotion.action?.value === "number" ? promotion.action.value : undefined);
   const value = Number(
-    promotion.discountInfo?.discountPercentage ||
-      promotion.discount_value ||
-      promotion.action?.value ||
-      0
+    percentageDiscount
+      ? promotion.discountInfo?.discountPercentage ?? configuredValue ?? 0
+      : promotion.discountInfo?.discountAmount ?? promotion.applied_discount ?? configuredValue ?? 0
   );
-  const type = `${promotion.discount_type || ""} ${promotion.action?.type || ""}`.toLowerCase();
   if (value <= 0) return "SPECIAL OFFER";
-  return type.includes("percent") ? `${value}% OFF` : `${formatCurrency(value)} OFF`;
+  return percentageDiscount ? `${value}% OFF` : `${formatCurrency(value)} OFF`;
 }
 
 function publicBenefit(promotion: Promotion, discountValue: number, discountType: string) {
   if (promotion.type?.toUpperCase().includes("SHIPPING")) return "FREE SHIPPING";
   if (discountValue <= 0) return "SPECIAL OFFER";
-  return discountType.toLowerCase().includes("percent")
+  const type = `${promotion.type || ""} ${discountType}`.toLowerCase();
+  return type.includes("percent")
     ? `${discountValue}% OFF`
     : `${formatCurrency(discountValue)} OFF`;
 }
