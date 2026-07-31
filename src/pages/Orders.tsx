@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -109,6 +109,7 @@ const Orders: React.FC = () => {
   const [returnEligibility, setReturnEligibility] = useState<Record<string, OrderReturnEligibility>>({});
   const [returnEligibilityError, setReturnEligibilityError] = useState<Record<string, string>>({});
   const [isLoadingReturnEligibility, setIsLoadingReturnEligibility] = useState<Record<string, boolean>>({});
+  const pendingReturnEligibilityKeys = useRef<Set<string>>(new Set());
   const [trackingByOrder, setTrackingByOrder] = useState<Record<string, TrackingDetails>>({});
   const [trackingErrorByOrder, setTrackingErrorByOrder] = useState<Record<string, string>>({});
   const [detailsErrorByOrder, setDetailsErrorByOrder] = useState<Record<string, string>>({});
@@ -155,12 +156,15 @@ const Orders: React.FC = () => {
 
   useEffect(() => {
     if (!orders.length) return;
-    let active = true;
     const pendingEligibility = orders
       .map((item, index) => ({ details: item, index }))
       .filter(({ details, index }) => {
         const orderKey = getOrderKey(details.order, index);
-        return !returnEligibility[orderKey] && !returnEligibilityError[orderKey];
+        return (
+          !returnEligibility[orderKey] &&
+          !returnEligibilityError[orderKey] &&
+          !pendingReturnEligibilityKeys.current.has(orderKey)
+        );
       });
 
     if (!pendingEligibility.length) return;
@@ -170,37 +174,50 @@ const Orders: React.FC = () => {
         pendingEligibility.map(async ({ details, index }) => {
           const identifier = getOrderIdentifier(details.order);
           const orderKey = getOrderKey(details.order, index);
-          if (identifier) {
-            try {
-              const response = await returnSourceService.getOrderEligibility(identifier);
-              if (!active) return;
-              setReturnEligibility((current) => ({
-                ...current,
-                [orderKey]: response.data,
-              }));
-            } catch (err) {
-              if (!active) return;
-              const msg = err instanceof Error ? err.message : "Return eligibility is not available for this order.";
-              setReturnEligibilityError((current) => ({
-                ...current,
-                [orderKey]: msg,
-              }));
-            }
+          if (!identifier) {
+            setReturnEligibilityError((current) => ({
+              ...current,
+              [orderKey]: "Return eligibility is not available for this order.",
+            }));
+            return;
+          }
+
+          pendingReturnEligibilityKeys.current.add(orderKey);
+          setIsLoadingReturnEligibility((current) => ({ ...current, [orderKey]: true }));
+          try {
+            const response = await returnSourceService.getOrderEligibility(identifier);
+            setReturnEligibility((current) => ({
+              ...current,
+              [orderKey]: response.data,
+            }));
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "Return eligibility is not available for this order.";
+            setReturnEligibilityError((current) => ({
+              ...current,
+              [orderKey]: msg,
+            }));
+          } finally {
+            pendingReturnEligibilityKeys.current.delete(orderKey);
+            setIsLoadingReturnEligibility((current) => ({ ...current, [orderKey]: false }));
           }
         })
       );
     })();
-
-    return () => {
-      active = false;
-    };
   }, [orders, returnEligibility, returnEligibilityError]);
 
   const handleFetchEligibility = async (details: OrderDetails, index: number) => {
     const orderKey = getOrderKey(details.order, index);
     const identifier = getOrderIdentifier(details.order);
-    if (!identifier || returnEligibility[orderKey] || isLoadingReturnEligibility[orderKey]) return;
+    if (
+      !identifier ||
+      returnEligibility[orderKey] ||
+      isLoadingReturnEligibility[orderKey] ||
+      pendingReturnEligibilityKeys.current.has(orderKey)
+    ) {
+      return;
+    }
 
+    pendingReturnEligibilityKeys.current.add(orderKey);
     setIsLoadingReturnEligibility((current) => ({ ...current, [orderKey]: true }));
     setReturnEligibilityError((current) => ({ ...current, [orderKey]: "" }));
     try {
@@ -210,6 +227,7 @@ const Orders: React.FC = () => {
       const message = error instanceof Error ? error.message : "Return eligibility is not available for this order.";
       setReturnEligibilityError((current) => ({ ...current, [orderKey]: message }));
     } finally {
+      pendingReturnEligibilityKeys.current.delete(orderKey);
       setIsLoadingReturnEligibility((current) => ({ ...current, [orderKey]: false }));
     }
   };
@@ -628,10 +646,16 @@ function OrderCard({
       : "rounded-[var(--radius-md)] border-[var(--color-border)]",
     cancelled ? "opacity-75" : "",
   ].filter(Boolean).join(" ");
+  const hasPolicyEligibleItems = Boolean(returnEligibility?.items.some(hasAnyReturnPolicy));
+  const returnEligibilityNotice = returnEligibility ? getReturnEligibilityNotice(returnEligibility) : "";
 
   const returnBtnLabel = isLoadingReturnEligibility
     ? "Checking"
-    : hasCheckedReturnEligibility && !hasReturnableItems
+    : hasReturnableItems
+    ? "Return / Replace"
+    : hasCheckedReturnEligibility && hasPolicyEligibleItems
+    ? "View Return Policy"
+    : hasCheckedReturnEligibility
     ? "View Return Status"
     : "Return / Replace";
 
@@ -718,22 +742,20 @@ function OrderCard({
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             ) : null}
-            {hasCheckedReturnEligibility && (
-              <Button
-                variant={hasReturnableItems ? "primary" : "secondary"}
-                className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
-                disabled={isLoadingReturnEligibility}
-                onClick={onShowReturnOptions}
-                title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
-              >
-                {isLoadingReturnEligibility ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                )}
-                {returnBtnLabel}
-              </Button>
-            )}
+            <Button
+              variant={hasReturnableItems ? "primary" : "secondary"}
+              className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
+              disabled={isLoadingReturnEligibility}
+              onClick={onShowReturnOptions}
+              title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
+            >
+              {isLoadingReturnEligibility ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" />
+              )}
+              {returnBtnLabel}
+            </Button>
             <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
               {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
               Track
@@ -774,7 +796,7 @@ function OrderCard({
                     "rounded-[var(--radius-sm)] border p-3 text-xs font-semibold",
                     returnEligibility.eligibleitemcount > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-800"
                   )}>
-                    {returnEligibility.eligibleitemcount > 0 ? "Select Return or Replace on the item you need help with." : "No items in this order are currently eligible for return or replacement."}
+                    {returnEligibility.eligibleitemcount > 0 ? "Select Return or Replace on the item you need help with." : returnEligibilityNotice}
                   </div>
                 )}
                 {returnEligibilityError && (
@@ -1016,6 +1038,32 @@ function OrderLineRow({
       </div>
     </div>
   );
+}
+
+function hasAnyReturnPolicy(item: ReturnEligibilityItem) {
+  return Boolean(item.return?.policyeligible || item.replacement?.policyeligible);
+}
+
+function getReturnEligibilityNotice(eligibility: OrderReturnEligibility) {
+  if (eligibility.itemcount <= 0) {
+    return "Return or replacement details are not available for this order.";
+  }
+
+  const hasPolicyEligibleItems = eligibility.items.some(hasAnyReturnPolicy);
+  const isBlockedBeforeDelivery = eligibility.items.some((item) =>
+    item.blockers?.some((blocker) => /not delivered|delivery date unavailable/i.test(blocker))
+  );
+
+  if (isBlockedBeforeDelivery && hasPolicyEligibleItems) {
+    return "Return/replacement policy applies to this item. Requests can be raised after delivery.";
+  }
+
+  if (isBlockedBeforeDelivery) {
+    return "Return/replacement requests can be raised after delivery.";
+  }
+
+  const firstBlocker = eligibility.items.flatMap((item) => item.blockers || [])[0];
+  return firstBlocker || "No items in this order are currently eligible for return or replacement.";
 }
 
 function AddressPanel({ address }: { address?: OrderAddress | null }) {
