@@ -19,6 +19,12 @@ import {
   ShoppingBag,
   Truck,
   UserRound,
+  Upload,
+  X,
+  Play,
+  Camera,
+  FileVideo,
+  Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
@@ -31,6 +37,17 @@ import {
   type TrackingDetails,
 } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
+import productSampleImg from "../assets/Fragranceandblends.png";
+import packageSampleImg from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
+import unboxingSampleVid from "../assets/I_need_a_video_with_insence_st.mp4";
+import {
+  returnSourceService,
+  type AllowedReturnReason,
+  type AttachmentType,
+  type OrderReturnEligibility,
+  type ReturnEligibilityItem,
+  type ReturnRequestType,
+} from "../services/returnSourceService";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN");
 
@@ -81,6 +98,17 @@ const Orders: React.FC = () => {
   const [session] = useState(() => sessionService.getSession());
   const userId = session?.user.id;
   const [detailsByOrder, setDetailsByOrder] = useState<Record<string, OrderDetails>>({});
+  const [activeModal, setActiveModal] = useState<{
+    orderKey: string;
+    order: OrderSummary;
+    line: OrderLine;
+    item: ReturnEligibilityItem;
+    requesttype: ReturnRequestType;
+  } | null>(null);
+
+  const [returnEligibility, setReturnEligibility] = useState<Record<string, OrderReturnEligibility>>({});
+  const [returnEligibilityError, setReturnEligibilityError] = useState<Record<string, string>>({});
+  const [isLoadingReturnEligibility, setIsLoadingReturnEligibility] = useState<Record<string, boolean>>({});
   const [trackingByOrder, setTrackingByOrder] = useState<Record<string, TrackingDetails>>({});
   const [trackingErrorByOrder, setTrackingErrorByOrder] = useState<Record<string, string>>({});
   const [detailsErrorByOrder, setDetailsErrorByOrder] = useState<Record<string, string>>({});
@@ -124,6 +152,122 @@ const Orders: React.FC = () => {
       cancelled,
     };
   }, [orders]);
+
+  useEffect(() => {
+    if (!orders.length) return;
+    let active = true;
+    const pendingEligibility = orders
+      .map((item, index) => ({ details: item, index }))
+      .filter(({ details, index }) => {
+        const orderKey = getOrderKey(details.order, index);
+        return !returnEligibility[orderKey] && !returnEligibilityError[orderKey];
+      });
+
+    if (!pendingEligibility.length) return;
+
+    (async () => {
+      await Promise.all(
+        pendingEligibility.map(async ({ details, index }) => {
+          const identifier = getOrderIdentifier(details.order);
+          const orderKey = getOrderKey(details.order, index);
+          if (identifier) {
+            try {
+              const response = await returnSourceService.getOrderEligibility(identifier);
+              if (!active) return;
+              setReturnEligibility((current) => ({
+                ...current,
+                [orderKey]: response.data,
+              }));
+            } catch (err) {
+              if (!active) return;
+              const msg = err instanceof Error ? err.message : "Return eligibility is not available for this order.";
+              setReturnEligibilityError((current) => ({
+                ...current,
+                [orderKey]: msg,
+              }));
+            }
+          }
+        })
+      );
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [orders, returnEligibility, returnEligibilityError]);
+
+  const handleFetchEligibility = async (details: OrderDetails, index: number) => {
+    const orderKey = getOrderKey(details.order, index);
+    const identifier = getOrderIdentifier(details.order);
+    if (!identifier || returnEligibility[orderKey] || isLoadingReturnEligibility[orderKey]) return;
+
+    setIsLoadingReturnEligibility((current) => ({ ...current, [orderKey]: true }));
+    setReturnEligibilityError((current) => ({ ...current, [orderKey]: "" }));
+    try {
+      const response = await returnSourceService.getOrderEligibility(identifier);
+      setReturnEligibility((current) => ({ ...current, [orderKey]: response.data }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Return eligibility is not available for this order.";
+      setReturnEligibilityError((current) => ({ ...current, [orderKey]: message }));
+    } finally {
+      setIsLoadingReturnEligibility((current) => ({ ...current, [orderKey]: false }));
+    }
+  };
+
+  const handleRequestSubmit = async (payload: {
+    orderKey: string;
+    order: OrderSummary;
+    orderlineid: number;
+    requesttype: ReturnRequestType;
+    requestedquantity: number;
+    reasoncode: string;
+    requestedresolution: string;
+    ispackageopened: boolean;
+    additionalremarks: string;
+    evidence: Array<{ file: File; attachmenttype: AttachmentType }>;
+  }) => {
+    const uploadedAttachments = [];
+    for (const item of payload.evidence) {
+      const response = await returnSourceService.uploadEvidence(item.file, item.attachmenttype);
+      uploadedAttachments.push(response);
+    }
+
+    await returnSourceService.createRequest({
+      orderlineid: payload.orderlineid,
+      requesttype: payload.requesttype,
+      requestedquantity: payload.requestedquantity,
+      reasoncode: payload.reasoncode,
+      requestedresolution: payload.requestedresolution as any,
+      ispackageopened: payload.ispackageopened,
+      additionalremarks: payload.additionalremarks,
+      attachments: uploadedAttachments.map((item) => ({
+        attachmenttype: item.attachmenttype,
+        fileurl: item.fileurl,
+        isrequired: true,
+      })),
+    });
+
+    const identifier = getOrderIdentifier(payload.order);
+    if (identifier) {
+      try {
+        const eligibilityResponse = await returnSourceService.getOrderEligibility(identifier);
+        setReturnEligibility((current) => ({
+          ...current,
+          [payload.orderKey]: eligibilityResponse.data,
+        }));
+      } catch (err) {
+        setReturnEligibility((current) => {
+          const next = { ...current };
+          delete next[payload.orderKey];
+          return next;
+        });
+      }
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ["orders", userId] });
+    setStatusMessage(`${payload.requesttype === "replacement" ? "Replacement" : "Return"} request submitted successfully.`);
+    setActiveModal(null);
+  };
 
   const handleTrackOrder = async (details: OrderDetails, index: number) => {
     const order = details.order;
@@ -271,7 +415,15 @@ const Orders: React.FC = () => {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
+    <>
+      {activeModal && (
+        <ReturnRequestModal
+          modal={activeModal}
+          onClose={() => setActiveModal(null)}
+          onSubmit={handleRequestSubmit}
+        />
+      )}
+      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
       <section className="mx-auto max-w-5xl">
         <div className="mb-8">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -335,10 +487,15 @@ const Orders: React.FC = () => {
                     trackingError={trackingError}
                     detailsError={detailsError}
                     cancelError={cancelError}
+                    returnEligibility={returnEligibility[orderKey]}
+                    returnEligibilityError={returnEligibilityError[orderKey]}
                     isTracking={trackingOrderKey === orderKey}
                     isLoadingDetails={detailsOrderKey === orderKey}
                     isCancelling={cancelOrderKey === orderKey}
                     isRefreshing={refreshOrderKey === orderKey}
+                    isLoadingReturnEligibility={isLoadingReturnEligibility[orderKey]}
+                    hasCheckedReturnEligibility={Boolean(returnEligibility[orderKey] || returnEligibilityError[orderKey])}
+                    hasReturnableItems={Boolean(returnEligibility[orderKey] && returnEligibility[orderKey].eligibleitemcount > 0)}
                     isExpanded={isExpanded}
                     onTrack={async () => {
                       if (isExpanded) {
@@ -355,6 +512,15 @@ const Orders: React.FC = () => {
                       await handleTrackOrder(displayedDetails, index);
                     }}
                     onRefreshOrder={() => handleRefreshOrder(displayedDetails, index)}
+                    onShowReturnOptions={() => {
+                      if (!isExpanded) {
+                        setExpandedOrderKey(orderKey);
+                      }
+                      if (!hasLoadedDetails) {
+                        handleLoadDetails(displayedDetails, index);
+                      }
+                      handleFetchEligibility(displayedDetails, index);
+                    }}
                     onToggleDetails={() => {
                       if (isExpanded) {
                         setExpandedOrderKey(null);
@@ -365,6 +531,16 @@ const Orders: React.FC = () => {
                       if (!hasLoadedDetails) {
                         handleLoadDetails(displayedDetails, index);
                       }
+                      handleFetchEligibility(displayedDetails, index);
+                    }}
+                    onRequestReturn={(line, type, item) => {
+                      setActiveModal({
+                        orderKey,
+                        order: displayedDetails.order,
+                        line,
+                        item,
+                        requesttype: type,
+                      });
                     }}
                     onCancel={() => handleCancelOrder(displayedDetails, index)}
                   />
@@ -384,6 +560,7 @@ const Orders: React.FC = () => {
         </section>
       </section>
     </main>
+    </>
   );
 };
 
@@ -394,15 +571,22 @@ function OrderCard({
   trackingError,
   detailsError,
   cancelError,
+  returnEligibility,
+  returnEligibilityError,
   isTracking,
   isLoadingDetails,
   isCancelling,
   isRefreshing,
+  isLoadingReturnEligibility,
+  hasCheckedReturnEligibility,
+  hasReturnableItems,
   isExpanded,
   onTrack,
   onRefreshTracking,
   onRefreshOrder,
+  onShowReturnOptions,
   onToggleDetails,
+  onRequestReturn,
   onCancel,
 }: {
   statusAnchorId: string;
@@ -411,15 +595,22 @@ function OrderCard({
   trackingError?: string;
   detailsError?: string;
   cancelError?: string;
+  returnEligibility?: OrderReturnEligibility;
+  returnEligibilityError?: string;
   isTracking: boolean;
   isLoadingDetails: boolean;
   isCancelling: boolean;
   isRefreshing: boolean;
+  isLoadingReturnEligibility: boolean;
+  hasCheckedReturnEligibility: boolean;
+  hasReturnableItems: boolean;
   isExpanded: boolean;
   onTrack: () => void;
   onRefreshTracking: () => void;
   onRefreshOrder: () => void;
+  onShowReturnOptions: () => void;
   onToggleDetails: () => void;
+  onRequestReturn: (line: OrderLine, type: ReturnRequestType, item: any) => void;
   onCancel: () => void;
 }) {
   const { order, orderlines = [], address } = details;
@@ -437,6 +628,12 @@ function OrderCard({
       : "rounded-[var(--radius-md)] border-[var(--color-border)]",
     cancelled ? "opacity-75" : "",
   ].filter(Boolean).join(" ");
+
+  const returnBtnLabel = isLoadingReturnEligibility
+    ? "Checking"
+    : hasCheckedReturnEligibility && !hasReturnableItems
+    ? "View Return Status"
+    : "Return / Replace";
 
   return (
     <article className={cardClass}>
@@ -509,28 +706,44 @@ function OrderCard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-          {invoiceUrl ? (
-            <a
-              href={invoiceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-secondary)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] sm:px-4"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Invoice
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            {invoiceUrl ? (
+              <a
+                href={invoiceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-secondary)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] sm:px-4"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Invoice
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
             ) : null}
-          <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
-            {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-            Track
-          </Button>
-          {cancellable && (
-            <Button variant="secondary" className="min-h-9 gap-2 border-red-200 px-3 text-xs text-red-600 hover:bg-red-50 sm:px-4" disabled={isCancelling} onClick={onCancel}>
-              {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-              Cancel
+            {hasCheckedReturnEligibility && (
+              <Button
+                variant={hasReturnableItems ? "primary" : "secondary"}
+                className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
+                disabled={isLoadingReturnEligibility}
+                onClick={onShowReturnOptions}
+                title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
+              >
+                {isLoadingReturnEligibility ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+                {returnBtnLabel}
+              </Button>
+            )}
+            <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
+              {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+              Track
             </Button>
-          )}
+            {cancellable && (
+              <Button variant="secondary" className="min-h-9 gap-2 border-red-200 px-3 text-xs text-red-600 hover:bg-red-50 sm:px-4" disabled={isCancelling} onClick={onCancel}>
+                {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                Cancel
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -556,9 +769,37 @@ function OrderCard({
 
             {orderlines.length > 0 ? (
               <div className="space-y-2">
-                {orderlines.map((line, index) => (
-                  <OrderLineRow key={String(line.id ?? line.orderlinenumber ?? index)} line={line} />
-                ))}
+                {returnEligibility && !isLoadingReturnEligibility && (
+                  <div className={cn(
+                    "rounded-[var(--radius-sm)] border p-3 text-xs font-semibold",
+                    returnEligibility.eligibleitemcount > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-800"
+                  )}>
+                    {returnEligibility.eligibleitemcount > 0 ? "Select Return or Replace on the item you need help with." : "No items in this order are currently eligible for return or replacement."}
+                  </div>
+                )}
+                {returnEligibilityError && (
+                  <div className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                    {returnEligibilityError}
+                  </div>
+                )}
+                {isLoadingReturnEligibility && (
+                  <div className="flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3 text-xs font-semibold text-[var(--color-secondary)]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Checking return options
+                  </div>
+                )}
+                {orderlines.map((line, index) => {
+                  const eligibilityItem = returnEligibility?.items.find((item: any) => Number(item.orderlineid) === Number(line.id));
+                  return (
+                    <OrderLineRow
+                      key={String(line.id ?? line.orderlinenumber ?? index)}
+                      line={line}
+                      eligibilityItem={eligibilityItem}
+                      isEligibilityLoading={isLoadingReturnEligibility}
+                      onRequestReturn={onRequestReturn}
+                    />
+                  );
+                })}
                 {Number(order.shipping_cost || 0) > 0 ? (
                   <div className="mt-3 flex items-center justify-between border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-muted)]">
                     <span>Shipping charges</span>
@@ -685,45 +926,95 @@ function StatusBadge({ status, tone }: { status?: string | null; tone: string })
   );
 }
 
-function OrderLineRow({ line }: { line: OrderLine }) {
+function OrderLineRow({
+  line,
+  eligibilityItem,
+  isEligibilityLoading,
+  onRequestReturn,
+}: {
+  line: OrderLine;
+  eligibilityItem?: any;
+  isEligibilityLoading: boolean;
+  onRequestReturn: (line: OrderLine, type: ReturnRequestType, item: any) => void;
+}) {
   const image = getLineImage(line);
   const productPath = line.productid ? `/products/${line.productid}` : "";
-
-  const content = (
-    <div className="flex items-center gap-3 rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3">
-      <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
-        {image ? (
-          <img src={image} alt={line.productname || "Order item"} className="h-full w-full object-cover" />
-        ) : (
-          <PackageCheck className="h-5 w-5 text-[var(--color-muted)]" />
-        )}
-      </div>
-      <div className="min-w-0">
-        <h3 className="line-clamp-2 text-sm font-semibold text-[var(--color-text)]">{line.productname || "Product"}</h3>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">
-          Qty: {Number(line.quantity || 0)}
-          {line.orderstatus ? (
-            <>
-              <span aria-hidden="true"> . </span>
-              <span className="font-semibold text-[var(--color-secondary)]">{formatStatus(line.orderstatus)}</span>
-            </>
-          ) : null}
-        </p>
-      </div>
-      <p className="ml-auto shrink-0 text-sm font-semibold text-[var(--color-text)]">{formatCurrency(line.orderamount)}</p>
-    </div>
-  );
-
-  if (!productPath) return content;
+  const isReturnEligible = Boolean(eligibilityItem?.return?.eligible);
+  const isReplacementEligible = Boolean(eligibilityItem?.replacement?.eligible);
+  const isAnyEligible = isReturnEligible || isReplacementEligible;
 
   return (
-    <Link
-      to={productPath}
-      className="block rounded-[var(--radius-sm)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
-      aria-label={`View ${line.productname || "product"} details`}
-    >
-      {content}
-    </Link>
+    <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3">
+      <div className="flex items-start gap-3">
+        <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
+          {image ? (
+            <img src={image} alt={line.productname || "Order item"} className="h-full w-full object-cover" />
+          ) : (
+            <PackageCheck className="h-5 w-5 text-[var(--color-muted)]" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          {productPath ? (
+            <Link to={productPath} className="line-clamp-2 text-sm font-semibold text-[var(--color-text)] transition hover:text-[var(--color-secondary)]">
+              {line.productname || "Product"}
+            </Link>
+          ) : (
+            <h3 className="line-clamp-2 text-sm font-semibold text-[var(--color-text)]">
+              {line.productname || "Product"}
+            </h3>
+          )}
+          <p className="mt-1 text-xs text-[var(--color-muted)]">
+            Qty: {Number(line.quantity || 0)}
+            {line.orderstatus ? (
+              <>
+                <span aria-hidden="true"> . </span>
+                <span className="font-semibold text-[var(--color-secondary)]">{formatStatus(line.orderstatus)}</span>
+              </>
+            ) : null}
+          </p>
+          {eligibilityItem && !isAnyEligible && eligibilityItem.blockers?.length > 0 ? (
+            <p className="mt-2 inline-flex items-start gap-1 rounded-[var(--radius-sm)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--color-muted)]">
+              <Info className="mt-0.5 h-3 w-3 shrink-0" />
+              {eligibilityItem.blockers[0]}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <p className="text-sm font-semibold text-[var(--color-text)]">
+            {formatCurrency(line.orderamount)}
+          </p>
+          {isEligibilityLoading ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Checking
+            </span>
+          ) : eligibilityItem && isAnyEligible ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              {isReturnEligible && (
+                <Button
+                  variant="secondary"
+                  className="min-h-8 gap-1.5 border-[var(--color-border)] bg-white px-3 text-[11px] text-[var(--color-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
+                  onClick={() => onRequestReturn(line, "return", eligibilityItem)}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Return
+                </Button>
+              )}
+              {isReplacementEligible && (
+                <Button
+                  variant="secondary"
+                  className="min-h-8 gap-1.5 border-[var(--color-border)] bg-white px-3 text-[11px] text-[var(--color-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
+                  onClick={() => onRequestReturn(line, "replacement", eligibilityItem)}
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  Replace
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1040,6 +1331,459 @@ function getNumber(source: Record<string, unknown> | undefined, keys: string[]) 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function ReturnRequestModal({
+  modal,
+  onClose,
+  onSubmit,
+}: {
+  modal: {
+    orderKey: string;
+    order: OrderSummary;
+    line: OrderLine;
+    item: ReturnEligibilityItem;
+    requesttype: ReturnRequestType;
+  };
+  onClose: () => void;
+  onSubmit: (payload: {
+    orderKey: string;
+    order: OrderSummary;
+    orderlineid: number;
+    requesttype: ReturnRequestType;
+    requestedquantity: number;
+    reasoncode: string;
+    requestedresolution: "replacement" | "refund" | "partial_refund" | "ship_missing_item" | "complete_return";
+    ispackageopened: boolean;
+    additionalremarks: string;
+    evidence: Array<{ file: File; attachmenttype: AttachmentType; isrequired?: boolean }>;
+  }) => Promise<void>;
+}) {
+  const availableReasons = modal.item.allowedreasons.filter((reason) =>
+    modal.requesttype === "replacement"
+      ? reason.allowedresolutions.includes("replacement")
+      : reason.allowedresolutions.some((resolution) => resolution !== "replacement")
+  );
+  const [reasonCode, setReasonCode] = useState(availableReasons[0]?.reasoncode || "");
+  const selectedReason = availableReasons.find((reason) => reason.reasoncode === reasonCode) || availableReasons[0];
+  const resolutionOptions = getResolutionOptions(selectedReason, modal.requesttype);
+  const [resolution, setResolution] = useState<"replacement" | "refund" | "partial_refund" | "ship_missing_item" | "complete_return">(
+    resolutionOptions[0] || (modal.requesttype === "replacement" ? "replacement" : "refund")
+  );
+  const [quantity, setQuantity] = useState(1);
+  const [isPackageOpened, setIsPackageOpened] = useState(false);
+  const [remarks, setRemarks] = useState("");
+  const [evidence, setEvidence] = useState<Array<{ id: string; file: File; attachmenttype: AttachmentType }>>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [samplePreview, setSamplePreview] = useState<{ title: string; type: "image" | "video"; url: string } | null>(null);
+
+  useEffect(() => {
+    const nextReason = availableReasons.find((reason) => reason.reasoncode === reasonCode) || availableReasons[0];
+    const nextOptions = getResolutionOptions(nextReason, modal.requesttype);
+    if (!nextOptions.includes(resolution)) {
+      setResolution(nextOptions[0] || (modal.requesttype === "replacement" ? "replacement" : "refund"));
+    }
+  }, [availableReasons, modal.requesttype, reasonCode, resolution]);
+
+  const requiredTypes = useMemo(() => getRequiredEvidenceTypes(selectedReason), [selectedReason]);
+  const optionalTypes = useMemo(() => getOptionalEvidenceTypes(selectedReason), [selectedReason]);
+  const maxQty = Math.max(1, modal.item.remainingeligiblequantity || 1);
+
+  const addFiles = (files: FileList | null) => {
+    if (!files?.length) return;
+    const drafts = Array.from(files).map((file) => ({
+      id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
+      file,
+      attachmenttype: guessAttachmentType(file, selectedReason),
+    }));
+    setEvidence((current) => [...current, ...drafts]);
+  };
+
+  const validate = () => {
+    if (!selectedReason) return "Choose a reason.";
+    if (!resolution) return "Choose what you want us to do.";
+    if (quantity <= 0 || quantity > maxQty) return `Quantity must be between 1 and ${maxQty}.`;
+    if (isPackageOpened && selectedReason.openedpackageallowed === false) {
+      return "This reason is available only when the package is unopened.";
+    }
+    for (const type of requiredTypes) {
+      if (!evidence.some((item) => item.attachmenttype === type)) {
+        return `${formatStatus(type)} is required for this reason.`;
+      }
+    }
+    const invalidEvidence = evidence
+      .map((item) => getEvidenceFileError(item.file, item.attachmenttype))
+      .find(Boolean);
+    if (invalidEvidence) return invalidEvidence;
+    return "";
+  };
+
+  const handleSubmit = async () => {
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    try {
+      await onSubmit({
+        orderKey: modal.orderKey,
+        order: modal.order,
+        orderlineid: modal.item.orderlineid,
+        requesttype: modal.requesttype,
+        requestedquantity: quantity,
+        reasoncode: selectedReason.reasoncode,
+        requestedresolution: resolution,
+        ispackageopened: isPackageOpened,
+        additionalremarks: remarks,
+        evidence: evidence.map((item) => ({
+          file: item.file,
+          attachmenttype: item.attachmenttype,
+          isrequired: requiredTypes.includes(item.attachmenttype),
+        })),
+      });
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not submit this request.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 px-3 py-4 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
+      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-slate-200 bg-white shadow-[var(--shadow-hover)]">
+        <div className="shrink-0 flex items-start justify-between gap-4 border-b-2 border-[#fbbc05] bg-[#0f172a] px-5 py-4 text-white">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#fbbc05]">
+              {modal.requesttype === "replacement" ? "Replacement Request" : "Return Request"}
+            </p>
+            <h2 className="mt-1 text-lg font-bold text-white">{modal.line.productname || "Order item"}</h2>
+            <p className="mt-1 text-xs text-slate-300">Eligible quantity: {maxQty}</p>
+          </div>
+          <button
+            type="button"
+            className="grid h-9 w-9 place-items-center rounded-full border border-slate-700 bg-[#1e293b] text-slate-300 transition hover:bg-slate-800 hover:text-white"
+            onClick={onClose}
+            disabled={submitting}
+            aria-label="Close request form"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          {availableReasons.length === 0 ? (
+            <div className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+              This item does not have an available reason for {modal.requesttype}.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Reason">
+                  <select
+                    value={reasonCode}
+                    onChange={(event) => setReasonCode(event.target.value)}
+                    className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                  >
+                    {availableReasons.map((reason) => (
+                      <option key={reason.reasoncode} value={reason.reasoncode}>{reason.reasonname}</option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Resolution">
+                  <select
+                    value={resolution}
+                    onChange={(event) => setResolution(event.target.value as typeof resolution)}
+                    className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                  >
+                    {resolutionOptions.map((option) => (
+                      <option key={option} value={option}>{formatStatus(option)}</option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Quantity">
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxQty}
+                    value={quantity}
+                    onChange={(event) => setQuantity(Number(event.target.value || 1))}
+                    className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                  />
+                </FormField>
+                <label className="flex min-h-12 items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)]">
+                  <input
+                    type="checkbox"
+                    checked={isPackageOpened}
+                    onChange={(event) => setIsPackageOpened(event.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-primary)]"
+                  />
+                  Package opened
+                </label>
+              </div>
+
+              {selectedReason && (
+                <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                  <div className="flex items-start gap-2 text-sm font-semibold text-[var(--color-text)]">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-secondary)]" />
+                    <span>{selectedReason.openedpackageallowed ? "Keep product and packaging available for verification." : "This reason accepts unopened packages only."}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {requiredTypes.map((type) => (
+                      <span key={type} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[var(--color-secondary)]">Required: {formatStatus(type)}</span>
+                    ))}
+                    {optionalTypes.map((type) => (
+                      <span key={type} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[var(--color-muted)]">Optional: {formatStatus(type)}</span>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)] mb-2.5">
+                      Sample Guides for Upload
+                    </p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSamplePreview({ title: "Sample Product Photo", type: "image", url: productSampleImg })}
+                        className="group flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-2 text-left hover:border-[#fbbc05] hover:shadow-sm transition duration-200"
+                      >
+                        <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-slate-100">
+                          <img src={productSampleImg} alt="Product sample" className="h-full w-full object-cover group-hover:scale-105 transition duration-200" />
+                        </div>
+                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">Product Photo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSamplePreview({ title: "Sample Package Photo", type: "image", url: packageSampleImg })}
+                        className="group flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-2 text-left hover:border-[#fbbc05] hover:shadow-sm transition duration-200"
+                      >
+                        <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-slate-100">
+                          <img src={packageSampleImg} alt="Package sample" className="h-full w-full object-cover group-hover:scale-105 transition duration-200" />
+                        </div>
+                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">Package Photo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSamplePreview({ title: "Sample Unboxing Video", type: "video", url: unboxingSampleVid })}
+                        className="group flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-2 text-left hover:border-[#fbbc05] hover:shadow-sm transition duration-200"
+                      >
+                        <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-slate-100">
+                          <video src={unboxingSampleVid} muted playsInline autoPlay loop className="h-full w-full object-cover group-hover:scale-105 transition duration-200" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-sm transition group-hover:scale-110">
+                              <Play className="h-3 w-3 fill-current ml-0.5" />
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">Unboxing Video</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Evidence</p>
+                  <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-bold text-[var(--color-secondary)] transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10">
+                    <Upload className="h-3.5 w-3.5" />
+                    Add files
+                    <input className="hidden" type="file" multiple accept="image/*,video/*,application/pdf" onChange={(event) => addFiles(event.target.files)} />
+                  </label>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {evidence.length === 0 ? (
+                    <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--color-border)] bg-white p-5 text-center text-sm font-semibold text-[var(--color-muted)]">
+                      Upload photos or videos requested for your reason.
+                    </div>
+                  ) : (
+                    evidence.map((item) => (
+                      <div key={item.id} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            {item.file.type.startsWith("video/") ? <FileVideo className="h-5 w-5 shrink-0 text-[var(--color-secondary)]" /> : <Camera className="h-5 w-5 shrink-0 text-[var(--color-secondary)]" />}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-[var(--color-text)]">{item.file.name}</p>
+                              <p className="text-xs text-[var(--color-muted)]">{Math.max(1, Math.round(item.file.size / 1024))} KB</p>
+                            </div>
+                          </div>
+                          <select
+                            value={item.attachmenttype}
+                            onChange={(event) =>
+                              setEvidence((current) => current.map((draft) => draft.id === item.id ? { ...draft, attachmenttype: event.target.value as AttachmentType } : draft))
+                            }
+                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+                          >
+                            {(["product_photo", "package_photo", "unboxing_video", "defect_video", "other"] as AttachmentType[]).map((type) => (
+                              <option key={type} value={type}>{formatStatus(type)}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="grid h-10 w-10 place-items-center rounded-full border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100"
+                            onClick={() => setEvidence((current) => current.filter((draft) => draft.id !== item.id))}
+                            aria-label="Remove evidence file"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {getEvidenceFileError(item.file, item.attachmenttype) && (
+                          <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                            {getEvidenceFileError(item.file, item.attachmenttype)}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <FormField label="Additional Remarks">
+                <textarea
+                  value={remarks}
+                  onChange={(event) => setRemarks(event.target.value)}
+                  className="min-h-24 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 py-3 text-sm font-medium text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                  placeholder="Add details that help us verify the request."
+                />
+              </FormField>
+
+              {error && (
+                <div className="rounded-[var(--radius-sm)] border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-600">
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 flex items-center justify-end gap-3 border-t border-[var(--color-border)] bg-white px-5 py-4 shadow-[0_-8px_20px_rgba(17,24,39,0.06)]">
+          <Button variant="secondary" className="min-h-10 bg-white px-4 text-sm" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button className="min-h-10 px-5 text-sm" onClick={handleSubmit} disabled={submitting || availableReasons.length === 0}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            Submit Request
+          </Button>
+        </div>
+      </div>
+
+      {samplePreview && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-3xl overflow-hidden rounded-[var(--radius-lg)] border border-slate-700 bg-slate-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/50 px-5 py-3 text-white">
+              <span className="text-sm font-bold">{samplePreview.title}</span>
+              <button
+                type="button"
+                className="grid h-8 w-8 place-items-center rounded-full bg-slate-800 text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                onClick={() => setSamplePreview(null)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex aspect-video w-full items-center justify-center bg-black/90">
+              {samplePreview.type === "image" ? (
+                <img src={samplePreview.url} alt="Large preview" className="h-full w-full object-contain" />
+              ) : (
+                <video src={samplePreview.url} controls autoPlay loop className="h-full w-full object-contain" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">{label}</span>
+      <div className="mt-1.5">{children}</div>
+    </label>
+  );
+}
+
+function getResolutionOptions(reason: AllowedReturnReason | undefined, requesttype: ReturnRequestType) {
+  if (!reason) return [];
+  return reason.allowedresolutions.filter((resolution) =>
+    requesttype === "replacement" ? resolution === "replacement" : resolution !== "replacement"
+  );
+}
+
+function getRequiredEvidenceTypes(reason: AllowedReturnReason | undefined): AttachmentType[] {
+  if (!reason) return [];
+  const reqs = reason.evidencerequirements;
+  if (!reqs) return [];
+  const types: AttachmentType[] = [];
+  if (reqs.photorequired) types.push("product_photo");
+  if (reqs.packagephotorequired) types.push("package_photo");
+  if (reqs.videorequired) types.push("defect_video");
+  if (reqs.unboxingvideorequired) types.push("unboxing_video");
+  return types;
+}
+
+function getOptionalEvidenceTypes(reason: AllowedReturnReason | undefined): AttachmentType[] {
+  if (!reason) return [];
+  const reqs = reason.evidencerequirements;
+  if (!reqs) return [];
+  const types: AttachmentType[] = [];
+  if (reqs.packagephotooptional && !reqs.packagephotorequired) types.push("package_photo");
+  if (reqs.unboxingvideooptional && !reqs.unboxingvideorequired) types.push("unboxing_video");
+  return types;
+}
+
+function guessAttachmentType(file: File, reason: AllowedReturnReason | undefined): AttachmentType {
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  const required = getRequiredEvidenceTypes(reason);
+
+  if (type.startsWith("video/")) {
+    if (name.includes("unbox")) return "unboxing_video";
+    if (name.includes("defect") || name.includes("damage") || name.includes("broken")) return "defect_video";
+    return required.includes("unboxing_video") ? "unboxing_video" : required.includes("defect_video") ? "defect_video" : "unboxing_video";
+  }
+
+  if (type.startsWith("image/")) {
+    if (name.includes("pack") || name.includes("box")) return "package_photo";
+    return required.includes("product_photo") ? "product_photo" : required.includes("package_photo") ? "package_photo" : "product_photo";
+  }
+
+  return "other";
+}
+
+function getEvidenceFileError(file: File, type: AttachmentType): string {
+  const sizeMb = file.size / (1024 * 1024);
+
+  if (type === "unboxing_video" || type === "defect_video") {
+    if (!file.type.startsWith("video/")) {
+      return "Selected file must be a video.";
+    }
+    if (sizeMb > 50) {
+      return "Video size must not exceed 50 MB.";
+    }
+  } else if (type === "product_photo" || type === "package_photo") {
+    if (!file.type.startsWith("image/")) {
+      return "Selected file must be an image.";
+    }
+    if (sizeMb > 10) {
+      return "Image size must not exceed 10 MB.";
+    }
+  } else {
+    if (sizeMb > 15) {
+      return "File size must not exceed 15 MB.";
+    }
+  }
+
+  return "";
 }
 
 export default Orders;
