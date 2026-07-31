@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -143,6 +143,7 @@ const Checkout: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState("");
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
+  const paymentSubmissionRef = useRef(false);
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(user?.id)
   );
@@ -606,10 +607,12 @@ const Checkout: React.FC = () => {
         return;
       }
 
+      paymentSubmissionRef.current = false;
       setStatusMessage(data.message || "Payment initiated.");
       setErrorMessage("");
     },
     onError: (error) => {
+      paymentSubmissionRef.current = false;
       const validationErrors = extractProductValidationErrors(error);
       if (Object.keys(validationErrors).length > 0) {
         setBackendStockErrors(validationErrors);
@@ -618,6 +621,14 @@ const Checkout: React.FC = () => {
       setStatusMessage("");
     },
   });
+
+  const handlePaymentSubmission = () => {
+    // React Query updates isPending on the next render. This synchronous guard
+    // closes the small window where a rapid double-click can submit twice.
+    if (paymentSubmissionRef.current || paymentMutation.isPending) return;
+    paymentSubmissionRef.current = true;
+    paymentMutation.mutate();
+  };
 
   const handleAddressSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -945,7 +956,7 @@ const Checkout: React.FC = () => {
                 Object.keys(backendStockErrors).length > 0 ||
                 checkoutTotal <= 0
               }
-              onClick={() => paymentMutation.mutate()}
+              onClick={handlePaymentSubmission}
             >
               {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
               Pay {formatCurrency(checkoutTotal)} securely
