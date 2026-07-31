@@ -1,7 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgePercent, CheckCircle2, Heart, Loader2, Minus, Plus, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Heart,
+  Loader2,
+  Minus,
+  Percent,
+  Plus,
+  Sparkles,
+  TicketPercent,
+  Trash2,
+  Truck,
+  WalletCards,
+} from "lucide-react";
 import { cartService } from "../services/cartService";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
@@ -38,7 +50,7 @@ const quantityFor = (quantity: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const formatCurrency = (value: number) => `Rs. ${Math.max(value, 0).toLocaleString("en-IN")}`;
+const formatCurrency = (value: number) => `₹${Math.max(value, 0).toLocaleString("en-IN")}`;
 
 const countDistinctProducts = (items: Array<{ productid: number }>) =>
   new Set(items.map((item) => item.productid)).size;
@@ -60,13 +72,41 @@ const uniquePromotions = (promotions: ApplicablePromotion[]) => {
 const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.promotion_id || 0);
 
 const isFreeShippingOffer = (promotion: ApplicablePromotion) => isFreeShippingPromotion(promotion);
+const isStackablePromotion = (promotion: Pick<ApplicablePromotion, "stackable">) =>
+  promotion.stackable === true;
 const guestPromotionUserId = "guest-web";
+
+const voucherErrorMessage = (message?: string) => {
+  const normalized = String(message || "").toUpperCase();
+
+  if (
+    normalized.includes("PROMOTION_NOT_FOUND") ||
+    normalized.includes("PROMOTION NOT FOUND")
+  ) {
+    return "This voucher code is not valid.";
+  }
+  if (normalized.includes("PROMOTION_NOT_ASSIGNED_TO_CUSTOMER")) return "This voucher was issued to a different customer.";
+  if (normalized.includes("CUSTOMER_GROUP_NOT_ELIGIBLE")) return "This voucher is not available for your customer group.";
+  if (normalized.includes("VOUCHER_NOT_ACTIVE")) return "This voucher is currently inactive.";
+  if (normalized.includes("VOUCHER_NOT_STARTED")) return "This voucher is not active yet.";
+  if (normalized.includes("VOUCHER_EXPIRED")) return "This voucher has expired.";
+  if (normalized.includes("VOUCHER_USAGE_LIMIT_REACHED")) return "This voucher has already reached its usage limit.";
+  if (normalized.includes("PROMOTION_MAX_REDEMPTIONS_REACHED")) return "This promotion has reached its redemption limit.";
+  if (normalized.includes("PROMOTION_PER_USER_LIMIT_REACHED")) return "You have already used this promotion.";
+  if (normalized.includes("CHANNEL_NOT_ELIGIBLE")) return "This voucher cannot be used on the website.";
+  if (normalized.includes("NOT ELIGIBLE FOR THIS CART")) return "Your cart does not currently meet this voucher's requirements.";
+  if (normalized.includes("ALREADY APPLIED")) return "This voucher is already applied to your cart.";
+  if (normalized.includes("ANOTHER_PROMOTION_ALREADY_APPLIED")) return "Remove the current coupon before applying another one.";
+
+  return friendlyNotificationMessage(message || "The voucher could not be redeemed.");
+};
 
 const Cart: React.FC = () => {
   const queryClient = useQueryClient();
   const session = sessionService.getSession();
   const [, setGuestVersion] = useState(0);
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
+  const [voucherCode, setVoucherCode] = useState("");
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(session?.user.id)
   );
@@ -227,6 +267,31 @@ const Cart: React.FC = () => {
   const cartSignature = useMemo(() => cartPromotionSignature(promotionRows), [promotionRows]);
   const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
 
+  const automaticPromotionsQuery = useQuery({
+    queryKey: ["cart-automatic-promotions", session?.user.id, cartSignature],
+    queryFn: () =>
+      promotionService.evaluateAutomatic({
+        userId: String(session!.user.id),
+        cartItems: promotionEvaluationItems,
+        currentTotal: cartTotals.total,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      }),
+    enabled: Boolean(session?.user.id && promotionRows.length > 0),
+    staleTime: 0,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!session?.user.id || !automaticPromotionsQuery.data?.data?.evaluation_id) return;
+
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session.user.id] }),
+      queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session.user.id] }),
+    ]);
+  }, [automaticPromotionsQuery.data?.data?.evaluation_id, queryClient, session?.user.id]);
+
   const promotionOffersQuery = useQuery({
     queryKey: ["cart-promotion-offers", session?.user.id ?? guestPromotionUserId, cartSignature],
     queryFn: () =>
@@ -258,19 +323,40 @@ const Cart: React.FC = () => {
     const offers = promotionOffersQuery.data?.data;
     if (!offers) return [];
 
+    // The offers endpoint also classifies stackable promotions in a separate
+    // collection. Preserve that classification when the same promotion first
+    // appears in bestCoupon/eligibleCoupons and is then de-duplicated.
+    const stackablePromotionIds = new Set(
+      offers.stackablePromotions.map((promotion) => promotionId(promotion))
+    );
+    const withStackability = (promotion: ApplicablePromotion) => ({
+      ...promotion,
+      stackable:
+        promotion.stackable === true ||
+        stackablePromotionIds.has(promotionId(promotion)),
+    });
+
     return uniquePromotions(
       [
         offers.bestCoupon,
         ...offers.eligibleCoupons,
         ...offers.autoAppliedPromotions,
         ...offers.stackablePromotions,
-      ].filter((promotion): promotion is ApplicablePromotion => Boolean(promotion && promotionId(promotion) > 0))
+      ]
+        .filter((promotion): promotion is ApplicablePromotion => Boolean(promotion && promotionId(promotion) > 0))
+        .map(withStackability)
     );
   }, [promotionOffersQuery.data]);
 
   const promotionDetailsById = useMemo(
     () => new Map(promotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
     [promotionCandidates]
+  );
+  const primaryPromotionCandidates = promotionCandidates.filter(
+    (promotion) => !isStackablePromotion(promotion)
+  );
+  const stackablePromotionCandidates = promotionCandidates.filter(
+    (promotion) => isStackablePromotion(promotion)
   );
 
   const backendEvaluation = useMemo(() => {
@@ -302,6 +388,7 @@ const Cart: React.FC = () => {
               description: offerDetails.description,
               min_order_value: offerDetails.min_order_value,
               minimum_order_value: offerDetails.minimum_order_value,
+              stackable: offerDetails.stackable,
             }
           : promotion;
       }),
@@ -327,6 +414,7 @@ const Cart: React.FC = () => {
                   description: offerDetails.description,
                   min_order_value: offerDetails.min_order_value,
                   minimum_order_value: offerDetails.minimum_order_value,
+                  stackable: offerDetails.stackable,
                 }
               : promotion;
           })
@@ -343,11 +431,27 @@ const Cart: React.FC = () => {
     fallbackPromotionDiscount
   );
   const promotionDiscount = promotionSummary.normalDiscount;
+  const shippingSavings = promotionSummary.shippingSavings;
+  const totalPromotionSavings = promotionDiscount + shippingSavings;
   const payableTotal = promotionSummary.payableTotal;
-  const selectedNormalPromotionApplied = Boolean(
-    selectedPromotionApplies && selectedPromotion?.appliedPromotions?.some((promotion) => !isFreeShippingAppliedPromotion(promotion))
+  const hasManualPromotionApplied = appliedPromotionsForTotals.some(
+    (promotion) =>
+      !promotion.is_auto &&
+      !isFreeShippingAppliedPromotion(promotion)
   );
-  const hasNormalPromotionApplied = selectedNormalPromotionApplied || promotionSummary.normalPromotions.length > 0;
+  const appliedManualPromotions = appliedPromotionsForTotals.filter(
+    (promotion) =>
+      !promotion.is_auto &&
+      !isFreeShippingAppliedPromotion(promotion)
+  );
+  const allAppliedManualPromotionsAreStackable =
+    appliedManualPromotions.length > 0 &&
+    appliedManualPromotions.every(
+      (promotion) => promotion.stackable === true || promotion.is_stacked === true
+    );
+  const canCombineWithAppliedPromotions = (promotion: ApplicablePromotion) =>
+    appliedManualPromotions.length === 0 ||
+    (allAppliedManualPromotionsAreStackable && isStackablePromotion(promotion));
 
   useEffect(() => {
     if (!session?.user.id || !backendEvaluation || backendAppliedPromotions.length === 0 || !cartSignature) return;
@@ -407,19 +511,27 @@ const Cart: React.FC = () => {
 
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
-      await promotionService.evaluateAutomatic({
-        userId: String(session!.user.id),
-        cartItems: promotionEvaluationItems,
-        currentTotal: cartTotals.total,
-        mode: "phonepe",
-        channel: "web",
-        geo: "IN",
-      });
+      // Match the mobile flow: create the automatic evaluation only when one
+      // does not already exist. Recreating it here would erase previously
+      // selected stackable promotions before adding the next one.
+      if (!backendEvaluation?.evaluation_id) {
+        await promotionService.evaluateAutomatic({
+          userId: String(session!.user.id),
+          cartItems: promotionEvaluationItems,
+          currentTotal: cartTotals.total,
+          mode: "phonepe",
+          channel: "web",
+          geo: "IN",
+        });
+      }
 
       return promotionService.evaluate({
         cartId: `cart-${session!.user.id}`,
         userId: String(session!.user.id),
         promotionId: promotionId(promotion),
+        applicationType: promotion.stackable
+          ? "stackable_promotion"
+          : "manual_coupon",
         cartData: promotionCartData,
         cartItems: promotionEvaluationItems,
         mode: "phonepe",
@@ -469,25 +581,99 @@ const Cart: React.FC = () => {
     },
   });
 
+  const redeemVoucherMutation = useMutation({
+    mutationFn: async (code: string) => {
+      if (!session?.user.id) {
+        throw new Error("Please log in to redeem a customer voucher.");
+      }
+      if (promotionEvaluationItems.length === 0) {
+        throw new Error("Add an item to your cart before redeeming a voucher.");
+      }
+      if (!backendEvaluation?.evaluation_id) {
+        await promotionService.evaluateAutomatic({
+          userId: String(session.user.id),
+          cartItems: promotionEvaluationItems,
+          currentTotal: cartTotals.total,
+          mode: "phonepe",
+          channel: "web",
+          geo: "IN",
+        });
+      }
+
+      return promotionService.evaluate({
+        cartId: `cart-${session.user.id}`,
+        userId: String(session.user.id),
+        code,
+        cartData: promotionCartData,
+        cartItems: promotionEvaluationItems,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+    },
+    onSuccess: (response) => {
+      if (!session?.user.id) return;
+
+      const evaluation = response.data;
+      const appliedPromotions = evaluation.applied_promotions ?? [];
+      const evaluationSummary = getAppliedPromotionSummary(
+        cartTotals,
+        appliedPromotions,
+        Number(evaluation.total_discount || 0)
+      );
+      const enteredCode = voucherCode.trim().toUpperCase();
+      const redeemedPromotion =
+        appliedPromotions.find(
+          (promotion) =>
+            String(promotion.voucher_code || "").toUpperCase() === enteredCode
+        ) ||
+        [...appliedPromotions].reverse().find((promotion) => !promotion.is_auto);
+
+      if (redeemedPromotion && appliedPromotionId(redeemedPromotion) > 0) {
+        const nextPromotion: SelectedCartPromotion = {
+          userId: session.user.id,
+          promotionId: appliedPromotionId(redeemedPromotion),
+          promotionName: redeemedPromotion.promotion_name || "Voucher promotion",
+          evaluationId: evaluation.evaluation_id,
+          cartSignature,
+          totalDiscount: evaluationSummary.normalDiscount,
+          discountedTotal: evaluationSummary.payableTotal,
+          appliedPromotions,
+          expiresAt: evaluation.expires_at,
+          savedAt: Date.now(),
+        };
+        saveSelectedCartPromotion(nextPromotion);
+        setSelectedPromotion(nextPromotion);
+      }
+
+      setVoucherCode("");
+      toast.success(
+        redeemedPromotion?.promotion_name
+          ? `${redeemedPromotion.promotion_name} applied.`
+          : "Voucher applied to your cart."
+      );
+    },
+    onError: (error) => {
+      toast.error(
+        voucherErrorMessage(
+          error instanceof Error ? error.message : "The voucher could not be redeemed."
+        )
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session?.user.id] });
+      queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session?.user.id] });
+    },
+  });
+
   const removePromotionMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (promotionIdToRemove: number) => {
       if (!session?.user.id) return;
 
       const evaluationId = backendEvaluation?.evaluation_id || selectedPromotion?.evaluationId;
-      const promotionIds = Array.from(
-        new Set(
-          (backendAppliedPromotions.length > 0 ? backendAppliedPromotions : selectedPromotion?.appliedPromotions ?? [])
-            .filter((promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion))
-            .map(appliedPromotionId)
-            .filter((id) => id > 0)
-        )
-      );
+      if (!evaluationId || promotionIdToRemove <= 0) return;
 
-      if (!evaluationId || promotionIds.length === 0) return;
-
-      for (const id of promotionIds) {
-        await promotionService.removeEvaluation(evaluationId, id);
-      }
+      await promotionService.removeEvaluation(evaluationId, promotionIdToRemove);
     },
     onSuccess: () => {
       clearSelectedCartPromotion(session?.user.id);
@@ -502,10 +688,6 @@ const Cart: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session?.user.id] });
     },
   });
-
-  const removeSelectedPromotion = () => {
-    removePromotionMutation.mutate();
-  };
 
   const updateQuantity = ({
     apiId,
@@ -597,7 +779,7 @@ const Cart: React.FC = () => {
             Could not load product details for your cart. Please refresh and try again.
           </div>
         ) : (
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
+          <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,0.9fr)_460px]">
             <div className="space-y-4">
               {enriched.map(({ apiId, item, product, quantity }) => {
                 const displayName = getProductDisplayName(product, `Product #${item.productid}`);
@@ -721,7 +903,12 @@ const Cart: React.FC = () => {
               <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryLine label="Items total" value={formatCurrency(cartTotals.subtotal)} />
-                <SummaryLine label="Shipping" value={promotionSummary.effectiveShipping === 0 ? "Free" : formatCurrency(promotionSummary.effectiveShipping)} />
+                <SummaryLine
+                  label="Shipping"
+                  value={promotionSummary.effectiveShipping === 0 ? "Free" : formatCurrency(promotionSummary.effectiveShipping)}
+                  previousValue={shippingSavings > 0 ? formatCurrency(cartTotals.shipping) : undefined}
+                  highlight={shippingSavings > 0}
+                />
                 {promotionDiscount > 0 && <SummaryLine label="Promotion" value={`-${formatCurrency(promotionDiscount)}`} />}
                 <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
                   <span>Total</span>
@@ -731,33 +918,87 @@ const Cart: React.FC = () => {
 
               {promotionRows.length > 0 && (
                 <div className="mt-5 border-t border-[var(--color-border)] pt-5">
-                  <div className="flex items-center gap-2 text-sm font-bold text-[var(--color-text)]">
-                    <BadgePercent className="h-4 w-4 text-[var(--color-secondary)]" />
-                    Offers
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fff0ad] text-[#7a5700]">
+                        <Sparkles className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-extrabold text-[#172033]">Offers for your cart</p>
+                        <p className="text-[11px] text-[#68748a]">Choose the best available benefit</p>
+                      </div>
+                    </div>
+                    {totalPromotionSavings > 0 && (
+                      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
+                        Saved {formatCurrency(totalPromotionSavings)}
+                      </span>
+                    )}
                   </div>
 
-                  {selectedPromotionApplies && selectedPromotion && selectedNormalPromotionApplied && (
-                    <div className="mt-3 rounded-[var(--radius-sm)] border border-green-200 bg-green-50 p-3">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-700" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-green-800">{selectedPromotion.promotionName}</p>
-                          <p className="mt-1 text-xs font-semibold text-green-700">
-                            You save {formatCurrency(promotionDiscount)}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        className="mt-3 h-9 gap-2 !border !border-green-200 !bg-white px-3 text-xs !text-green-800 hover:!bg-green-50"
-                        disabled={removePromotionMutation.isPending}
-                        onClick={removeSelectedPromotion}
+                  <form
+                    className="mt-3 rounded-2xl border border-[#dfe4ee] bg-[#f7f8fb] p-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const normalizedCode = voucherCode.trim().toUpperCase();
+                      if (!normalizedCode) {
+                        toast.warning("Enter your voucher code.");
+                        return;
+                      }
+                      redeemVoucherMutation.mutate(normalizedCode);
+                    }}
+                  >
+                    <label
+                      htmlFor="cart-voucher-code"
+                      className="flex items-center gap-2 text-xs font-extrabold text-[#26344f]"
+                    >
+                      <TicketPercent className="h-4 w-4 text-[#9a6b00]" />
+                      Have a voucher code?
+                    </label>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        id="cart-voucher-code"
+                        type="text"
+                        value={voucherCode}
+                        onChange={(event) =>
+                          setVoucherCode(event.target.value.toUpperCase())
+                        }
+                        placeholder="Enter Code"
+                        autoComplete="off"
+                        autoCapitalize="characters"
+                        spellCheck={false}
+                        maxLength={100}
+                        disabled={
+                          redeemVoucherMutation.isPending ||
+                          !session ||
+                          (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
+                        }
+                        className="min-w-0 flex-1 rounded-xl border border-[#cbd2df] bg-white px-3 py-2.5 font-mono text-xs font-bold uppercase tracking-[0.04em] text-[#172033] outline-none transition placeholder:font-sans placeholder:font-normal placeholder:normal-case placeholder:tracking-normal placeholder:text-[#929bad] focus:border-[#fbbc05] focus:ring-2 focus:ring-[#fbbc05]/20 disabled:cursor-not-allowed disabled:bg-[#edf0f5]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          redeemVoucherMutation.isPending ||
+                          !voucherCode.trim() ||
+                          !session ||
+                          (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
+                        }
+                        className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-[#26344f] px-4 text-xs font-extrabold text-white transition hover:bg-[#364765] disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {removePromotionMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                        {removePromotionMutation.isPending ? "Removing" : "Remove"}
-                      </Button>
+                        {redeemVoucherMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Redeem"
+                        )}
+                      </button>
                     </div>
-                  )}
+                    {(!session || (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)) && (
+                      <p className="mt-2 text-[11px] leading-4 text-[#68748a]">
+                        {!session
+                          ? "Log in with the mobile number that received the voucher."
+                          : "Remove the non-stackable promotion before redeeming another code."}
+                      </p>
+                    )}
+                  </form>
 
                   {promotionOffersQuery.isLoading ? (
                     <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-[var(--color-muted)]">
@@ -765,8 +1006,31 @@ const Cart: React.FC = () => {
                       Checking offers
                     </div>
                   ) : promotionCandidates.length > 0 ? (
-                    <div className="mt-3 space-y-2">
-                      {promotionCandidates.map((promotion) => {
+                    <div className="mt-3 space-y-4">
+                      {[
+                        {
+                          key: "primary",
+                          title: null,
+                          description: null,
+                          promotions: primaryPromotionCandidates,
+                        },
+                        {
+                          key: "stackable",
+                          title: "Additional stackable offers",
+                          description: "Can be combined with other stackable offers",
+                          promotions: stackablePromotionCandidates,
+                        },
+                      ]
+                        .filter((group) => group.promotions.length > 0)
+                        .map((group) => (
+                          <div key={group.key} className="space-y-2">
+                            {group.title && (
+                              <div className="flex flex-wrap items-center justify-between gap-1 border-t border-[#e5e9f0] pt-3">
+                                <p className="text-xs font-extrabold text-[#172033]">{group.title}</p>
+                                <p className="text-[10px] font-semibold text-[#68748a]">{group.description}</p>
+                              </div>
+                            )}
+                            {group.promotions.map((promotion) => {
                         const freeShippingOffer = isFreeShippingOffer(promotion);
                         const freeShippingEligible =
                           !freeShippingOffer || isFreeShippingPromotionEligible(promotion, cartTotals.subtotal);
@@ -778,17 +1042,41 @@ const Cart: React.FC = () => {
                           (backendAppliedIds.has(promotionId(promotion)) ||
                             (selectedPromotionApplies && selectedPromotion?.promotionId === promotionId(promotion)) ||
                             promotion.promotionState === "applied"));
+                        const appliedPromotion = appliedPromotionsForTotals.find(
+                          (item) => appliedPromotionId(item) === promotionId(promotion)
+                        );
+                        const canRemove = Boolean(
+                          isApplied &&
+                          !freeShippingOffer &&
+                          appliedPromotion &&
+                          !appliedPromotion.is_auto
+                        );
                         return (
                           <PromotionOffer
                             key={promotionId(promotion)}
                             promotion={promotion}
-                            isPending={applyPromotionMutation.isPending}
+                            isPending={
+                              applyPromotionMutation.isPending &&
+                              promotionId(applyPromotionMutation.variables) === promotionId(promotion)
+                            }
+                            isRemoving={
+                              removePromotionMutation.isPending &&
+                              removePromotionMutation.variables === promotionId(promotion)
+                            }
                             isApplied={isApplied}
-                            isDisabled={!session || !freeShippingEligible || (hasNormalPromotionApplied && !isApplied && !freeShippingOffer)}
+                            isDisabled={
+                              !session ||
+                              !freeShippingEligible ||
+                              (!isApplied && !freeShippingOffer && !canCombineWithAppliedPromotions(promotion))
+                            }
+                            shippingSavings={freeShippingApplied ? shippingSavings : 0}
                             onApply={() => applyPromotionMutation.mutate(promotion)}
+                            onRemove={canRemove ? () => removePromotionMutation.mutate(promotionId(promotion)) : undefined}
                           />
                         );
-                      })}
+                            })}
+                          </div>
+                        ))}
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-[var(--color-muted)]">No offers apply to this cart right now.</p>
@@ -813,60 +1101,144 @@ const Cart: React.FC = () => {
 function PromotionOffer({
   promotion,
   isPending,
+  isRemoving,
   isApplied,
   isDisabled,
+  shippingSavings,
   onApply,
+  onRemove,
 }: {
   promotion: ApplicablePromotion;
   isPending: boolean;
+  isRemoving: boolean;
   isApplied: boolean;
   isDisabled: boolean;
+  shippingSavings: number;
   onApply: () => void;
+  onRemove?: () => void;
 }) {
   const discountValue = Number(promotion.discount_value || promotion.discountInfo?.discountAmount || 0);
+  const freeShipping = isFreeShippingOffer(promotion);
+  const percentageDiscount = promotion.discount_type?.toLowerCase().includes("percent");
+  const potentialSavings = Number(
+    promotion.discountInfo?.discountAmount ||
+      (percentageDiscount ? 0 : discountValue)
+  );
+  const benefitLabel = freeShipping
+    ? shippingSavings > 0
+      ? `Saved ${formatCurrency(shippingSavings)} shipping`
+      : "Free shipping"
+    : potentialSavings > 0
+      ? `Save ${formatCurrency(potentialSavings)}`
+      : percentageDiscount && discountValue > 0
+        ? `${discountValue}% off`
+        : "Special offer";
 
   return (
-    <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-bold text-[var(--color-text)]">{promotion.name}</p>
-          {(promotion.code || discountValue > 0) && (
-            <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">
-              {promotion.code || `${promotion.discount_type?.toLowerCase().includes("percent") ? `${discountValue}%` : formatCurrency(discountValue)} off`}
-            </p>
+    <div
+      className={`overflow-hidden rounded-2xl border transition ${
+        isApplied
+          ? "border-emerald-200 bg-emerald-50/60"
+          : "border-[#dfe4ee] bg-white hover:border-[#fbbc05]/70 hover:shadow-sm"
+      }`}
+    >
+      <div className="flex items-stretch">
+        <div
+          className={`flex w-16 shrink-0 flex-col items-center justify-center gap-1.5 ${
+            isApplied
+              ? "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white"
+              : freeShipping
+                ? "bg-gradient-to-b from-[#15867c] to-[#27a89a] text-white"
+                : "bg-gradient-to-b from-[#344461] to-[#53617e] text-white"
+          }`}
+        >
+          {freeShipping ? (
+            <Truck className="h-5 w-5" />
+          ) : percentageDiscount ? (
+            <Percent className="h-5 w-5" />
+          ) : (
+            <WalletCards className="h-5 w-5" />
+          )}
+          {isStackablePromotion(promotion) && !freeShipping && (
+            <span className="text-[9px] font-black tracking-[0.12em]">STACK</span>
           )}
         </div>
-        <Button
-          className={`h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs shadow-none ${
-            isApplied
-              ? "!border !border-green-200 !bg-green-50 !text-green-700 hover:!bg-green-50"
-              : "!border !border-[var(--color-primary)]/40 !bg-[var(--color-primary)]/20 !text-[var(--color-secondary)] hover:!bg-[var(--color-primary)]/30"
-          }`}
-          disabled={isPending || isApplied || isDisabled}
-          variant={isApplied ? "secondary" : "primary"}
-          onClick={onApply}
-        >
-          {isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : isApplied ? (
-            <>
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Applied
-            </>
-          ) : (
-            "Apply"
+        <div className="min-w-0 flex-1 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="line-clamp-2 text-sm font-extrabold leading-5 text-[#172033]">
+                {promotion.name}
+              </p>
+              <p className={`mt-1 text-xs font-bold ${isApplied ? "text-emerald-700" : "text-[#9a6b00]"}`}>
+                {benefitLabel}
+              </p>
+              {isStackablePromotion(promotion) && !freeShipping && (
+                <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[#eef1f6] px-2 py-1 text-[10px] font-extrabold text-[#485470]">
+                  <Plus className="h-3 w-3" />
+                  Can combine with stackable offers
+                </span>
+              )}
+            </div>
+            <Button
+              className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${
+                isApplied
+                  ? "!border !border-emerald-200 !bg-white !text-emerald-700 hover:!bg-white"
+                  : "!bg-[#fbbc05] !text-[#172033] hover:!bg-[#ffd042]"
+              }`}
+              disabled={isPending || isRemoving || (isApplied ? !onRemove : isDisabled)}
+              variant={isApplied ? "secondary" : "primary"}
+              onClick={isApplied && onRemove ? onRemove : onApply}
+            >
+              {isPending || isRemoving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : isApplied && onRemove ? (
+                <>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </>
+              ) : isApplied ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Applied
+                </>
+              ) : (
+                "Apply"
+              )}
+            </Button>
+          </div>
+          {promotion.code && (
+            <div className="mt-2 inline-flex max-w-full rounded-lg bg-[#eef1f6] px-2.5 py-1 font-mono text-[11px] font-bold text-[#485470]">
+              <span className="truncate">{promotion.code}</span>
+            </div>
           )}
-        </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function SummaryLine({ label, value }: { label: string; value: string }) {
+function SummaryLine({
+  label,
+  value,
+  previousValue,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  previousValue?: string;
+  highlight?: boolean;
+}) {
   return (
     <div className="flex justify-between gap-4 text-[var(--color-muted)]">
       <span>{label}</span>
-      <span className="font-semibold text-[var(--color-text)]">{value}</span>
+      <span className={`font-semibold ${highlight ? "text-emerald-700" : "text-[var(--color-text)]"}`}>
+        {previousValue && (
+          <span className="mr-2 font-normal text-[var(--color-muted)] line-through">
+            {previousValue}
+          </span>
+        )}
+        {value}
+      </span>
     </div>
   );
 }
@@ -884,7 +1256,7 @@ function CartLoadingState({ itemCount }: { itemCount: number }) {
   const rows = Array.from({ length: Math.max(itemCount, 1) });
 
   return (
-    <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
+    <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,0.9fr)_460px]">
       <div className="space-y-4">
         {rows.map((_, index) => (
           <article

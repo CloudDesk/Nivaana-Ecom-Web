@@ -335,25 +335,27 @@ function AddressCard({
   onDelete: () => void;
 }) {
   return (
-    <article className="relative min-h-36 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-4 pr-24 text-left transition hover:border-[var(--color-secondary)]/50">
-      <button
-        type="button"
-        aria-label={`Edit address for ${address.name}`}
-        className="absolute right-12 top-3 grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)] disabled:opacity-50"
-        disabled={isBusy}
-        onClick={onEdit}
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        aria-label={`Delete address for ${address.name}`}
-        className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-        disabled={isBusy}
-        onClick={onDelete}
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+    <article className="relative min-h-36 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-4 pr-28 text-left transition hover:border-[var(--color-secondary)]/50">
+      <div className="absolute right-4 top-4 flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`Edit address for ${address.name}`}
+          className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] p-2.5 text-[var(--color-muted)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-secondary)] disabled:opacity-50"
+          disabled={isBusy}
+          onClick={onEdit}
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Delete address for ${address.name}`}
+          className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] p-2.5 text-[var(--color-muted)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+          disabled={isBusy}
+          onClick={onDelete}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
       <div className="flex items-start gap-3">
         <Home className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-secondary)]" />
         <div className="min-w-0">

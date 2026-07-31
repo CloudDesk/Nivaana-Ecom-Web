@@ -212,15 +212,8 @@ const ProductDetails: React.FC = () => {
 
   const publicPromotionsQuery = useQuery({
     queryKey: ["detail-public-promotions", session?.user.id],
-    queryFn: () =>
-      promotionService.list({
-        userid: session?.user.id,
-        channel: "web",
-        geo: "IN",
-        status: "active",
-        visibility: "public",
-        limit: 8,
-      }),
+    queryFn: () => promotionService.mine("web"),
+    enabled: Boolean(session),
     staleTime: 1000 * 60 * 5,
   });
 

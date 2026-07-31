@@ -9,6 +9,7 @@ export interface Promotion {
   type: string;
   code?: string | null;
   auto_apply?: boolean;
+  application_mode?: "automatic" | "click_to_apply" | "code_entry";
   start_date?: number | string | null;
   end_date?: number | string | null;
   timezone?: string | null;
@@ -21,6 +22,24 @@ export interface Promotion {
   action?: PromotionAction | null;
   actions?: PromotionAction[] | null;
   conditions?: PromotionCondition[] | null;
+  audience?: "global" | "segment" | "customer" | "customer_group" | string;
+  assignment_id?: number | null;
+  voucher_code?: string | null;
+  customer_usage?: {
+    used: number;
+    limit: number | null;
+    remaining: number | null;
+  } | null;
+  assignment_usage?: {
+    used: number;
+    limit: number | null;
+    remaining: number | null;
+  } | null;
+  customer_group?: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
 }
 
 export interface PromotionAction {
@@ -104,6 +123,7 @@ export interface ApplicablePromotion {
   promotionState?: string;
   evaluation_id?: string;
   applied_discount?: number;
+  stackable?: boolean;
 }
 
 export interface AppliedPromotion {
@@ -114,6 +134,7 @@ export interface AppliedPromotion {
   is_auto?: boolean;
   is_free_shipping?: boolean;
   is_stacked?: boolean | null;
+  stackable?: boolean;
   bogo_details?: {
     buy_quantity?: number;
     get_quantity?: number;
@@ -175,7 +196,8 @@ export interface ActiveEvaluationsData {
 export interface PromotionEvaluationRequest {
   cartId: string;
   userId: string;
-  promotionId: number;
+  promotionId?: number;
+  code?: string;
   cartData: PromotionCartData;
   cartItems: PromotionEvaluationCartItem[];
   mode: "phonepe" | "cod";
@@ -238,6 +260,10 @@ class PromotionService {
     return apiService.get<Promotion[]>(`/promotions?${queryParams.toString()}`);
   }
 
+  mine(channel: string = "web"): Promise<ApiResponse<Promotion[]>> {
+    return apiService.get<Promotion[]>(`/promotions/mine?channel=${encodeURIComponent(channel)}`);
+  }
+
   getRecommendedOffers(payload: RecommendationRequest): Promise<ApiResponse<RecommendationData>> {
     return apiService.post<RecommendationData>("/promotions/offers", {
       user_id: payload.userId,
@@ -259,7 +285,8 @@ class PromotionService {
     return apiService.post<PromotionEvaluationData>("/promotions/evaluate", {
       user_id: payload.userId,
       application_type: payload.applicationType ?? "manual_coupon",
-      promotion_id: payload.promotionId,
+      ...(payload.promotionId ? { promotion_id: payload.promotionId } : {}),
+      ...(payload.code ? { code: payload.code.trim().toUpperCase() } : {}),
       cart_items: payload.cartItems,
       context: {
         channel: payload.channel ?? "web",

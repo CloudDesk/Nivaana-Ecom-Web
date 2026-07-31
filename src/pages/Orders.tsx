@@ -559,7 +559,18 @@ function OrderCard({
                 {orderlines.map((line, index) => (
                   <OrderLineRow key={String(line.id ?? line.orderlinenumber ?? index)} line={line} />
                 ))}
-                <div className="mt-3 flex items-center justify-between border-t border-[var(--color-border)] pt-3 text-sm font-semibold text-[var(--color-text)]">
+                {Number(order.shipping_cost || 0) > 0 ? (
+                  <div className="mt-3 flex items-center justify-between border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-muted)]">
+                    <span>Shipping charges</span>
+                    <span>{formatCurrency(order.shipping_cost)}</span>
+                  </div>
+                ) : null}
+                <div className={cn(
+                  "flex items-center justify-between text-sm font-semibold text-[var(--color-text)]",
+                  Number(order.shipping_cost || 0) > 0
+                    ? "pt-1"
+                    : "mt-3 border-t border-[var(--color-border)] pt-3"
+                )}>
                   <span>Order total</span>
                   <span>{formatCurrency(order.orderamount)}</span>
                 </div>
@@ -599,6 +610,11 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       id,
       orderid,
       orderamount: getNumber(orderSource, ["orderamount"]),
+      productamount: getNumber(orderSource, ["productamount"]),
+      discountamount: getNumber(orderSource, ["discountamount"]),
+      promotion_discount_total: getNumber(orderSource, ["promotion_discount_total"]),
+      original_total: getNumber(orderSource, ["original_total"]),
+      shipping_cost: getNumber(orderSource, ["shipping_cost"]),
       orderstatus: getString(orderSource, ["orderstatus"]),
       createddate: getNumber(orderSource, ["createddate"]),
       modifieddate: getNumber(orderSource, ["modifieddate"]),
