@@ -2,7 +2,7 @@ import type { AppliedPromotion } from "../services/promotionService";
 import type { Product } from "../types";
 
 const SELECTED_PROMOTION_KEY = "nivaana_selected_cart_promotion";
-const FREE_SHIPPING_MINIMUM = 500;
+const STANDARD_SHIPPING_FEE = 40;
 
 export interface PromotionCartRow {
   cartRecordId?: number | string;
@@ -55,6 +55,7 @@ export interface PromotionDiscountSummary {
   normalDiscount: number;
   freeShippingApplied: boolean;
   effectiveShipping: number;
+  shippingSavings: number;
   payableTotal: number;
 }
 
@@ -86,7 +87,9 @@ export const getPromotionCartTotals = (rows: PromotionCartRow[]): CartPromotionT
   const mrpTotal = rows.reduce((sum, row) => sum + Number(row.product?.price || 0) * row.quantity, 0);
   const subtotal = rows.reduce((sum, row) => sum + productUnitPrice(row.product) * row.quantity, 0);
   const productDiscount = rows.reduce((sum, row) => sum + Number(row.product?.discount || 0) * row.quantity, 0);
-  const shipping = subtotal > 0 && subtotal < FREE_SHIPPING_MINIMUM ? 40 : 0;
+  // Shipping is waived by an eligible free-shipping promotion. Keeping the
+  // baseline charge here lets the UI and order total show the real saving.
+  const shipping = subtotal > 0 ? STANDARD_SHIPPING_FEE : 0;
 
   return {
     mrpTotal,
@@ -243,6 +246,7 @@ export const getAppliedPromotionSummary = (
   );
   const freeShippingApplied = freeShippingPromotions.length > 0;
   const effectiveShipping = freeShippingApplied ? 0 : totals.shipping;
+  const shippingSavings = Math.max(totals.shipping - effectiveShipping, 0);
 
   return {
     normalPromotions,
@@ -250,6 +254,7 @@ export const getAppliedPromotionSummary = (
     normalDiscount,
     freeShippingApplied,
     effectiveShipping,
+    shippingSavings,
     payableTotal: Math.max(totals.subtotal + effectiveShipping - normalDiscount, 0),
   };
 };

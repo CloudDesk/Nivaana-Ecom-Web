@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
@@ -7,6 +8,7 @@ import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
 
 const Login: React.FC = () => {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -69,6 +71,10 @@ const Login: React.FC = () => {
       const session = sessionService.getSession();
       if (session) {
         await guestStoreService.mergeToUser(session.user.id);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] }),
+          queryClient.invalidateQueries({ queryKey: ["wishlist", session.user.id] }),
+        ]);
       }
       navigate(redirectTarget, { replace: true });
     } catch {
