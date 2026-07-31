@@ -157,7 +157,6 @@ const ProductDetails: React.FC = () => {
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
   const [, setGuestStoreVersion] = useState(0);
   const [mainImageDragOffset, setMainImageDragOffset] = useState(0);
-  const thumbnailScrollerRef = React.useRef<HTMLDivElement | null>(null);
   const thumbnailButtonRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
   const mainImageSwipeRef = React.useRef({ startX: 0, startY: 0, tracking: false });
   const mainImageWheelLockRef = React.useRef(false);
@@ -293,16 +292,6 @@ const ProductDetails: React.FC = () => {
     if (!product?.id) return;
     setRecentlyViewedIds(saveRecentlyViewedProductId(product.id));
   }, [product?.id]);
-
-  const scrollThumbnails = (direction: number) => {
-    const scroller = thumbnailScrollerRef.current;
-    if (!scroller) return;
-
-    scroller.scrollBy({
-      left: direction * Math.max(scroller.clientWidth * 0.75, 160),
-      behavior: "smooth",
-    });
-  };
 
   const moveMainImage = (direction: number) => {
     if (images.length <= 1) return;
@@ -710,29 +699,16 @@ const ProductDetails: React.FC = () => {
               />
             </div>
             {images.length > 1 && (
-              <div className="relative mt-4 lg:shrink-0">
-                {images.length > 4 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => scrollThumbnails(-1)}
-                      className="absolute left-1 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white/95 text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)]"
-                      aria-label="Previous product images"
-                    >
-                      <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => scrollThumbnails(1)}
-                      className="absolute right-1 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-white/95 text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:bg-[var(--color-primary)]"
-                      aria-label="Next product images"
-                    >
-                      <ChevronRight className="h-5 w-5 stroke-[2.4]" />
-                    </button>
-                  </>
-                )}
+              <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-3 lg:shrink-0">
+                <button
+                  type="button"
+                  onClick={() => moveMainImage(-1)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 sm:h-10 sm:w-10"
+                  aria-label="Previous product image"
+                >
+                  <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+                </button>
                 <div
-                  ref={thumbnailScrollerRef}
                   className="flex max-w-full snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-1 pb-1 scrollbar-hide"
                 >
                   {images.map((image, index) => (
@@ -758,6 +734,14 @@ const ProductDetails: React.FC = () => {
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => moveMainImage(1)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] shadow-[var(--shadow-card)] transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 sm:h-10 sm:w-10"
+                  aria-label="Next product image"
+                >
+                  <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+                </button>
               </div>
             )}
             </div>
