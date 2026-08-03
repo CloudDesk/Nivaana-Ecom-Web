@@ -17,5 +17,12 @@ export const friendlyNotificationMessage = (message?: string | null) => {
     return "Your session has expired. Please log in again.";
   }
 
+  if (
+    normalized.includes("stackable") ||
+    normalized.includes("another promotion already applied")
+  ) {
+    return "Remove the current offer before applying another.";
+  }
+
   return text.replace(/\biscart\b/gi, "cart").replace(/\biswishlist\b/gi, "wishlist");
 };

@@ -550,8 +550,8 @@ const Promotions: React.FC = () => {
               <section>
                 <SectionHeading
                   icon={<BadgePercent className="h-5 w-5" />}
-                  title="Extra benefits"
-                  subtitle="Additional savings that may be combined with another offer."
+                  title="More offers"
+                  subtitle="Other offers available for your cart."
                   count={stackablePromotions.length}
                 />
                 <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -559,7 +559,7 @@ const Promotions: React.FC = () => {
                     <PromotionCard
                       key={promotionKey(promotion, "stackable", index)}
                       promotion={promotion}
-                      badge="Stackable"
+                      badge="Offer"
                       copied={copiedCode === promotion.code}
                       onCopy={copyPromotionCode}
                     />

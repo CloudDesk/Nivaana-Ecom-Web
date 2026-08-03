@@ -97,7 +97,7 @@ const voucherErrorMessage = (message?: string) => {
   if (normalized.includes("CHANNEL_NOT_ELIGIBLE")) return "This voucher cannot be used on the website.";
   if (normalized.includes("NOT ELIGIBLE FOR THIS CART")) return "Your cart does not currently meet this voucher's requirements.";
   if (normalized.includes("ALREADY APPLIED")) return "This voucher is already applied to your cart.";
-  if (normalized.includes("ANOTHER_PROMOTION_ALREADY_APPLIED")) return "Remove the current coupon before applying another one.";
+  if (normalized.includes("ANOTHER_PROMOTION_ALREADY_APPLIED")) return "Remove the current offer before applying another.";
 
   return friendlyNotificationMessage(message || "The voucher could not be redeemed.");
 };
@@ -640,13 +640,13 @@ const Cart: React.FC = () => {
         promotionOffersQuery.refetch(),
         activeEvaluationsQuery.refetch(),
       ]);
-      toast.success(`${promotion.name} applied.`);
+      toast.success(`${promotion.name} applied to your cart.`);
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Could not apply this promotion. Please try another offer.";
 
       if (message.toLowerCase().includes("already applied")) {
-        toast.warning("Promotion is already applied.");
+        toast.warning("This offer is already applied to your cart.");
         return;
       }
 
@@ -727,8 +727,8 @@ const Cart: React.FC = () => {
       ]);
       toast.success(
         redeemedPromotion?.promotion_name
-          ? `${redeemedPromotion.promotion_name} applied.`
-          : "Voucher applied to your cart."
+          ? `${redeemedPromotion.promotion_name} applied to your cart.`
+          : "Offer applied to your cart."
       );
     },
     onError: (error) => {
@@ -784,7 +784,7 @@ const Cart: React.FC = () => {
       await refreshPromotionQueries();
       clearSelectedCartPromotion(session?.user.id);
       setSelectedPromotion(null);
-      toast.success("Promotion removed.");
+      toast.success("Offer removed from your cart.");
     },
     onError: (error) => {
       toast.error(friendlyNotificationMessage(error instanceof Error ? error.message : "Could not remove this promotion. Please try again."));
@@ -907,12 +907,6 @@ const Cart: React.FC = () => {
 
   const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
     (promotion) => getPromotionDisplayState(promotion).freeShippingEligible
-  );
-  const eligiblePrimaryPromotions = eligiblePromotionCandidates.filter(
-    (promotion) => !isStackablePromotion(promotion)
-  );
-  const eligibleStackablePromotions = eligiblePromotionCandidates.filter(
-    (promotion) => isStackablePromotion(promotion)
   );
   const summaryPromotions = [
     ...eligiblePromotionCandidates.filter(
@@ -1206,7 +1200,7 @@ const Cart: React.FC = () => {
                       <p className="mt-2 text-[11px] leading-4 text-[#68748a]">
                         {!session
                           ? "Log in with the mobile number that received the voucher."
-                          : "Remove the non-stackable promotion before redeeming another code."}
+                          : "Remove the current offer before applying another code."}
                       </p>
                     )}
                   </form>
@@ -1266,10 +1260,10 @@ const Cart: React.FC = () => {
             <header className="flex items-start justify-between gap-4 border-b border-[#e5e9f0] px-5 py-4">
               <div>
                 <h2 id="eligible-offers-title" className="text-lg font-extrabold text-[#172033]">
-                  Eligible offers
+                  Offers
                 </h2>
                 <p className="mt-1 text-xs text-[#68748a]">
-                  Apply or remove promotions for this cart.
+                  Apply or remove an offer for this cart.
                 </p>
               </div>
               <button
@@ -1283,31 +1277,8 @@ const Cart: React.FC = () => {
             </header>
 
             <div className="overflow-y-auto px-5 py-4">
-              <div className="space-y-5">
-                {[
-                  {
-                    key: "primary",
-                    title: "Best offers",
-                    description: "Choose one primary offer",
-                    promotions: eligiblePrimaryPromotions,
-                  },
-                  {
-                    key: "stackable",
-                    title: "Stackable offers",
-                    description: "Can be combined with other stackable offers",
-                    promotions: eligibleStackablePromotions,
-                  },
-                ]
-                  .filter((group) => group.promotions.length > 0)
-                  .map((group) => (
-                    <div key={group.key} className="space-y-2.5">
-                      <div className="flex flex-wrap items-end justify-between gap-1">
-                        <h3 className="text-sm font-extrabold text-[#172033]">{group.title}</h3>
-                        <p className="text-[10px] font-semibold text-[#68748a]">{group.description}</p>
-                      </div>
-                      {group.promotions.map(renderPromotionOffer)}
-                    </div>
-                  ))}
+              <div className="space-y-2.5">
+                {eligiblePromotionCandidates.map(renderPromotionOffer)}
               </div>
             </div>
           </section>
@@ -1385,9 +1356,6 @@ function PromotionOffer({
           ) : (
             <WalletCards className="h-5 w-5" />
           )}
-          {isStackablePromotion(promotion) && !freeShipping && (
-            <span className="text-[9px] font-black tracking-[0.12em]">STACK</span>
-          )}
         </div>
         <div className="min-w-0 flex-1 p-3">
           <div className="flex items-start justify-between gap-3">
@@ -1398,12 +1366,6 @@ function PromotionOffer({
               <p className={`mt-1 text-xs font-bold ${isApplied ? "text-emerald-700" : "text-[#9a6b00]"}`}>
                 {benefitLabel}
               </p>
-              {isStackablePromotion(promotion) && !freeShipping && (
-                <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[#eef1f6] px-2 py-1 text-[10px] font-extrabold text-[#485470]">
-                  <Plus className="h-3 w-3" />
-                  Can combine with stackable offers
-                </span>
-              )}
             </div>
             <Button
               className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${
