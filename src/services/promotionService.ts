@@ -222,6 +222,12 @@ export interface PromotionRemoveEvaluationData {
   expires_at?: string;
 }
 
+export interface PromotionCheckoutValidationData {
+  evaluation_id: string;
+  is_valid: boolean;
+  reason?: string | null;
+}
+
 export interface AutomaticPromotionEvaluationRequest {
   userId: string;
   cartItems: PromotionEvaluationCartItem[];
@@ -328,6 +334,16 @@ class PromotionService {
 
   getActiveEvaluations(userId: string | number): Promise<ApiResponse<ActiveEvaluationsData>> {
     return apiService.get<ActiveEvaluationsData>(`/promotions/evaluations?user_id=${userId}`);
+  }
+
+  validateForCheckout(
+    evaluationId: string,
+    userId: string | number,
+  ): Promise<ApiResponse<PromotionCheckoutValidationData>> {
+    return apiService.post<PromotionCheckoutValidationData>("/promotions/evaluations/validate", {
+      evaluation_id: evaluationId,
+      user_id: String(userId),
+    }).then(normalizeResponse);
   }
 }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -104,6 +104,7 @@ const voucherErrorMessage = (message?: string) => {
 
 const Cart: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const session = sessionService.getSession();
   const [, setGuestVersion] = useState(0);
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
@@ -309,7 +310,7 @@ const Cart: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session.user.id] }),
       queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session.user.id] }),
     ]);
-  }, [automaticPromotionsQuery.data?.data?.evaluation_id, queryClient, session?.user.id]);
+  }, [automaticPromotionsQuery.dataUpdatedAt, queryClient, session?.user.id]);
 
   const promotionOffersQuery = useQuery({
     queryKey: ["cart-promotion-offers", session?.user.id ?? guestPromotionUserId, cartSignature],
@@ -372,6 +373,9 @@ const Cart: React.FC = () => {
     [promotionCandidates]
   );
   const backendEvaluation = useMemo(() => {
+    const refreshedEvaluation = automaticPromotionsQuery.data?.data;
+    if (refreshedEvaluation) return refreshedEvaluation;
+
     const offerEvaluation = promotionOffersQuery.data?.data?.currentEvaluation;
     if (offerEvaluation) return offerEvaluation;
 
@@ -385,7 +389,7 @@ const Cart: React.FC = () => {
       total_discount: activeEvaluation.total_discount,
       applied_promotions: activeEvaluation.applied_promotions ?? [],
     } satisfies CurrentEvaluation;
-  }, [activeEvaluationsQuery.data, cartTotals.total, promotionOffersQuery.data]);
+  }, [activeEvaluationsQuery.data, automaticPromotionsQuery.data, cartTotals.total, promotionOffersQuery.data]);
 
   const backendAppliedPromotions = useMemo(
     () =>
@@ -865,6 +869,36 @@ const Cart: React.FC = () => {
     ),
   ].slice(0, 2);
 
+  const checkoutValidationMutation = useMutation({
+    mutationFn: async () => {
+      if (!session?.user.id || !backendEvaluation?.evaluation_id) return null;
+      return promotionService.validateForCheckout(
+        backendEvaluation.evaluation_id,
+        session.user.id,
+      );
+    },
+    onSuccess: async (response) => {
+      if (!response || response.data.is_valid) {
+        navigate("/checkout");
+        return;
+      }
+
+      clearSelectedCartPromotion(session?.user.id);
+      setSelectedPromotion(null);
+      await automaticPromotionsQuery.refetch();
+      await Promise.all([
+        promotionOffersQuery.refetch(),
+        activeEvaluationsQuery.refetch(),
+      ]);
+      toast.warning("Your available promotions changed. The cart total has been refreshed; please review it before checkout.");
+    },
+    onError: (error) => {
+      toast.error(friendlyNotificationMessage(
+        error instanceof Error ? error.message : "Could not validate the cart promotions. Please try again.",
+      ));
+    },
+  });
+
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-6xl">
@@ -1145,9 +1179,16 @@ const Cart: React.FC = () => {
                 </div>
               )}
               {session ? (
-                <Link to="/checkout" className="mt-5 block">
-                  <Button className="w-full">Checkout</Button>
-                </Link>
+                <Button
+                  className="mt-5 w-full"
+                  disabled={checkoutValidationMutation.isPending || automaticPromotionsQuery.isFetching}
+                  onClick={() => checkoutValidationMutation.mutate()}
+                >
+                  {(checkoutValidationMutation.isPending || automaticPromotionsQuery.isFetching) && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Checkout
+                </Button>
               ) : (
                 <Link to="/login?redirect=/checkout" className="mt-5 block"><Button className="w-full">Login to Checkout</Button></Link>
               )}
