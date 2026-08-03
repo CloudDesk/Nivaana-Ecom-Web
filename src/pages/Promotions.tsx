@@ -41,6 +41,41 @@ import { toast } from "../components/toastApi";
 const formatCurrency = (value?: number | null) =>
   `₹${Math.max(Number(value || 0), 0).toLocaleString("en-IN")}`;
 
+const formatEligibilityReason = (reason?: string | null) => {
+  const value = String(reason || "").trim();
+  const normalized = value.toLowerCase();
+  if (!value) return "This offer is not available for your current cart yet.";
+  if (normalized.includes("has not started")) return "This offer is not available yet.";
+  if (normalized.includes("expired")) return "This offer has expired.";
+  if (normalized.includes("segment not eligible") || normalized.includes("creation date not eligible")) {
+    return "This offer is not available for your account.";
+  }
+  if (normalized.includes("order count not eligible")) {
+    return "Your previous order count does not meet this offer's requirements.";
+  }
+  const cartTotal = value.match(/Cart total value not eligible\. Required: (?:GTE|GT) ([\d.]+), Current: ([\d.]+)/i);
+  if (cartTotal) {
+    const amountNeeded = Math.max(Number(cartTotal[1]) - Number(cartTotal[2]), 0);
+    return amountNeeded > 0
+      ? `Add ${formatCurrency(amountNeeded)} more to use this offer.`
+      : "Your cart total does not meet this offer's requirements.";
+  }
+  const itemCount = value.match(/Cart item count not eligible\. Required: (?:GTE|GT) ([\d.]+), Current: ([\d.]+)/i);
+  if (itemCount) {
+    const itemsNeeded = Math.max(Math.ceil(Number(itemCount[1]) - Number(itemCount[2])), 0);
+    return itemsNeeded > 0
+      ? `Add ${itemsNeeded} more ${itemsNeeded === 1 ? "item" : "items"} to use this offer.`
+      : "Your cart does not meet this offer's item requirement.";
+  }
+  if (normalized.includes("category not eligible")) {
+    return "This offer applies only to selected product categories.";
+  }
+  if (normalized.includes("no discount applicable")) {
+    return "This offer does not apply to the products currently in your cart.";
+  }
+  return "Your cart does not meet this offer's requirements yet.";
+};
+
 const quantityFor = (quantity: unknown) => {
   const parsed = Number(quantity);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -264,6 +299,12 @@ const Promotions: React.FC = () => {
   const publicPromotions = publicPromotionsQuery.data?.data ?? [];
   const offers = offersQuery.data?.data;
   const appliedPromotions = offers?.currentEvaluation?.applied_promotions ?? [];
+  const ineligibleReasonById = new Map(
+    (offers?.ineligibleCoupons ?? []).map((promotion) => [
+      promotion.promotion_id,
+      formatEligibilityReason(promotion.ineligibleReason),
+    ])
+  );
   const appliedPromotionIds = new Set(
     appliedPromotions
       .map((promotion) => promotion.promotion_id)
@@ -426,6 +467,7 @@ const Promotions: React.FC = () => {
                       }
                       onApply={() => applyPromotionMutation.mutate(promotion)}
                       personal
+                      disabledReason={ineligibleReasonById.get(promotion.id)}
                     />
                   ))}
                 </div>
@@ -547,6 +589,7 @@ const Promotions: React.FC = () => {
                         applyPromotionMutation.variables?.id === promotion.id
                       }
                       onApply={() => applyPromotionMutation.mutate(promotion)}
+                      disabledReason={ineligibleReasonById.get(promotion.id)}
                     />
                   ))}
                 </div>
@@ -662,10 +705,12 @@ function CodePanel({
   code,
   copied,
   onCopy,
+  disabled = false,
 }: {
   code: string;
   copied: boolean;
   onCopy: (code: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-xl border border-dashed border-[#cbd2df] bg-[#f7f8fb] p-2">
@@ -675,9 +720,12 @@ function CodePanel({
       <button
         type="button"
         onClick={() => onCopy(code)}
+        disabled={disabled}
         aria-label={`Copy voucher code ${code}`}
         className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-extrabold transition ${
-          copied
+          disabled
+            ? "cursor-not-allowed bg-[#d9dde6] text-[#7b8496]"
+            : copied
             ? "bg-emerald-100 text-emerald-700"
             : "bg-[#26344f] text-white hover:bg-[#364765]"
         }`}
@@ -845,6 +893,7 @@ function PublicPromotionCard({
   isApplying,
   onApply,
   personal = false,
+  disabledReason,
 }: {
   promotion: Promotion;
   canApply: boolean;
@@ -853,6 +902,7 @@ function PublicPromotionCard({
   isApplying: boolean;
   onApply: () => void;
   personal?: boolean;
+  disabledReason?: string;
 }) {
   const validity = formatDate(promotion.end_date, promotion.timezone);
   const discountValue = Number(
@@ -885,7 +935,7 @@ function PublicPromotionCard({
       : "Personal offer";
 
   return (
-    <article className="group flex h-full flex-col overflow-hidden rounded-3xl border border-[#e0e4ec] bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.14)]">
+    <article className={`group flex h-full flex-col overflow-hidden rounded-3xl border border-[#e0e4ec] bg-white shadow-sm transition duration-300 ${disabledReason ? "opacity-65" : "hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.14)]"}`}>
       <div
         className={`relative overflow-hidden px-5 py-5 text-white ${
           isFreeShipping
@@ -924,7 +974,18 @@ function PublicPromotionCard({
 
         {isCodeEntry && promotion.code && (
           <div className="mt-4">
-            <CodePanel code={promotion.code} copied={copied} onCopy={onCopy} />
+            <CodePanel
+              code={promotion.code}
+              copied={copied}
+              onCopy={onCopy}
+              disabled={Boolean(disabledReason)}
+            />
+          </div>
+        )}
+
+        {disabledReason && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-5 text-amber-800">
+            {disabledReason}
           </div>
         )}
 
@@ -946,7 +1007,16 @@ function PublicPromotionCard({
           {validity && <PromotionMeta label="Valid until" value={validity} icon={<CalendarDays className="h-3.5 w-3.5" />} />}
         </div>
 
-        {isClickToApply && canApply && (
+        {disabledReason && (
+          <button
+            type="button"
+            disabled
+            className="mt-4 min-h-10 w-full cursor-not-allowed rounded-xl bg-[#e1e4ea] px-4 text-sm font-extrabold text-[#7b8496]"
+          >
+            Not eligible
+          </button>
+        )}
+        {!disabledReason && isClickToApply && canApply && (
           <Button
             className="mt-4 w-full rounded-xl"
             disabled={isApplying}
@@ -955,7 +1025,7 @@ function PublicPromotionCard({
             {isApplying ? "Applying..." : "Apply to cart"}
           </Button>
         )}
-        {isClickToApply && !canApply && (
+        {!disabledReason && isClickToApply && !canApply && (
           <Link
             to="/"
             className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
@@ -964,7 +1034,7 @@ function PublicPromotionCard({
             Add items to apply
           </Link>
         )}
-        {isCodeEntry && canApply && (
+        {!disabledReason && isCodeEntry && canApply && (
           <Link
             to="/cart"
             className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
@@ -973,7 +1043,7 @@ function PublicPromotionCard({
             <ArrowRight className="h-4 w-4" />
           </Link>
         )}
-        {isCodeEntry && !canApply && (
+        {!disabledReason && isCodeEntry && !canApply && (
           <Link
             to="/"
             className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
@@ -982,13 +1052,13 @@ function PublicPromotionCard({
             Add items to redeem
           </Link>
         )}
-        {isAutomatic && canApply && (
+        {!disabledReason && isAutomatic && canApply && (
           <div className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#edf4ff] px-4 text-sm font-bold text-[#365985]">
             <Zap className="h-4 w-4" />
             Checked automatically
           </div>
         )}
-        {isAutomatic && !canApply && (
+        {!disabledReason && isAutomatic && !canApply && (
           <Link
             to="/"
             className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#edf4ff] px-4 text-sm font-bold text-[#365985] transition hover:bg-[#e2ecfb]"
