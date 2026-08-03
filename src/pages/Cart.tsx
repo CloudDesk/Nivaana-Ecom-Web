@@ -286,9 +286,14 @@ const Cart: React.FC = () => {
   const promotionEvaluationItems = useMemo(() => buildPromotionEvaluationCartItems(promotionRows), [promotionRows]);
   const cartSignature = useMemo(() => cartPromotionSignature(promotionRows), [promotionRows]);
   const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
+  const automaticPromotionsQueryKey = [
+    "cart-automatic-promotions",
+    session?.user.id,
+    cartSignature,
+  ] as const;
 
   const automaticPromotionsQuery = useQuery({
-    queryKey: ["cart-automatic-promotions", session?.user.id, cartSignature],
+    queryKey: automaticPromotionsQueryKey,
     queryFn: () =>
       promotionService.evaluateAutomatic({
         userId: String(session!.user.id),
@@ -338,6 +343,17 @@ const Cart: React.FC = () => {
     enabled: Boolean(session && promotionRows.length > 0),
     staleTime: 1000 * 30,
   });
+
+  const refreshPromotionQueries = async () => {
+    // The automatic evaluation is the source preferred by backendEvaluation,
+    // so refresh it first. Refreshing only offers/evaluations leaves stale
+    // applied IDs in the UI until the browser is manually reloaded.
+    await automaticPromotionsQuery.refetch();
+    await Promise.all([
+      promotionOffersQuery.refetch(),
+      activeEvaluationsQuery.refetch(),
+    ]);
+  };
 
   const promotionCandidates = useMemo(() => {
     const offers = promotionOffersQuery.data?.data;
@@ -469,6 +485,46 @@ const Cart: React.FC = () => {
     appliedManualPromotions.length === 0 ||
     (allAppliedManualPromotionsAreStackable && isStackablePromotion(promotion));
 
+  // Private/assigned promotions may be present in the active evaluation but
+  // intentionally absent from the public/recommended offer collections. Add
+  // a display candidate for every applied promotion so shoppers can see and
+  // remove a manual offer that is already affecting their total.
+  const visiblePromotionCandidates = useMemo(() => {
+    const appliedCandidates = appliedPromotionsForTotals
+      .map((promotion): ApplicablePromotion | null => {
+        const id = appliedPromotionId(promotion);
+        if (id <= 0) return null;
+
+        const details = promotionDetailsById.get(id);
+        const discountAmount = Number(
+          promotion.discount_amount ?? details?.discountInfo?.discountAmount ?? 0
+        );
+        const voucherCode = String(promotion.voucher_code || details?.code || "");
+
+        return {
+          ...details,
+          promotion_id: id,
+          name: promotion.promotion_name || details?.name || `Promotion ${id}`,
+          type: promotion.promotion_type || details?.type || "UNKNOWN",
+          code: voucherCode || null,
+          is_free_shipping:
+            promotion.is_free_shipping === true || details?.is_free_shipping === true,
+          stackable:
+            promotion.stackable ??
+            (promotion.is_stacked === true ? true : details?.stackable ?? false),
+          promotionState: "applied",
+          applied_discount: discountAmount,
+          discountInfo: {
+            ...details?.discountInfo,
+            discountAmount,
+          },
+        };
+      })
+      .filter((promotion): promotion is ApplicablePromotion => promotion !== null);
+
+    return uniquePromotions([...appliedCandidates, ...promotionCandidates]);
+  }, [appliedPromotionsForTotals, promotionCandidates, promotionDetailsById]);
+
   useEffect(() => {
     if (!session?.user.id || !backendEvaluation || backendAppliedPromotions.length === 0 || !cartSignature) return;
 
@@ -555,10 +611,11 @@ const Cart: React.FC = () => {
         geo: "IN",
       });
     },
-    onSuccess: (response, promotion) => {
+    onSuccess: async (response, promotion) => {
       if (!session?.user.id) return;
 
       const evaluation = response.data;
+      queryClient.setQueryData(automaticPromotionsQueryKey, response);
       const evaluationSummary = getAppliedPromotionSummary(
         cartTotals,
         evaluation.applied_promotions ?? [],
@@ -579,6 +636,10 @@ const Cart: React.FC = () => {
 
       saveSelectedCartPromotion(nextPromotion);
       setSelectedPromotion(nextPromotion);
+      await Promise.all([
+        promotionOffersQuery.refetch(),
+        activeEvaluationsQuery.refetch(),
+      ]);
       toast.success(`${promotion.name} applied.`);
     },
     onError: (error) => {
@@ -590,10 +651,6 @@ const Cart: React.FC = () => {
       }
 
       toast.error(friendlyNotificationMessage(message));
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session?.user.id] });
-      queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session?.user.id] });
     },
   });
 
@@ -627,10 +684,11 @@ const Cart: React.FC = () => {
         geo: "IN",
       });
     },
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       if (!session?.user.id) return;
 
       const evaluation = response.data;
+      queryClient.setQueryData(automaticPromotionsQueryKey, response);
       const appliedPromotions = evaluation.applied_promotions ?? [];
       const evaluationSummary = getAppliedPromotionSummary(
         cartTotals,
@@ -663,6 +721,10 @@ const Cart: React.FC = () => {
       }
 
       setVoucherCode("");
+      await Promise.all([
+        promotionOffersQuery.refetch(),
+        activeEvaluationsQuery.refetch(),
+      ]);
       toast.success(
         redeemedPromotion?.promotion_name
           ? `${redeemedPromotion.promotion_name} applied.`
@@ -675,10 +737,6 @@ const Cart: React.FC = () => {
           error instanceof Error ? error.message : "The voucher could not be redeemed."
         )
       );
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session?.user.id] });
-      queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session?.user.id] });
     },
   });
 
@@ -722,17 +780,14 @@ const Cart: React.FC = () => {
         throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await refreshPromotionQueries();
       clearSelectedCartPromotion(session?.user.id);
       setSelectedPromotion(null);
       toast.success("Promotion removed.");
     },
     onError: (error) => {
       toast.error(friendlyNotificationMessage(error instanceof Error ? error.message : "Could not remove this promotion. Please try again."));
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart-promotion-offers", session?.user.id] });
-      queryClient.invalidateQueries({ queryKey: ["cart-active-promotion-evaluations", session?.user.id] });
     },
   });
 
@@ -800,8 +855,7 @@ const Cart: React.FC = () => {
       freeShippingApplied ||
       (freeShippingEligible &&
         (backendAppliedIds.has(id) ||
-          (selectedPromotionApplies && selectedPromotion?.promotionId === id) ||
-          promotion.promotionState === "applied"));
+          (selectedPromotionApplies && selectedPromotion?.promotionId === id)));
     const appliedPromotion = appliedPromotionsForTotals.find(
       (item) => appliedPromotionId(item) === id
     );
@@ -851,7 +905,7 @@ const Cart: React.FC = () => {
     );
   };
 
-  const eligiblePromotionCandidates = promotionCandidates.filter(
+  const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
     (promotion) => getPromotionDisplayState(promotion).freeShippingEligible
   );
   const eligiblePrimaryPromotions = eligiblePromotionCandidates.filter(
@@ -1282,12 +1336,18 @@ function PromotionOffer({
   onApply: () => void;
   onRemove?: () => void;
 }) {
-  const discountValue = Number(promotion.discount_value || promotion.discountInfo?.discountAmount || 0);
+  const appliedSavings = Number(promotion.applied_discount || 0);
+  const discountValue = Number(
+    promotion.discount_value ||
+      (appliedSavings > 0 ? 0 : promotion.discountInfo?.discountAmount) ||
+      0
+  );
   const freeShipping = isFreeShippingOffer(promotion);
   const discountType = `${promotion.type || ""} ${promotion.discount_type || ""} ${promotion.action?.type || ""}`.toLowerCase();
   const percentageDiscount = discountType.includes("percent");
   const potentialSavings = Number(
-    promotion.discountInfo?.discountAmount ||
+    appliedSavings ||
+      promotion.discountInfo?.discountAmount ||
       (percentageDiscount ? 0 : discountValue)
   );
   const benefitLabel = freeShipping
