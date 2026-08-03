@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
@@ -10,8 +10,6 @@ import { Button } from "../components/ui/button";
 const Login: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
   const [mobile, setMobile] = useState("");
   const [name, setName] = useState("");
   const [otp, setOtp] = useState("");
@@ -19,15 +17,6 @@ const Login: React.FC = () => {
   const [requiresName, setRequiresName] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const session = sessionService.getSession();
-  const locationState = location.state && typeof location.state === "object" ? (location.state as { from?: unknown }).from : null;
-  const redirectParam = searchParams.get("redirect");
-  const redirectTarget =
-    typeof locationState === "string" && locationState.startsWith("/") && locationState !== "/login"
-      ? locationState
-      : redirectParam?.startsWith("/") && redirectParam !== "/login"
-        ? redirectParam
-        : "/account";
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -67,6 +56,7 @@ const Login: React.FC = () => {
     setMessage("");
 
     try {
+      const hadGuestCartItems = guestStoreService.getCart().length > 0;
       await authService.verifyOTP(Number(mobile), Number(otp), requiresName ? name : undefined);
       const session = sessionService.getSession();
       if (session) {
@@ -76,21 +66,13 @@ const Login: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["wishlist", session.user.id] }),
         ]);
       }
-      navigate(redirectTarget, { replace: true });
+      navigate(hadGuestCartItems ? "/cart" : "/", { replace: true });
     } catch {
       setMessage("OTP verification failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (session) {
-      navigate(redirectTarget, { replace: true });
-    }
-  }, [navigate, redirectTarget, session]);
-
-  if (session) return null;
 
   return (
     <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-white px-6 py-12 font-sans lg:min-h-[calc(100vh-5rem)]">

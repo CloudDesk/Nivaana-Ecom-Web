@@ -367,8 +367,13 @@ const Home: React.FC = () => {
   });
 
   const homeSession = sessionService.getSession();
-  const promotionsQuery = useQuery({
-    queryKey: ["home-promotion-deals", homeSession?.user.id],
+  const publicPromotionsQuery = useQuery({
+    queryKey: ["home-public-promotion-deals"],
+    queryFn: () => promotionService.public("web", "IN", 10),
+  });
+
+  const assignedPromotionsQuery = useQuery({
+    queryKey: ["home-assigned-promotion-deals", homeSession?.user.id],
     queryFn: () => promotionService.mine("web"),
     enabled: Boolean(homeSession),
   });
@@ -380,7 +385,22 @@ const Home: React.FC = () => {
   });
 
   const products = useMemo(() => data?.data ?? [], [data?.data]);
-  const dealPromotions = useMemo(() => promotionsQuery.data?.data ?? [], [promotionsQuery.data?.data]);
+  const dealPromotions = useMemo(() => {
+    const promotionsById = new Map<number, Promotion>();
+
+    for (const promotion of publicPromotionsQuery.data?.data ?? []) {
+      promotionsById.set(promotion.id, promotion);
+    }
+    for (const promotion of assignedPromotionsQuery.data?.data ?? []) {
+      // Prefer the assigned record because it can contain the customer's
+      // voucher code, group validity, and usage information.
+      promotionsById.set(promotion.id, promotion);
+    }
+
+    return Array.from(promotionsById.values()).sort(
+      (a, b) => (a.priority ?? 999) - (b.priority ?? 999)
+    );
+  }, [assignedPromotionsQuery.data?.data, publicPromotionsQuery.data?.data]);
   const storefrontSections = storefrontConfigQuery.data?.data?.sections_by_key;
   const heroSection = firstStorefrontSection(storefrontSections?.["home.hero"]);
   const showcaseSection = firstStorefrontSection(storefrontSections?.["home.showcase"]);
@@ -851,7 +871,7 @@ const Home: React.FC = () => {
 
           <DealTripleSlider
             activeIndex={activeDeal}
-            loading={promotionsQuery.isLoading}
+            loading={publicPromotionsQuery.isLoading || (Boolean(homeSession) && assignedPromotionsQuery.isLoading)}
             promotions={dealPromotions}
             setActiveIndex={setActiveDeal}
           />

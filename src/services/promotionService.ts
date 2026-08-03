@@ -264,6 +264,16 @@ class PromotionService {
     return apiService.get<Promotion[]>(`/promotions/mine?channel=${encodeURIComponent(channel)}`);
   }
 
+  public(channel: string = "web", geo: string = "IN", limit: number = 10): Promise<ApiResponse<Promotion[]>> {
+    const queryParams = new URLSearchParams({
+      channel,
+      geo,
+      limit: String(limit),
+    });
+
+    return apiService.get<Promotion[]>(`/promotions/public?${queryParams.toString()}`);
+  }
+
   getRecommendedOffers(payload: RecommendationRequest): Promise<ApiResponse<RecommendationData>> {
     return apiService.post<RecommendationData>("/promotions/offers", {
       user_id: payload.userId,
