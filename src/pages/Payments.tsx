@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { paymentService, type PaymentResponseData, type TransactionRecord } from "../services/paymentService";
 import { orderService, type OrderDetails, type OrderSummary } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
+import { clearSelectedCartPromotion } from "../lib/cartPromotions";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
@@ -198,6 +199,7 @@ const Payments: React.FC = () => {
 
       if (isSuccessfulPayment(response)) {
         localStorage.removeItem(PENDING_TRANSACTION_KEY);
+        clearSelectedCartPromotion(session?.user.id);
         setPendingMerchantTransactionId("");
 
         if (session?.user.id) {
