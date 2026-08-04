@@ -124,6 +124,8 @@ export interface ApplicablePromotion {
   evaluation_id?: string;
   applied_discount?: number;
   stackable?: boolean;
+  auto_apply?: boolean;
+  application_mode?: "automatic" | "click_to_apply" | "code_entry";
 }
 
 export interface AppliedPromotion {
@@ -196,6 +198,7 @@ export interface ActiveEvaluationsData {
 export interface PromotionEvaluationRequest {
   cartId: string;
   userId: string;
+  evaluationId?: string;
   promotionId?: number;
   code?: string;
   cartData: PromotionCartData;
@@ -300,6 +303,7 @@ class PromotionService {
   evaluate(payload: PromotionEvaluationRequest): Promise<ApiResponse<PromotionEvaluationData>> {
     return apiService.post<PromotionEvaluationData>("/promotions/evaluate", {
       user_id: payload.userId,
+      ...(payload.evaluationId ? { evaluation_id: payload.evaluationId } : {}),
       application_type: payload.applicationType ?? "manual_coupon",
       ...(payload.promotionId ? { promotion_id: payload.promotionId } : {}),
       ...(payload.code ? { code: payload.code.trim().toUpperCase() } : {}),

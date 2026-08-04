@@ -4,17 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BadgeCheck,
-  BadgePercent,
   CalendarDays,
   Check,
-  CheckCircle2,
   Copy,
   Gift,
   Loader2,
   Percent,
   ShoppingBag,
   Sparkles,
-  Tag,
   TicketPercent,
   Truck,
   UserRound,
@@ -244,8 +241,9 @@ const Promotions: React.FC = () => {
       if (!userId || promotionEvaluationItems.length === 0) {
         throw new Error("Add products to your cart before applying this promotion.");
       }
-      if (!offersQuery.data?.data?.currentEvaluation?.evaluation_id) {
-        await promotionService.evaluateAutomatic({
+      let evaluationId = offersQuery.data?.data?.currentEvaluation?.evaluation_id;
+      if (!evaluationId) {
+        const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(userId),
           cartItems: promotionEvaluationItems,
           currentTotal: promotionCartData.total,
@@ -253,8 +251,10 @@ const Promotions: React.FC = () => {
           channel: "web",
           geo: "IN",
         });
+        evaluationId = automaticEvaluation.data.evaluation_id;
       }
       return promotionService.evaluate({
+        evaluationId,
         cartId: `cart-${userId}`,
         userId: String(userId),
         promotionId: promotion.id,
@@ -312,13 +312,6 @@ const Promotions: React.FC = () => {
   );
   const isAlreadyApplied = (promotionId: number | undefined | null) =>
     typeof promotionId === "number" && appliedPromotionIds.has(promotionId);
-  const personalPromotions = publicPromotions.filter(
-    (promotion) =>
-      !isAlreadyApplied(promotion.id) &&
-      (Boolean(promotion.assignment_id) ||
-        promotion.audience === "customer" ||
-        promotion.audience === "customer_group")
-  );
   const eligiblePromotions = (offers?.eligibleCoupons ?? []).filter(
     (promotion) => !isAlreadyApplied(promotion.promotion_id)
   );
@@ -342,49 +335,57 @@ const Promotions: React.FC = () => {
     autoPromotions.length > 0 ||
     appliedPromotions.length > 0 ||
     Boolean(bestCoupon);
-  const bestPromotionId = bestCoupon?.promotion_id;
-  const visibleEligiblePromotions = eligiblePromotions.filter(
-    (promotion) => promotion.promotion_id !== bestPromotionId
-  );
+  const availableApplicablePromotions = [
+    ...(bestCoupon ? [bestCoupon] : []),
+    ...eligiblePromotions,
+    ...stackablePromotions,
+    ...autoPromotions,
+  ].filter((promotion, index, promotions) => {
+    const id = promotion.promotion_id;
+    const code = promotion.code?.toUpperCase();
+    return promotions.findIndex((candidate) =>
+      typeof id === "number"
+        ? candidate.promotion_id === id
+        : Boolean(code) && candidate.code?.toUpperCase() === code
+    ) === index;
+  });
   const contextualPromotionIds = new Set(
     [
-      bestCoupon?.promotion_id,
-      ...eligiblePromotions.map((promotion) => promotion.promotion_id),
-      ...stackablePromotions.map((promotion) => promotion.promotion_id),
-      ...autoPromotions.map((promotion) => promotion.promotion_id),
+      ...availableApplicablePromotions.map((promotion) => promotion.promotion_id),
       ...appliedPromotions.map((promotion) => promotion.promotion_id),
     ].filter((id): id is number => typeof id === "number")
   );
   const contextualPromotionCodes = new Set(
     [
-      bestCoupon?.code,
-      ...eligiblePromotions.map((promotion) => promotion.code),
-      ...stackablePromotions.map((promotion) => promotion.code),
-      ...autoPromotions.map((promotion) => promotion.code),
+      ...availableApplicablePromotions.map((promotion) => promotion.code),
     ]
       .filter((code): code is string => Boolean(code))
       .map((code) => code.toUpperCase())
   );
-  const browsePromotions = publicPromotions.filter(
+  const additionalPublicPromotions = publicPromotions.filter(
     (promotion) =>
-      !personalPromotions.some((personalPromotion) => personalPromotion.id === promotion.id) &&
+      !isAlreadyApplied(promotion.id) &&
       !contextualPromotionIds.has(promotion.id) &&
       !(promotion.code && contextualPromotionCodes.has(promotion.code.toUpperCase()))
   );
+  const totalVisibleOffers =
+    appliedPromotions.length +
+    availableApplicablePromotions.length +
+    additionalPublicPromotions.length;
 
   return (
     <main className="min-h-screen bg-[#f6f7fb] px-4 py-8 sm:px-6 sm:py-10">
       <section className="mx-auto max-w-7xl">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#26344f] via-[#3f4e6c] to-[#56627e] px-6 py-8 text-white shadow-[0_22px_60px_rgba(38,52,79,0.22)] sm:px-9 lg:px-12 lg:py-10">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#26344f] via-[#3f4e6c] to-[#56627e] px-6 py-7 text-white shadow-[0_22px_60px_rgba(38,52,79,0.22)] sm:px-9 lg:px-10">
           <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[42px] border-[#fbbc05]/15" />
           <div className="pointer-events-none absolute -bottom-20 right-1/3 h-48 w-48 rounded-full bg-[#fbbc05]/10 blur-2xl" />
-          <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-[#ffd84d]">
                 <Sparkles className="h-3.5 w-3.5" />
                 Deals selected for you
               </span>
-              <h1 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl">
+              <h1 className="mt-3 text-3xl font-extrabold tracking-tight">
                 Make every cart more rewarding
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
@@ -420,7 +421,7 @@ const Promotions: React.FC = () => {
             Finding the best promotions for your cart...
           </div>
         ) : (
-          <div className="mt-9 space-y-10">
+          <div className="mt-8 space-y-8">
             {offersQuery.isError && hasCartContext && (
               <Notice
                 tone="error"
@@ -445,153 +446,59 @@ const Promotions: React.FC = () => {
               />
             )}
 
-            {personalPromotions.length > 0 && (
-              <section>
-                <SectionHeading
-                  icon={<Gift className="h-5 w-5" />}
-                  title="Special for you"
-                  subtitle="Personal and group offers selected for your account."
-                  count={personalPromotions.length}
-                />
-                <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {personalPromotions.map((promotion) => (
-                    <PublicPromotionCard
-                      key={`personal-${publicPromotionKey(promotion)}`}
-                      promotion={promotion}
-                      canApply={hasCartContext}
-                      copied={copiedCode === promotion.code}
-                      onCopy={copyPromotionCode}
-                      isApplying={
-                        applyPromotionMutation.isPending &&
-                        applyPromotionMutation.variables?.id === promotion.id
-                      }
-                      onApply={() => applyPromotionMutation.mutate(promotion)}
-                      personal
-                      disabledReason={ineligibleReasonById.get(promotion.id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {(bestCoupon || appliedPromotions.length > 0) && (
-              <div
-                className={`grid items-start gap-9 ${
-                  bestCoupon && appliedPromotions.length > 0
-                    ? "lg:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]"
-                    : ""
-                }`}
-              >
-                {bestCoupon && (
-                  <section>
-                    <SectionHeading
-                      icon={<Sparkles className="h-5 w-5" />}
-                      title="Your best match"
-                      subtitle="The strongest eligible saving for your current cart."
-                      count={1}
-                    />
-                    <div className="mt-5 max-w-2xl">
-                      <PromotionCard
-                        promotion={bestCoupon}
-                        badge="Recommended"
-                        featured
-                        copied={copiedCode === bestCoupon.code}
-                        onCopy={copyPromotionCode}
-                      />
-                    </div>
-                  </section>
-                )}
-
-                {appliedPromotions.length > 0 && (
-                  <section>
-                    <SectionHeading
-                      icon={<CheckCircle2 className="h-5 w-5" />}
-                      title="Applied to your cart"
-                      subtitle="Already included in your checkout total."
-                      count={appliedPromotions.length}
-                    />
-                    <div className="mt-5 grid gap-5">
-                      {appliedPromotions.map((promotion, index) => (
-                        <AppliedPromotionCard
-                          key={`${promotion.promotion_id || promotion.promotion_name}-${index}`}
-                          promotion={promotion}
-                          shippingSavings={promotionCartData.shipping_cost}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </div>
-            )}
-
-            {visibleEligiblePromotions.length > 0 && (
+            {totalVisibleOffers > 0 && (
               <section>
                 <SectionHeading
                   icon={<TicketPercent className="h-5 w-5" />}
-                  title="Ready to use"
-                  subtitle="Eligible offers you can use with this cart."
-                  count={visibleEligiblePromotions.length}
+                  title="Offers for you"
+                  subtitle="Applied benefits appear first, followed by offers available for this cart."
+                  count={totalVisibleOffers}
                 />
-                <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {visibleEligiblePromotions.map((promotion, index) => (
-                    <PromotionCard
-                      key={promotionKey(promotion, "eligible", index)}
+                <div className="mt-5 grid auto-rows-fr gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {appliedPromotions.map((promotion, index) => (
+                    <AppliedPromotionCard
+                      key={`applied-${promotion.promotion_id || promotion.promotion_name}-${index}`}
                       promotion={promotion}
-                      badge="Eligible"
-                      copied={copiedCode === promotion.code}
-                      onCopy={copyPromotionCode}
+                      shippingSavings={promotionCartData.shipping_cost}
                     />
                   ))}
-                </div>
-              </section>
-            )}
 
-            {stackablePromotions.length > 0 && (
-              <section>
-                <SectionHeading
-                  icon={<BadgePercent className="h-5 w-5" />}
-                  title="More offers"
-                  subtitle="Other offers available for your cart."
-                  count={stackablePromotions.length}
-                />
-                <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {stackablePromotions.map((promotion, index) => (
-                    <PromotionCard
-                      key={promotionKey(promotion, "stackable", index)}
-                      promotion={promotion}
-                      badge="Offer"
-                      copied={copiedCode === promotion.code}
-                      onCopy={copyPromotionCode}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
+                  {availableApplicablePromotions.map((promotion, index) => {
+                    const recommended = promotion.promotion_id === bestCoupon?.promotion_id;
+                    return (
+                      <PromotionCard
+                        key={promotionKey(promotion, "available", index)}
+                        promotion={promotion}
+                        badge={recommended ? "Recommended" : "Eligible"}
+                        featured={recommended}
+                        copied={copiedCode === promotion.code}
+                        onCopy={copyPromotionCode}
+                      />
+                    );
+                  })}
 
-            {browsePromotions.length > 0 && (
-              <section>
-                <SectionHeading
-                  icon={<Tag className="h-5 w-5" />}
-                  title="More offers to explore"
-                  subtitle="Browse active promotions and build a cart that qualifies."
-                  count={browsePromotions.length}
-                />
-                <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {browsePromotions.map((promotion) => (
-                    <PublicPromotionCard
-                      key={publicPromotionKey(promotion)}
-                      promotion={promotion}
-                      canApply={hasCartContext}
-                      copied={copiedCode === promotion.code}
-                      onCopy={copyPromotionCode}
-                      isApplying={
-                        applyPromotionMutation.isPending &&
-                        applyPromotionMutation.variables?.id === promotion.id
-                      }
-                      onApply={() => applyPromotionMutation.mutate(promotion)}
-                      disabledReason={ineligibleReasonById.get(promotion.id)}
-                    />
-                  ))}
+                  {additionalPublicPromotions.map((promotion) => {
+                    const personal =
+                      Boolean(promotion.assignment_id) ||
+                      promotion.audience === "customer" ||
+                      promotion.audience === "customer_group";
+                    return (
+                      <PublicPromotionCard
+                        key={publicPromotionKey(promotion)}
+                        promotion={promotion}
+                        canApply={hasCartContext}
+                        copied={copiedCode === promotion.code}
+                        onCopy={copyPromotionCode}
+                        isApplying={
+                          applyPromotionMutation.isPending &&
+                          applyPromotionMutation.variables?.id === promotion.id
+                        }
+                        onApply={() => applyPromotionMutation.mutate(promotion)}
+                        personal={personal}
+                        disabledReason={ineligibleReasonById.get(promotion.id)}
+                      />
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -757,14 +664,12 @@ function PromotionCard({
 
   return (
     <article
-      className={`group flex h-full flex-col overflow-hidden rounded-3xl border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.16)] ${
+      className={`group flex h-full min-h-[31rem] flex-col overflow-hidden rounded-3xl border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.16)] ${
         featured ? "border-[#fbbc05]/70 shadow-[0_18px_45px_rgba(251,188,5,0.16)]" : "border-[#e0e4ec] shadow-sm"
       }`}
     >
       <div
-        className={`relative overflow-hidden text-white ${
-          featured ? "px-5 py-4" : "px-5 py-5"
-        } ${
+        className={`relative min-h-[168px] overflow-hidden px-5 py-5 text-white ${
           featured
             ? "bg-gradient-to-br from-[#7b4bb3] via-[#8f4da6] to-[#d46287]"
             : isFreeShipping
@@ -775,9 +680,7 @@ function PromotionCard({
         <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full border-[18px] border-white/10" />
         <div className="relative flex items-start justify-between gap-3">
           <span
-            className={`grid place-items-center rounded-2xl bg-white/15 ${
-              featured ? "h-10 w-10" : "h-11 w-11"
-            }`}
+            className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15"
           >
             {offerIcon(promotion.type, isFreeShipping)}
           </span>
@@ -786,16 +689,14 @@ function PromotionCard({
           </span>
         </div>
         <p
-          className={`relative font-black tracking-tight ${
-            featured ? "mt-3 text-xl" : "mt-5 text-2xl"
-          }`}
+          className="relative mt-5 text-2xl font-black tracking-tight"
         >
           {applicableBenefit(promotion)}
         </p>
       </div>
 
-      <div className={`flex flex-1 flex-col ${featured ? "p-4" : "p-5"}`}>
-        <h3 className={`${featured ? "text-base" : "text-lg"} font-extrabold leading-6 text-[#172033]`}>
+      <div className="flex flex-1 flex-col p-5">
+        <h3 className="text-lg font-extrabold leading-6 text-[#172033]">
           {promotion.name}
         </h3>
         {promotion.description && (
@@ -803,15 +704,13 @@ function PromotionCard({
         )}
 
         {promotion.code && (
-          <div className={featured ? "mt-3" : "mt-4"}>
+          <div className="mt-4">
             <CodePanel code={promotion.code} copied={copied} onCopy={onCopy} />
           </div>
         )}
 
         <div
-          className={`mt-auto grid gap-2 border-t border-[#edf0f5] text-sm ${
-            featured ? "pt-3" : "pt-4"
-          }`}
+          className="mt-auto grid gap-2 border-t border-[#edf0f5] pt-4 text-sm"
         >
           {Number(discountAmount || 0) > 0 && (
             <PromotionMeta label="You save" value={formatCurrency(discountAmount)} highlight />
@@ -825,9 +724,7 @@ function PromotionCard({
         {promotion.code && (
           <Link
             to="/cart"
-            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042] ${
-              featured ? "mt-3" : "mt-4"
-            }`}
+            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
           >
             Use in cart
             <ArrowRight className="h-4 w-4" />
@@ -850,15 +747,23 @@ function AppliedPromotionCard({
   const isFreeShipping = promotion.is_free_shipping || type.toUpperCase().includes("SHIPPING");
 
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-4 text-white">
-        <span className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.12em]">
-          <BadgeCheck className="h-5 w-5" />
-          Applied
-        </span>
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15">
-          {offerIcon(type, isFreeShipping)}
-        </span>
+    <article className="flex h-full min-h-[31rem] flex-col overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
+      <div className="relative min-h-[168px] overflow-hidden bg-gradient-to-br from-emerald-700 to-emerald-500 px-5 py-5 text-white">
+        <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full border-[18px] border-white/10" />
+        <div className="relative flex items-start justify-between gap-3">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15">
+            {offerIcon(type, isFreeShipping)}
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em]">
+            <BadgeCheck className="h-4 w-4" />
+            Applied
+          </span>
+        </div>
+        <p className="relative mt-5 text-2xl font-black tracking-tight">
+          {isFreeShipping
+            ? "FREE SHIPPING"
+            : `${formatCurrency(promotion.discount_amount)} SAVED`}
+        </p>
       </div>
       <div className="flex flex-1 flex-col p-5">
         <h3 className="text-lg font-extrabold text-[#172033]">{title}</h3>
@@ -935,9 +840,9 @@ function PublicPromotionCard({
       : "Personal offer";
 
   return (
-    <article className={`group flex h-full flex-col overflow-hidden rounded-3xl border border-[#e0e4ec] bg-white shadow-sm transition duration-300 ${disabledReason ? "opacity-65" : "hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.14)]"}`}>
+    <article className={`group flex h-full min-h-[31rem] flex-col overflow-hidden rounded-3xl border border-[#e0e4ec] bg-white shadow-sm transition duration-300 ${disabledReason ? "opacity-65" : "hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.14)]"}`}>
       <div
-        className={`relative overflow-hidden px-5 py-5 text-white ${
+        className={`relative min-h-[168px] overflow-hidden px-5 py-5 text-white ${
           isFreeShipping
             ? "bg-gradient-to-br from-[#177a71] to-[#26a497]"
             : isCodeEntry

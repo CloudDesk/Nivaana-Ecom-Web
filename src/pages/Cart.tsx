@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   CheckCircle2,
   Heart,
   Loader2,
@@ -110,6 +111,7 @@ const Cart: React.FC = () => {
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
   const [voucherCode, setVoucherCode] = useState("");
   const [offersModalOpen, setOffersModalOpen] = useState(false);
+  const [offerActionError, setOfferActionError] = useState<string | null>(null);
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(session?.user.id)
   );
@@ -164,6 +166,7 @@ const Cart: React.FC = () => {
     { id?: number; productid: number; userid?: number; quantity: number; iswishlist?: boolean },
     { previousCart?: ApiResponse<CartItem[]> } | undefined
   >({
+    scope: { id: "cart-quantity-updates" },
     mutationFn: ({ id, productid, userid, quantity, iswishlist }) => {
       if (!session) {
         guestStoreService.updateCartQuantity(productid, quantity);
@@ -223,7 +226,6 @@ const Cart: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
-      toast.success("Cart updated.");
     },
     onError: (_error, _variables, context) => {
       if (session && context?.previousCart) {
@@ -303,7 +305,7 @@ const Cart: React.FC = () => {
         channel: "web",
         geo: "IN",
       }),
-    enabled: Boolean(session?.user.id && promotionRows.length > 0),
+    enabled: Boolean(session?.user.id && promotionRows.length > 0 && !mutation.isPending),
     staleTime: 0,
     retry: false,
   });
@@ -333,14 +335,14 @@ const Cart: React.FC = () => {
         channel: "web",
         geo: "IN",
       }),
-    enabled: Boolean(promotionRows.length > 0),
+    enabled: Boolean(promotionRows.length > 0 && !mutation.isPending),
     staleTime: 1000 * 60,
   });
 
   const activeEvaluationsQuery = useQuery({
     queryKey: ["cart-active-promotion-evaluations", session?.user.id, cartSignature],
     queryFn: () => promotionService.getActiveEvaluations(session!.user.id),
-    enabled: Boolean(session && promotionRows.length > 0),
+    enabled: Boolean(session && promotionRows.length > 0 && !mutation.isPending),
     staleTime: 1000 * 30,
   });
 
@@ -586,8 +588,9 @@ const Cart: React.FC = () => {
       // Match the mobile flow: create the automatic evaluation only when one
       // does not already exist. Recreating it here would erase previously
       // selected stackable promotions before adding the next one.
-      if (!backendEvaluation?.evaluation_id) {
-        await promotionService.evaluateAutomatic({
+      let evaluationId = backendEvaluation?.evaluation_id;
+      if (!evaluationId) {
+        const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(session!.user.id),
           cartItems: promotionEvaluationItems,
           currentTotal: cartTotals.total,
@@ -595,11 +598,13 @@ const Cart: React.FC = () => {
           channel: "web",
           geo: "IN",
         });
+        evaluationId = automaticEvaluation.data.evaluation_id;
       }
 
       return promotionService.evaluate({
         cartId: `cart-${session!.user.id}`,
         userId: String(session!.user.id),
+        evaluationId,
         promotionId: promotionId(promotion),
         applicationType: promotion.stackable
           ? "stackable_promotion"
@@ -611,6 +616,7 @@ const Cart: React.FC = () => {
         geo: "IN",
       });
     },
+    onMutate: () => setOfferActionError(null),
     onSuccess: async (response, promotion) => {
       if (!session?.user.id) return;
 
@@ -636,6 +642,7 @@ const Cart: React.FC = () => {
 
       saveSelectedCartPromotion(nextPromotion);
       setSelectedPromotion(nextPromotion);
+      setOfferActionError(null);
       await Promise.all([
         promotionOffersQuery.refetch(),
         activeEvaluationsQuery.refetch(),
@@ -646,11 +653,15 @@ const Cart: React.FC = () => {
       const message = error instanceof Error ? error.message : "Could not apply this promotion. Please try another offer.";
 
       if (message.toLowerCase().includes("already applied")) {
-        toast.warning("This offer is already applied to your cart.");
+        const alreadyAppliedMessage = "This offer is already applied to your cart.";
+        setOfferActionError(alreadyAppliedMessage);
+        toast.warning(alreadyAppliedMessage);
         return;
       }
 
-      toast.error(friendlyNotificationMessage(message));
+      const friendlyMessage = friendlyNotificationMessage(message);
+      setOfferActionError(friendlyMessage);
+      toast.error(friendlyMessage);
     },
   });
 
@@ -662,8 +673,9 @@ const Cart: React.FC = () => {
       if (promotionEvaluationItems.length === 0) {
         throw new Error("Add an item to your cart before redeeming a voucher.");
       }
-      if (!backendEvaluation?.evaluation_id) {
-        await promotionService.evaluateAutomatic({
+      let evaluationId = backendEvaluation?.evaluation_id;
+      if (!evaluationId) {
+        const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(session.user.id),
           cartItems: promotionEvaluationItems,
           currentTotal: cartTotals.total,
@@ -671,11 +683,13 @@ const Cart: React.FC = () => {
           channel: "web",
           geo: "IN",
         });
+        evaluationId = automaticEvaluation.data.evaluation_id;
       }
 
       return promotionService.evaluate({
         cartId: `cart-${session.user.id}`,
         userId: String(session.user.id),
+        evaluationId,
         code,
         cartData: promotionCartData,
         cartItems: promotionEvaluationItems,
@@ -684,6 +698,7 @@ const Cart: React.FC = () => {
         geo: "IN",
       });
     },
+    onMutate: () => setOfferActionError(null),
     onSuccess: async (response) => {
       if (!session?.user.id) return;
 
@@ -721,6 +736,7 @@ const Cart: React.FC = () => {
       }
 
       setVoucherCode("");
+      setOfferActionError(null);
       await Promise.all([
         promotionOffersQuery.refetch(),
         activeEvaluationsQuery.refetch(),
@@ -732,11 +748,11 @@ const Cart: React.FC = () => {
       );
     },
     onError: (error) => {
-      toast.error(
-        voucherErrorMessage(
-          error instanceof Error ? error.message : "The voucher could not be redeemed."
-        )
+      const message = voucherErrorMessage(
+        error instanceof Error ? error.message : "The voucher could not be redeemed."
       );
+      setOfferActionError(message);
+      toast.error(message);
     },
   });
 
@@ -849,16 +865,16 @@ const Cart: React.FC = () => {
     const freeShippingOffer = isFreeShippingOffer(promotion);
     const freeShippingEligible =
       !freeShippingOffer || isFreeShippingPromotionEligible(promotion, cartTotals.subtotal);
+    const appliedPromotion = appliedPromotionsForTotals.find(
+      (item) => appliedPromotionId(item) === id
+    );
     const freeShippingApplied =
-      freeShippingOffer && freeShippingEligible && promotionSummary.effectiveShipping === 0;
+      freeShippingOffer && freeShippingEligible && Boolean(appliedPromotion);
     const isApplied =
       freeShippingApplied ||
       (freeShippingEligible &&
         (backendAppliedIds.has(id) ||
           (selectedPromotionApplies && selectedPromotion?.promotionId === id)));
-    const appliedPromotion = appliedPromotionsForTotals.find(
-      (item) => appliedPromotionId(item) === id
-    );
     const canRemove = Boolean(isApplied && appliedPromotion && !appliedPromotion.is_auto);
 
     return {
@@ -1210,12 +1226,19 @@ const Cart: React.FC = () => {
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Checking offers
                     </div>
+                  ) : promotionOffersQuery.isError ? (
+                    <p className="mt-3 text-xs font-semibold text-red-600">
+                      Offers could not be checked. Please refresh and try again.
+                    </p>
                   ) : summaryPromotions.length > 0 ? (
                     <div className="mt-3 space-y-3">
                       {summaryPromotions.map(renderPromotionOffer)}
                       <button
                         type="button"
-                        onClick={() => setOffersModalOpen(true)}
+                        onClick={() => {
+                          setOfferActionError(null);
+                          setOffersModalOpen(true);
+                        }}
                         className="flex w-full items-center justify-center rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-xs font-extrabold text-[#26344f] transition hover:border-[#fbbc05] hover:bg-[#fffaf0]"
                       >
                         View all offers ({eligiblePromotionCandidates.length})
@@ -1275,6 +1298,24 @@ const Cart: React.FC = () => {
                 <X className="h-5 w-5" />
               </button>
             </header>
+
+            {offerActionError && (
+              <div
+                className="mx-5 mt-4 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-semibold text-red-700"
+                role="alert"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p className="min-w-0 flex-1">{offerActionError}</p>
+                <button
+                  type="button"
+                  className="shrink-0 text-red-500 hover:text-red-700"
+                  onClick={() => setOfferActionError(null)}
+                  aria-label="Dismiss offer error"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             <div className="overflow-y-auto px-5 py-4">
               <div className="space-y-2.5">
