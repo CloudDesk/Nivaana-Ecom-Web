@@ -21,7 +21,6 @@ import {
   UserRound,
   Upload,
   X,
-  Play,
   Camera,
   FileVideo,
   Info,
@@ -37,9 +36,6 @@ import {
   type TrackingDetails,
 } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
-import productSampleImg from "../assets/Fragranceandblends.png";
-import packageSampleImg from "../assets/Gemini_Generated_Image_fmqf65fmqf65fmqf.png";
-import unboxingSampleVid from "../assets/I_need_a_video_with_insence_st.mp4";
 import {
   returnSourceService,
   type AllowedReturnReason,
@@ -1106,26 +1102,33 @@ function OrderLineRow({
               Checking
             </span>
           ) : eligibilityItem && isAnyEligible && !hasOpenReturnRequest ? (
-            <div className="flex flex-wrap justify-end gap-2">
-              {isReturnEligible && (
-                <Button
-                  variant="secondary"
-                  className="min-h-8 gap-1.5 border-[var(--color-border)] bg-white px-3 text-[11px] text-[var(--color-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
-                  onClick={() => onRequestReturn(line, "return", eligibilityItem)}
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Return
-                </Button>
-              )}
-              {isReplacementEligible && (
-                <Button
-                  variant="secondary"
-                  className="min-h-8 gap-1.5 border-[var(--color-border)] bg-white px-3 text-[11px] text-[var(--color-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
-                  onClick={() => onRequestReturn(line, "replacement", eligibilityItem)}
-                >
-                  <CheckCircle2 className="h-3 w-3" />
-                  Replace
-                </Button>
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex flex-wrap justify-end gap-2">
+                {isReturnEligible && (
+                  <Button
+                    variant="secondary"
+                    className="min-h-8 gap-1.5 border-[var(--color-border)] bg-white px-3 text-[11px] text-[var(--color-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
+                    onClick={() => onRequestReturn(line, "return", eligibilityItem)}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Return
+                  </Button>
+                )}
+                {isReplacementEligible && (
+                  <Button
+                    variant="secondary"
+                    className="min-h-8 gap-1.5 border-[var(--color-border)] bg-white px-3 text-[11px] text-[var(--color-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
+                    onClick={() => onRequestReturn(line, "replacement", eligibilityItem)}
+                  >
+                    <CheckCircle2 className="h-3 w-3" />
+                    Replace
+                  </Button>
+                )}
+              </div>
+              {getRemainingClaimDuration(eligibilityItem) && (
+                <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-[var(--radius-sm)] border border-amber-100">
+                  Remaining: {getRemainingClaimDuration(eligibilityItem)}
+                </span>
               )}
             </div>
           ) : hasOpenReturnRequest ? (
@@ -1677,6 +1680,7 @@ function ReturnRequestModal({
   const [evidence, setEvidence] = useState<Array<{ id: string; file: File; attachmenttype: AttachmentType }>>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [samplePreview, setSamplePreview] = useState<{ title: string; type: "image" | "video"; url: string } | null>(null);
 
   useEffect(() => {
@@ -1689,7 +1693,6 @@ function ReturnRequestModal({
 
   const requiredRules = useMemo(() => getRequiredEvidenceRules(selectedReason), [selectedReason]);
   const requiredTypes = useMemo(() => requiredRules.map((rule) => rule.type), [requiredRules]);
-  const optionalTypes = useMemo(() => getOptionalEvidenceTypes(selectedReason), [selectedReason]);
   const uploadRules = useMemo(() => getUploadEvidenceRules(selectedReason), [selectedReason]);
   const maxQty = Math.max(1, modal.item.remainingeligiblequantity || 1);
 
@@ -1701,46 +1704,52 @@ function ReturnRequestModal({
       attachmenttype: guessAttachmentType(file, selectedReason),
     }));
     setEvidence((current) => [...current, ...drafts]);
+    setFieldErrors((current) => ({ ...current, evidence: "" }));
   };
 
-  const addFilesForType = (attachmenttype: AttachmentType, files: FileList | null) => {
-    if (!files?.length) return;
-    const drafts = Array.from(files).map((file) => ({
-      id: `${attachmenttype}-${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
-      file,
-      attachmenttype,
-    }));
-    setEvidence((current) => [...current, ...drafts]);
-  };
+  
 
-  const validate = () => {
-    if (!selectedReason) return "Choose a reason.";
-    if (!resolution) return "Choose what you want us to do.";
-    if (quantity <= 0 || quantity > maxQty) return `Quantity must be between 1 and ${maxQty}.`;
-    if (isPackageOpened && selectedReason.openedpackageallowed === false) {
-      return "This reason is available only when the package is unopened.";
+  const validate = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!selectedReason) {
+      errs.reason = "Choose a reason.";
+    }
+    if (!resolution) {
+      errs.resolution = "Choose what you want us to do.";
+    }
+    if (quantity <= 0 || quantity > maxQty) {
+      errs.quantity = `Quantity must be between 1 and ${maxQty}.`;
+    }
+    if (isPackageOpened && selectedReason && selectedReason.openedpackageallowed === false) {
+      errs.isPackageOpened = "This reason is available only when the package is unopened.";
     }
     for (const rule of requiredRules) {
-      const count = evidence.filter((item) => item.attachmenttype === rule.type).length;
+      const count = evidence.filter((item) => getEvidenceBucket(item.attachmenttype) === rule.type).length;
       if (count < rule.minimum) {
-        return `${formatStatus(rule.type)} requires ${rule.minimum} file${rule.minimum > 1 ? "s" : ""} for this reason.`;
+        errs.evidence = `${formatEvidenceLabel(rule.type)} requires ${rule.minimum} file${rule.minimum > 1 ? "s" : ""} for this reason.`;
+        break;
       }
     }
-    const invalidEvidence = evidence
-      .map((item) => getEvidenceFileError(item.file, item.attachmenttype))
-      .find(Boolean);
-    if (invalidEvidence) return invalidEvidence;
-    return "";
+    if (!errs.evidence) {
+      const invalidEvidence = evidence
+        .map((item) => getEvidenceFileError(item.file, item.attachmenttype))
+        .find(Boolean);
+      if (invalidEvidence) {
+        errs.evidence = invalidEvidence;
+      }
+    }
+    return errs;
   };
 
   const handleSubmit = async () => {
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
       return;
     }
 
     setSubmitting(true);
+    setFieldErrors({});
     setError("");
     try {
       await onSubmit({
@@ -1757,7 +1766,7 @@ function ReturnRequestModal({
         evidence: evidence.map((item) => ({
           file: item.file,
           attachmenttype: item.attachmenttype,
-          isrequired: requiredTypes.includes(item.attachmenttype),
+          isrequired: requiredTypes.includes(getEvidenceBucket(item.attachmenttype)),
         })),
       });
     } catch (submitError) {
@@ -1800,24 +1809,32 @@ function ReturnRequestModal({
                 <FormField label="Reason">
                   <select
                     value={reasonOptionValue}
-                    onChange={(event) => setReasonOptionValue(event.target.value)}
+                    onChange={(event) => {
+                      setReasonOptionValue(event.target.value);
+                      setFieldErrors((current) => ({ ...current, reason: "", isPackageOpened: "" }));
+                    }}
                     className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                   >
                     {availableReasons.map((reason) => (
                       <option key={getReasonOptionValue(reason)} value={getReasonOptionValue(reason)}>{reason.reasonname}</option>
                     ))}
                   </select>
+                  {fieldErrors.reason && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.reason}</p>}
                 </FormField>
                 <FormField label="Resolution">
                   <select
                     value={resolution}
-                    onChange={(event) => setResolution(event.target.value as typeof resolution)}
+                    onChange={(event) => {
+                      setResolution(event.target.value as typeof resolution);
+                      setFieldErrors((current) => ({ ...current, resolution: "" }));
+                    }}
                     className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                   >
                     {resolutionOptions.map((option) => (
                       <option key={option} value={option}>{formatStatus(option)}</option>
                     ))}
                   </select>
+                  {fieldErrors.resolution && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.resolution}</p>}
                 </FormField>
               </div>
 
@@ -1828,142 +1845,71 @@ function ReturnRequestModal({
                     min={1}
                     max={maxQty}
                     value={quantity}
-                    onChange={(event) => setQuantity(Number(event.target.value || 1))}
+                    onChange={(event) => {
+                      setQuantity(Number(event.target.value || 1));
+                      setFieldErrors((current) => ({ ...current, quantity: "" }));
+                    }}
                     className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                   />
+                  {fieldErrors.quantity && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.quantity}</p>}
                 </FormField>
-                <label className="flex min-h-12 items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)]">
-                  <input
-                    type="checkbox"
-                    checked={isPackageOpened}
-                    onChange={(event) => setIsPackageOpened(event.target.checked)}
-                    className="h-4 w-4 accent-[var(--color-primary)]"
-                  />
-                  Package opened
-                </label>
+                <FormField label="Package Status">
+                  <label className="flex h-12 items-center gap-3 bg-white px-3 text-sm font-semibold text-[var(--color-text)]">
+                    <input
+                      type="checkbox"
+                      checked={isPackageOpened}
+                      onChange={(event) => {
+                        setIsPackageOpened(event.target.checked);
+                        setFieldErrors((current) => ({ ...current, isPackageOpened: "" }));
+                      }}
+                      className="h-4 w-4 accent-[var(--color-primary)]"
+                    />
+                    Package opened
+                  </label>
+                  {fieldErrors.isPackageOpened && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.isPackageOpened}</p>}
+                </FormField>
               </div>
 
-              {selectedReason && (
-                <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-                  <div className="flex items-start gap-2 text-sm font-semibold text-[var(--color-text)]">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-secondary)]" />
-                    <span>{selectedReason.openedpackageallowed ? "Keep product and packaging available for verification." : "This reason accepts unopened packages only."}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedReason.reasondeadline && (
-                      <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[var(--color-secondary)]">
-                        Deadline: {formatDate(selectedReason.reasondeadline)}
-                      </span>
-                    )}
-                    {selectedReason.remainingclaimmilliseconds !== null && selectedReason.remainingclaimmilliseconds !== undefined && (
-                      <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[var(--color-secondary)]">
-                        Remaining: {formatDuration(selectedReason.remainingclaimmilliseconds)}
-                      </span>
-                    )}
-                    {requiredRules.map((rule) => (
-                      <span key={rule.type} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[var(--color-secondary)]">
-                        Required: {formatStatus(rule.type)} x{rule.minimum}
-                      </span>
-                    ))}
-                    {optionalTypes.map((type) => (
-                      <span key={type} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[var(--color-muted)]">Optional: {formatStatus(type)}</span>
-                    ))}
-                  </div>
-                  <div className="mt-3 grid gap-2 text-xs font-semibold text-[var(--color-muted)] sm:grid-cols-2">
-                    <span>Pickup: {selectedReason.pickuprequired ? "Required after admin approval" : "Not required for selected outcome"}</span>
-                    <span>Processing: {formatStatus(selectedReason.resolutiontiming)}</span>
-                    {selectedReason.stockunavailableresolution && (
-                      <span>Stock fallback: {formatStatus(selectedReason.stockunavailableresolution)}</span>
-                    )}
-                    <span>Reverse shipping: Nivaana paid</span>
-                  </div>
 
-                  <div className="mt-4 border-t border-[var(--color-border)] pt-4">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)] mb-2.5">
-                      Sample Guides for Upload
-                    </p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setSamplePreview({ title: "Sample Product Photo", type: "image", url: productSampleImg })}
-                        className="group flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-2 text-left hover:border-[#fbbc05] hover:shadow-sm transition duration-200"
-                      >
-                        <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-slate-100">
-                          <img src={productSampleImg} alt="Product sample" className="h-full w-full object-cover group-hover:scale-105 transition duration-200" />
-                        </div>
-                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">Product Photo</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setSamplePreview({ title: "Sample Package Photo", type: "image", url: packageSampleImg })}
-                        className="group flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-2 text-left hover:border-[#fbbc05] hover:shadow-sm transition duration-200"
-                      >
-                        <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-slate-100">
-                          <img src={packageSampleImg} alt="Package sample" className="h-full w-full object-cover group-hover:scale-105 transition duration-200" />
-                        </div>
-                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">Package Photo</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setSamplePreview({ title: "Sample Unboxing Video", type: "video", url: unboxingSampleVid })}
-                        className="group flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-2 text-left hover:border-[#fbbc05] hover:shadow-sm transition duration-200"
-                      >
-                        <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-sm)] bg-slate-100">
-                          <video src={unboxingSampleVid} muted playsInline autoPlay loop className="h-full w-full object-cover group-hover:scale-105 transition duration-200" />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-sm transition group-hover:scale-110">
-                              <Play className="h-3 w-3 fill-current ml-0.5" />
-                            </span>
-                          </div>
-                        </div>
-                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">Unboxing Video</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Evidence</p>
-                  <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-bold text-[var(--color-secondary)] transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10">
-                    <Upload className="h-3.5 w-3.5" />
-                    Add other files
-                    <input className="hidden" type="file" multiple accept="image/*,video/*,application/pdf" onChange={(event) => addFiles(event.target.files)} />
-                  </label>
-                </div>
-
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)] mb-2">Evidence Requirements</p>
+                <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4 text-xs font-semibold space-y-2">
                   {uploadRules.map((rule) => {
-                    const uploadedCount = evidence.filter((item) => item.attachmenttype === rule.type).length;
-                    const accept = rule.type === "defect_video" || rule.type === "unboxing_video" ? "video/*" : "image/*";
+                    const uploadedCount = evidence.filter((item) => getEvidenceBucket(item.attachmenttype) === rule.type).length;
                     return (
-                      <label
-                        key={rule.type}
-                        className={cn(
-                          "flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-sm)] border bg-white px-3 py-2 text-sm transition",
-                          rule.required && uploadedCount < rule.minimum
-                            ? "border-amber-200 hover:border-[#fbbc05]"
-                            : "border-[var(--color-border)] hover:border-[var(--color-primary)]"
-                        )}
-                      >
-                        <span>
-                          <span className="block font-bold text-[var(--color-text)]">{formatStatus(rule.type)}</span>
-                          <span className="text-xs font-semibold text-[var(--color-muted)]">
-                            {rule.required ? `Required x${rule.minimum}` : "Optional"} · Uploaded {uploadedCount}
+                      <div key={rule.type} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-dashed border-[var(--color-border)] pb-2 last:border-0 last:pb-0">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "h-2 w-2 rounded-full",
+                            rule.required && uploadedCount < rule.minimum ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+                          )} />
+                          <span className="font-bold text-[var(--color-text)]">{formatEvidenceLabel(rule.type)}</span>
+                          <span className="text-[11px] text-[var(--color-muted)]">
+                            ({rule.required ? `Required x${rule.minimum}` : "Optional"})
                           </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-[var(--color-secondary)]">
+                          Uploaded: {uploadedCount}
                         </span>
-                        <span className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-surface)] px-3 text-xs font-bold text-[var(--color-secondary)]">
-                          <Upload className="h-3.5 w-3.5" />
-                          Upload
-                        </span>
-                        <input className="hidden" type="file" multiple accept={accept} onChange={(event) => addFilesForType(rule.type, event.target.files)} />
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] bg-[#fbbc05] px-5 text-sm font-bold text-slate-900 shadow-sm transition hover:bg-[#e6a800]">
+                    <Upload className="h-4 w-4" />
+                    Upload Photos / Videos
+                    <input className="hidden" type="file" multiple accept="image/*,video/*" onChange={(event) => addFiles(event.target.files)} />
+                  </label>
+                </div>
+
+                {fieldErrors.evidence && (
+                  <p className="mt-2 rounded-[var(--radius-sm)] border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
+                    {fieldErrors.evidence}
+                  </p>
+                )}
 
                 <div className="mt-3 space-y-2">
                   {evidence.length === 0 ? (
@@ -1988,14 +1934,17 @@ function ReturnRequestModal({
                             }
                             className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
                           >
-                            {(["product_photo", "package_photo", "unboxing_video", "defect_video", "other"] as AttachmentType[]).map((type) => (
-                              <option key={type} value={type}>{formatStatus(type)}</option>
+                            {(["product_photo", "defect_video"] as AttachmentType[]).map((type) => (
+                              <option key={type} value={type}>{formatEvidenceLabel(type)}</option>
                             ))}
                           </select>
                           <button
                             type="button"
                             className="grid h-10 w-10 place-items-center rounded-full border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100"
-                            onClick={() => setEvidence((current) => current.filter((draft) => draft.id !== item.id))}
+                            onClick={() => {
+                              setEvidence((current) => current.filter((draft) => draft.id !== item.id));
+                              setFieldErrors((current) => ({ ...current, evidence: "" }));
+                            }}
                             aria-label="Remove evidence file"
                           >
                             <X className="h-4 w-4" />
@@ -2084,10 +2033,45 @@ function getResolutionOptions(reason: AllowedReturnReason | undefined, requestty
   );
 }
 
+function getEvidenceBucket(type: AttachmentType): AttachmentType {
+  if (type === "package_photo") return "product_photo";
+  if (type === "unboxing_video") return "defect_video";
+  return type;
+}
+
+function formatEvidenceLabel(type: AttachmentType) {
+  const bucket = getEvidenceBucket(type);
+  if (bucket === "product_photo") return "Product Photo / Package Photo";
+  if (bucket === "defect_video") return "Defect Video / Unboxing Video";
+  return formatStatus(type);
+}
+
+function normalizeEvidenceRules(
+  rules: Array<{ type: AttachmentType; required?: boolean; minimum?: number }>
+): Array<{ type: AttachmentType; required: boolean; minimum: number }> {
+  const byType = new Map<AttachmentType, { type: AttachmentType; required: boolean; minimum: number }>();
+
+  rules.forEach((rule) => {
+    const type = getEvidenceBucket(rule.type);
+    if (type !== "product_photo" && type !== "defect_video") return;
+
+    const existing = byType.get(type);
+    byType.set(type, {
+      type,
+      required: Boolean(existing?.required || rule.required),
+      minimum: Math.max(Number(existing?.minimum || 0), Number(rule.minimum || 0)),
+    });
+  });
+
+  return (["product_photo", "defect_video"] as AttachmentType[])
+    .map((type) => byType.get(type))
+    .filter(Boolean) as Array<{ type: AttachmentType; required: boolean; minimum: number }>;
+}
+
 function getRequiredEvidenceRules(reason: AllowedReturnReason | undefined): Array<{ type: AttachmentType; minimum: number }> {
   if (!reason) return [];
   if (Array.isArray(reason.evidencerules) && reason.evidencerules.length > 0) {
-    return reason.evidencerules
+    return normalizeEvidenceRules(reason.evidencerules)
       .filter((rule) => rule.required && rule.minimum > 0)
       .map((rule) => ({ type: rule.type, minimum: Math.max(1, Number(rule.minimum || 1)) }));
   }
@@ -2098,7 +2082,7 @@ function getRequiredEvidenceRules(reason: AllowedReturnReason | undefined): Arra
 function getRequiredEvidenceTypes(reason: AllowedReturnReason | undefined): AttachmentType[] {
   if (!reason) return [];
   if (Array.isArray(reason.evidencerules) && reason.evidencerules.length > 0) {
-    return reason.evidencerules
+    return normalizeEvidenceRules(reason.evidencerules)
       .filter((rule) => rule.required && rule.minimum > 0)
       .map((rule) => rule.type);
   }
@@ -2106,32 +2090,31 @@ function getRequiredEvidenceTypes(reason: AllowedReturnReason | undefined): Atta
   if (!reqs) return [];
   const types: AttachmentType[] = [];
   if (reqs.photorequired) types.push("product_photo");
-  if (reqs.packagephotorequired) types.push("package_photo");
+  if (reqs.packagephotorequired) types.push("product_photo");
   if (reqs.videorequired) types.push("defect_video");
-  if (reqs.unboxingvideorequired) types.push("unboxing_video");
-  return types;
+  if (reqs.unboxingvideorequired) types.push("defect_video");
+  return Array.from(new Set(types.map(getEvidenceBucket)));
 }
 
 function getOptionalEvidenceTypes(reason: AllowedReturnReason | undefined): AttachmentType[] {
   if (!reason) return [];
   if (Array.isArray(reason.evidencerules) && reason.evidencerules.length > 0) {
-    return reason.evidencerules
+    return normalizeEvidenceRules(reason.evidencerules)
       .filter((rule) => !rule.required)
       .map((rule) => rule.type);
   }
   const reqs = reason.evidencerequirements;
   if (!reqs) return [];
   const types: AttachmentType[] = [];
-  if (reqs.packagephotooptional && !reqs.packagephotorequired) types.push("package_photo");
-  if (reqs.unboxingvideooptional && !reqs.unboxingvideorequired) types.push("unboxing_video");
-  return types;
+  if (reqs.packagephotooptional && !reqs.packagephotorequired) types.push("product_photo");
+  if (reqs.unboxingvideooptional && !reqs.unboxingvideorequired) types.push("defect_video");
+  return Array.from(new Set(types.map(getEvidenceBucket)));
 }
 
 function getUploadEvidenceRules(reason: AllowedReturnReason | undefined): Array<{ type: AttachmentType; required: boolean; minimum: number }> {
   if (!reason) return [];
   if (Array.isArray(reason.evidencerules) && reason.evidencerules.length > 0) {
-    return reason.evidencerules
-      .filter((rule) => rule.type !== "other")
+    return normalizeEvidenceRules(reason.evidencerules)
       .map((rule) => ({
         type: rule.type,
         required: Boolean(rule.required),
@@ -2150,19 +2133,15 @@ function getUploadEvidenceRules(reason: AllowedReturnReason | undefined): Array<
 }
 
 function guessAttachmentType(file: File, reason: AllowedReturnReason | undefined): AttachmentType {
-  const name = file.name.toLowerCase();
   const type = file.type.toLowerCase();
-  const required = getRequiredEvidenceTypes(reason);
+  void reason;
 
   if (type.startsWith("video/")) {
-    if (name.includes("unbox")) return "unboxing_video";
-    if (name.includes("defect") || name.includes("damage") || name.includes("broken")) return "defect_video";
-    return required.includes("unboxing_video") ? "unboxing_video" : required.includes("defect_video") ? "defect_video" : "unboxing_video";
+    return "defect_video";
   }
 
   if (type.startsWith("image/")) {
-    if (name.includes("pack") || name.includes("box")) return "package_photo";
-    return required.includes("product_photo") ? "product_photo" : required.includes("package_photo") ? "package_photo" : "product_photo";
+    return "product_photo";
   }
 
   return "other";
@@ -2192,6 +2171,20 @@ function getEvidenceFileError(file: File, type: AttachmentType): string {
   }
 
   return "";
+}
+
+function getRemainingClaimDuration(item: ReturnEligibilityItem | undefined): string {
+  if (!item?.allowedreasons?.length) return "";
+  let minMs = Infinity;
+  for (const reason of item.allowedreasons) {
+    if (reason.remainingclaimmilliseconds !== null && reason.remainingclaimmilliseconds !== undefined) {
+      if (reason.remainingclaimmilliseconds < minMs) {
+        minMs = reason.remainingclaimmilliseconds;
+      }
+    }
+  }
+  if (minMs === Infinity) return "";
+  return formatDuration(minMs);
 }
 
 export default Orders;
