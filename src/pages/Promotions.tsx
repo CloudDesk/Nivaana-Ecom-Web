@@ -368,10 +368,19 @@ const Promotions: React.FC = () => {
       !contextualPromotionIds.has(promotion.id) &&
       !(promotion.code && contextualPromotionCodes.has(promotion.code.toUpperCase()))
   );
-  const totalVisibleOffers =
+  const personalPublicPromotions = additionalPublicPromotions.filter(
+    (promotion) =>
+      Boolean(promotion.assignment_id) ||
+      promotion.audience === "customer" ||
+      promotion.audience === "customer_group"
+  );
+  const morePublicPromotions = additionalPublicPromotions.filter(
+    (promotion) => !personalPublicPromotions.some((personal) => personal.id === promotion.id)
+  );
+  const specialOfferCount =
     appliedPromotions.length +
     availableApplicablePromotions.length +
-    additionalPublicPromotions.length;
+    personalPublicPromotions.length;
 
   return (
     <main className="min-h-screen bg-[#f6f7fb] px-4 py-8 sm:px-6 sm:py-10">
@@ -446,13 +455,13 @@ const Promotions: React.FC = () => {
               />
             )}
 
-            {totalVisibleOffers > 0 && (
+            {specialOfferCount > 0 && (
               <section>
                 <SectionHeading
                   icon={<TicketPercent className="h-5 w-5" />}
-                  title="Offers for you"
-                  subtitle="Applied benefits appear first, followed by offers available for this cart."
-                  count={totalVisibleOffers}
+                  title="Special for you"
+                  subtitle="Your applied benefits and the best offers selected for your account and cart."
+                  count={specialOfferCount}
                 />
                 <div className="mt-5 grid auto-rows-fr gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {appliedPromotions.map((promotion, index) => (
@@ -477,28 +486,50 @@ const Promotions: React.FC = () => {
                     );
                   })}
 
-                  {additionalPublicPromotions.map((promotion) => {
-                    const personal =
-                      Boolean(promotion.assignment_id) ||
-                      promotion.audience === "customer" ||
-                      promotion.audience === "customer_group";
-                    return (
-                      <PublicPromotionCard
-                        key={publicPromotionKey(promotion)}
-                        promotion={promotion}
-                        canApply={hasCartContext}
-                        copied={copiedCode === promotion.code}
-                        onCopy={copyPromotionCode}
-                        isApplying={
-                          applyPromotionMutation.isPending &&
-                          applyPromotionMutation.variables?.id === promotion.id
-                        }
-                        onApply={() => applyPromotionMutation.mutate(promotion)}
-                        personal={personal}
-                        disabledReason={ineligibleReasonById.get(promotion.id)}
-                      />
-                    );
-                  })}
+                  {personalPublicPromotions.map((promotion) => (
+                    <PublicPromotionCard
+                      key={publicPromotionKey(promotion)}
+                      promotion={promotion}
+                      canApply={hasCartContext}
+                      copied={copiedCode === promotion.code}
+                      onCopy={copyPromotionCode}
+                      isApplying={
+                        applyPromotionMutation.isPending &&
+                        applyPromotionMutation.variables?.id === promotion.id
+                      }
+                      onApply={() => applyPromotionMutation.mutate(promotion)}
+                      personal
+                      disabledReason={ineligibleReasonById.get(promotion.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {morePublicPromotions.length > 0 && (
+              <section>
+                <SectionHeading
+                  icon={<Gift className="h-5 w-5" />}
+                  title="More offers"
+                  subtitle="Explore other active promotions available for your cart."
+                  count={morePublicPromotions.length}
+                />
+                <div className="mt-5 grid auto-rows-fr gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {morePublicPromotions.map((promotion) => (
+                    <PublicPromotionCard
+                      key={publicPromotionKey(promotion)}
+                      promotion={promotion}
+                      canApply={hasCartContext}
+                      copied={copiedCode === promotion.code}
+                      onCopy={copyPromotionCode}
+                      isApplying={
+                        applyPromotionMutation.isPending &&
+                        applyPromotionMutation.variables?.id === promotion.id
+                      }
+                      onApply={() => applyPromotionMutation.mutate(promotion)}
+                      disabledReason={ineligibleReasonById.get(promotion.id)}
+                    />
+                  ))}
                 </div>
               </section>
             )}
