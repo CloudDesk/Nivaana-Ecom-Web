@@ -29,6 +29,10 @@ export interface PaymentRequest {
   shippingCost?: number;
   taxAmount?: number;
   evaluation_ids?: string[];
+  wallet?: {
+    apply: boolean;
+    eligibility_base: number;
+  };
 }
 
 export interface PaymentResponseData {
@@ -65,6 +69,10 @@ export interface PaymentResponseData {
   next_steps?: {
     phonepe?: {
       redirectUrl?: string;
+    } | null;
+    wallet?: {
+      action?: "order_complete" | string;
+      instructions?: string;
     } | null;
   };
 }

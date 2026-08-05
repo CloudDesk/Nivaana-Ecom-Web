@@ -8,8 +8,10 @@ export interface OrderSummary {
   productamount?: number;
   discountamount?: number;
   promotion_discount_total?: number;
+  wallet_discount_total?: number;
   original_total?: number;
   shipping_cost?: number;
+  mode?: string;
   orderstatus?: string;
   createddate?: number;
   modifieddate?: number;

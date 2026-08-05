@@ -24,6 +24,7 @@ import SavedAddresses from './pages/SavedAddresses';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
 import Promotions from './pages/Promotions';
+import Wallet from './pages/Wallet';
 import { ToastProvider } from './components/Toast';
 
 function AppLayout() {
@@ -44,6 +45,7 @@ function AppLayout() {
           <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
           <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
           <Route path="/promotions" element={<ProtectedRoute><Promotions /></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
           <Route path="/addresses" element={<ProtectedRoute><SavedAddresses /></ProtectedRoute>} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />

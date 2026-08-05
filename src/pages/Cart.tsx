@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { cartService } from "../services/cartService";
+import { couponWalletService } from "../services/couponWalletService";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
@@ -43,6 +44,7 @@ import {
   saveSelectedCartPromotion,
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
+import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
 
 const imageFor = (product?: { medium: string[] | null; small: string[] | null; large: string[] | null }) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
@@ -112,6 +114,7 @@ const Cart: React.FC = () => {
   const [voucherCode, setVoucherCode] = useState("");
   const [offersModalOpen, setOffersModalOpen] = useState(false);
   const [offerActionError, setOfferActionError] = useState<string | null>(null);
+  const [walletApplied, setWalletApplied] = useState(() => readWalletApplied(session?.user.id));
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(session?.user.id)
   );
@@ -124,6 +127,7 @@ const Cart: React.FC = () => {
 
   useEffect(() => {
     setSelectedPromotion(readSelectedCartPromotion(session?.user.id));
+    setWalletApplied(readWalletApplied(session?.user.id));
   }, [session?.user.id]);
 
   useEffect(() => {
@@ -468,6 +472,20 @@ const Cart: React.FC = () => {
   const shippingSavings = promotionSummary.shippingSavings;
   const totalPromotionSavings = promotionDiscount + shippingSavings;
   const payableTotal = promotionSummary.payableTotal;
+  const walletQuoteQuery = useQuery({
+    queryKey: ["wallet-discount-quote", session?.user.id, cartTotals.subtotal, payableTotal],
+    queryFn: () => couponWalletService.quoteDiscount(cartTotals.subtotal, payableTotal),
+    enabled: Boolean(session?.user.id && promotionRows.length > 0 && payableTotal > 0),
+    staleTime: 1000 * 15,
+  });
+  const eligibleWalletBalance = Number(walletQuoteQuery.data?.data.eligible_balance || 0);
+  const walletDiscount = walletApplied ? Number(walletQuoteQuery.data?.data.discount_amount || 0) : 0;
+  const finalPayableTotal = Math.max(payableTotal - walletDiscount, 0);
+  const toggleWallet = () => {
+    const next = !walletApplied;
+    setWalletApplied(next);
+    saveWalletApplied(session?.user.id, next);
+  };
   const hasManualPromotionApplied = appliedPromotionsForTotals.some(
     (promotion) =>
       !promotion.is_auto &&
@@ -1131,11 +1149,22 @@ const Cart: React.FC = () => {
                   highlight={shippingSavings > 0}
                 />
                 {promotionDiscount > 0 && <SummaryLine label="Promotion" value={`-${formatCurrency(promotionDiscount)}`} />}
+                {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
                 <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
                   <span>Total</span>
-                  <strong>{formatCurrency(payableTotal)}</strong>
+                  <strong>{formatCurrency(finalPayableTotal)}</strong>
                 </div>
               </div>
+
+              {session && eligibleWalletBalance > 0 && (
+                <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <WalletCards className="h-5 w-5 shrink-0 text-[#485470]" />
+                    <div className="min-w-0"><p className="text-sm font-bold text-[#172033]">Wallet balance {formatCurrency(eligibleWalletBalance)}</p><p className="text-[11px] text-[#68748a]">Available for this cart</p></div>
+                  </div>
+                  <button type="button" onClick={toggleWallet} disabled={walletQuoteQuery.isFetching} className="shrink-0 rounded-lg bg-[#fbbc05] px-3 py-2 text-xs font-extrabold text-[#172033] disabled:opacity-50">{walletApplied ? "Remove" : "Apply"}</button>
+                </div>
+              )}
 
               {promotionRows.length > 0 && (
                 <div className="mt-5 border-t border-[var(--color-border)] pt-5">
