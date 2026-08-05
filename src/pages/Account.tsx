@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Check, CreditCard, Heart, Info, LogOut, MapPin, PackageCheck, Pencil, ShoppingBag, TicketPercent, Trash2, UserRound, X } from "lucide-react";
+import { Check, CreditCard, Heart, Info, LogOut, MapPin, PackageCheck, Pencil, ShoppingBag, TicketPercent, Trash2, UserRound, WalletCards, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { getUserDisplayName, hasRequiredUserName, sessionService, type AuthSession } from "../services/sessionService";
 import { userService } from "../services/userService";
@@ -264,6 +264,12 @@ const Account: React.FC = () => {
               title="Promotions"
               description="View offers that apply to your current cart."
               to="/promotions"
+            />
+            <AccountLink
+              icon={<WalletCards className="h-5 w-5" />}
+              title="My Wallet"
+              description="Add personalized coupons and view available coupon credit."
+              to="/wallet"
             />
             <AccountLink
               icon={<MapPin className="h-5 w-5" />}

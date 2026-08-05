@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -17,9 +17,11 @@ import {
   TicketPercent,
   Trash2,
   WalletCards,
+  X,
 } from "lucide-react";
 import { addressService, type Address, type AddressPayload } from "../services/addressService";
 import { cartService } from "../services/cartService";
+import { couponWalletService } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import { platformProductService } from "../services/productPlatformService";
 import {
@@ -49,6 +51,7 @@ import {
   saveSelectedCartPromotion,
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
+import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
@@ -169,6 +172,7 @@ const INDIAN_STATES = [
 
 const Checkout: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const buyNowProductId = Number(searchParams.get("buyNow"));
   const isBuyNowCheckout = Number.isFinite(buyNowProductId) && buyNowProductId > 0;
@@ -189,15 +193,32 @@ const Checkout: React.FC = () => {
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
   const [voucherCode, setVoucherCode] = useState("");
   const [offerActionError, setOfferActionError] = useState("");
+  const [offersModalOpen, setOffersModalOpen] = useState(false);
+  const [walletApplied, setWalletApplied] = useState(() => readWalletApplied(userId));
   const paymentSubmissionRef = useRef(false);
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(user?.id)
   );
 
   useEffect(() => {
+    if (!offersModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOffersModalOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [offersModalOpen]);
+
+  useEffect(() => {
     if (userId) {
       setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
       setSelectedPromotion(readSelectedCartPromotion(userId));
+      setWalletApplied(readWalletApplied(userId));
     }
   }, [storedCustomerName, userId, userMobile]);
 
@@ -402,6 +423,22 @@ const Checkout: React.FC = () => {
   const promotionDiscount = promotionSummary.normalDiscount;
   const shipping = promotionSummary.effectiveShipping;
   const checkoutTotal = promotionSummary.payableTotal;
+  const walletQuoteQuery = useQuery({
+    queryKey: ["wallet-discount-quote", userId, cartTotals.subtotal, checkoutTotal],
+    queryFn: () => couponWalletService.quoteDiscount(cartTotals.subtotal, checkoutTotal),
+    enabled: Boolean(userId && promotionRows.length > 0 && checkoutTotal > 0),
+    staleTime: 1000 * 15,
+  });
+  const eligibleWalletBalance = Number(walletQuoteQuery.data?.data.eligible_balance || 0);
+  const walletDiscount = walletApplied ? Number(walletQuoteQuery.data?.data.discount_amount || 0) : 0;
+  const finalCheckoutTotal = Math.max(checkoutTotal - walletDiscount, 0);
+  const walletCoversOrder = walletApplied && walletDiscount > 0 && finalCheckoutTotal < 0.01;
+  const projectedWalletBalance = Math.max(eligibleWalletBalance - walletDiscount, 0);
+  const toggleWallet = () => {
+    const next = !walletApplied;
+    setWalletApplied(next);
+    saveWalletApplied(userId, next);
+  };
   const activeEvaluationId = backendEvaluation?.evaluation_id || (promotionEvaluationQuery.isError ? undefined : promotionEvaluation?.evaluation_id || selectedPromotion?.evaluationId);
   const promotionLabel =
     promotionSummary.normalPromotions[0]?.promotion_name ||
@@ -957,9 +994,10 @@ const Checkout: React.FC = () => {
         shippingCost: shipping,
         taxAmount: 0,
         evaluation_ids: activeEvaluationId ? [activeEvaluationId] : undefined,
+        ...(walletApplied && walletDiscount > 0 ? { wallet: { apply: true, eligibility_base: Number(cartTotals.subtotal.toFixed(2)) } } : {}),
       });
     },
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       const data = response.data;
       const redirectUrl = data.redirectUrl || data.next_steps?.phonepe?.redirectUrl;
 
@@ -968,6 +1006,22 @@ const Checkout: React.FC = () => {
           localStorage.setItem(PENDING_TRANSACTION_KEY, data.merchantTransactionId);
         }
         window.location.replace(redirectUrl);
+        return;
+      }
+
+      if (data.mode === "wallet" && data.orderData?.order_created) {
+        clearSelectedCartPromotion(userId);
+        saveWalletApplied(userId, false);
+        setWalletApplied(false);
+        localStorage.removeItem(PENDING_TRANSACTION_KEY);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["wallet"] }),
+          queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] }),
+          queryClient.invalidateQueries({ queryKey: ["cart"] }),
+          queryClient.invalidateQueries({ queryKey: ["orders"] }),
+        ]);
+        paymentSubmissionRef.current = false;
+        navigate("/orders", { replace: true });
         return;
       }
 
@@ -1237,9 +1291,9 @@ const Checkout: React.FC = () => {
               <div className="mt-4 grid gap-2">
                 <PaymentOption
                   checked
-                  icon={<CreditCard className="h-5 w-5" />}
-                  title="Pay Online"
-                  detail="UPI, cards, wallets"
+                  icon={walletCoversOrder ? <WalletCards className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
+                  title={walletCoversOrder ? "Pay with wallet credit" : "Pay Online"}
+                  detail={walletCoversOrder ? "No external payment required" : "UPI, cards, wallets"}
                   onClick={() => undefined}
                 />
               </div>
@@ -1302,11 +1356,19 @@ const Checkout: React.FC = () => {
                   }
                 />
               )}
+              {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
               <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-semibold text-[var(--color-text)]">
                 <span>Total</span>
-                <span>{formatCurrency(checkoutTotal)}</span>
+                <span>{formatCurrency(finalCheckoutTotal)}</span>
               </div>
             </div>
+
+            {eligibleWalletBalance > 0 && (
+              <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-5">
+                <div className="flex min-w-0 items-center gap-2.5"><WalletCards className="h-5 w-5 shrink-0 text-[#485470]" /><div className="min-w-0"><p className="text-sm font-bold text-[#172033]">Wallet balance {formatCurrency(eligibleWalletBalance)}</p><p className="text-[11px] text-[#68748a]">{walletApplied ? `${formatCurrency(walletDiscount)} applied · ${formatCurrency(projectedWalletBalance)} after this order` : "Available for this order"}</p></div></div>
+                <button type="button" onClick={toggleWallet} disabled={walletQuoteQuery.isFetching} className="shrink-0 rounded-lg bg-[#fbbc05] px-3 py-2 text-xs font-extrabold text-[#172033] disabled:opacity-50">{walletApplied ? "Remove" : "Apply"}</button>
+              </div>
+            )}
 
             {promotionRows.length > 0 && (
               <section className="mt-5 border-t border-[var(--color-border)] pt-5">
@@ -1401,14 +1463,7 @@ const Checkout: React.FC = () => {
                   <div className="mt-3 space-y-3">
                     {eligiblePromotionCandidates.slice(0, 2).map(renderCheckoutPromotionOffer)}
                     {eligiblePromotionCandidates.length > 2 && (
-                      <details className="group">
-                        <summary className="cursor-pointer list-none rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-center text-xs font-extrabold text-[#26344f]">
-                          View all offers ({eligiblePromotionCandidates.length})
-                        </summary>
-                        <div className="mt-3 space-y-3">
-                          {eligiblePromotionCandidates.slice(2).map(renderCheckoutPromotionOffer)}
-                        </div>
-                      </details>
+                      <button type="button" onClick={() => setOffersModalOpen(true)} className="w-full rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-center text-xs font-extrabold text-[#26344f] transition hover:border-[#fbbc05] hover:bg-[#fffaf0]">View all offers ({eligiblePromotionCandidates.length})</button>
                     )}
                   </div>
                 ) : (
@@ -1432,20 +1487,36 @@ const Checkout: React.FC = () => {
                 isPromotionResolving ||
                 checkoutStockIssues.length > 0 ||
                 Object.keys(backendStockErrors).length > 0 ||
-                checkoutTotal <= 0
+                (!walletCoversOrder && finalCheckoutTotal <= 0)
               }
               onClick={handlePaymentSubmission}
             >
               {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              Pay {formatCurrency(checkoutTotal)} securely
+              {paymentMutation.isPending
+                ? walletCoversOrder
+                  ? "Placing order..."
+                  : "Starting payment..."
+                : walletCoversOrder
+                  ? "Place Order using Wallet"
+                  : `Pay ${formatCurrency(finalCheckoutTotal)} securely`}
             </Button>
             <p className="mt-3 flex items-center justify-center gap-1 text-[11px] text-[var(--color-muted)]">
               <ShieldCheck className="h-3.5 w-3.5" />
-              256-bit SSL encrypted checkout
+              {walletCoversOrder ? "No external payment required" : "256-bit SSL encrypted checkout"}
             </p>
           </aside>
         </div>
       </section>
+
+      {offersModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#111827]/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={() => setOffersModalOpen(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="checkout-offers-title" className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="flex items-start justify-between gap-4 border-b border-[#e5e9f0] px-5 py-4"><div><h2 id="checkout-offers-title" className="text-lg font-extrabold text-[#172033]">Offers</h2><p className="mt-1 text-xs text-[#68748a]">Apply or remove an offer for this order.</p></div><button type="button" onClick={() => setOffersModalOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1f3f7] text-[#26344f] transition hover:bg-[#e3e7ee]" aria-label="Close eligible offers"><X className="h-5 w-5" /></button></header>
+            {offerActionError && <p className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-semibold text-red-700" role="alert">{offerActionError}</p>}
+            <div className="overflow-y-auto px-5 py-4"><div className="space-y-2.5">{eligiblePromotionCandidates.map(renderCheckoutPromotionOffer)}</div></div>
+          </section>
+        </div>
+      )}
     </main>
   );
 };

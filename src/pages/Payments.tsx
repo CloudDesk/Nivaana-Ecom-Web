@@ -7,6 +7,7 @@ import { paymentService, type PaymentResponseData, type TransactionRecord } from
 import { orderService, type OrderDetails, type OrderSummary } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
 import { clearSelectedCartPromotion } from "../lib/cartPromotions";
+import { saveWalletApplied } from "../lib/walletSelection";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
@@ -200,6 +201,7 @@ const Payments: React.FC = () => {
       if (isSuccessfulPayment(response)) {
         localStorage.removeItem(PENDING_TRANSACTION_KEY);
         clearSelectedCartPromotion(session?.user.id);
+        saveWalletApplied(session?.user.id, false);
         setPendingMerchantTransactionId("");
 
         if (session?.user.id) {
@@ -207,6 +209,8 @@ const Payments: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["orders", session.user.id] });
           queryClient.invalidateQueries({ queryKey: ["payments", session.user.id] });
           queryClient.invalidateQueries({ queryKey: ["payment-transactions", session.user.id] });
+          queryClient.invalidateQueries({ queryKey: ["wallet"] });
+          queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] });
         }
 
         window.setTimeout(() => navigate("/", { replace: true }), 1200);

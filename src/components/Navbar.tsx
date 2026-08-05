@@ -9,6 +9,7 @@ import {
   Search,
   ShoppingBag,
   UserRound,
+  WalletCards,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -17,6 +18,7 @@ import { theme } from "../config/theme.config";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { cartService } from "../services/cartService";
+import { couponWalletService } from "../services/couponWalletService";
 import { guestStoreService } from "../services/guestStoreService";
 import { platformProductService } from "../services/productPlatformService";
 import { getUserDisplayName, sessionService } from "../services/sessionService";
@@ -87,15 +89,24 @@ const Navbar: React.FC = () => {
     staleTime: 1000 * 60,
   });
 
+  const walletQuery = useQuery({
+    queryKey: ["wallet", session?.user.id],
+    queryFn: () => couponWalletService.getWallet(),
+    enabled: Boolean(session),
+    staleTime: 1000 * 30,
+  });
+
   const guestCartCount = countDistinctProducts(guestStoreService.getCart());
   const guestWishlistCount = countDistinctProducts(guestStoreService.getWishlist());
   const cartCount = session ? countDistinctProducts(cartQuery.data?.data ?? []) : guestCartCount;
   const wishlistCount = session ? countDistinctProducts(wishlistQuery.data?.data ?? []) : guestWishlistCount;
   const accountLabel = session ? getUserDisplayName(session.user) : "Account";
+  const walletBalance = Number(walletQuery.data?.data.balance || 0);
   const isHomeRoute = location.pathname === "/" && !location.search && !location.hash;
   const isWishlistRoute = location.pathname === "/wishlist";
   const isAccountRoute = location.pathname === "/account" || location.pathname === "/login";
   const isCartRoute = location.pathname === "/cart";
+  const isWalletRoute = location.pathname === "/wallet";
   const showsCategoryRail = location.pathname === "/products" || location.pathname.startsWith("/products/");
   const searchSuggestions = (productResponse?.data ?? [])
     .filter((product) => {
@@ -289,6 +300,19 @@ const Navbar: React.FC = () => {
                 <Badge count={wishlistCount} />
               </Button>
             </Link>
+            {session && <Link to="/wallet">
+              <Button
+                variant="secondary"
+                aria-label={`Wallet balance ${formatWalletBalance(walletBalance)}`}
+                className={cn(
+                  "h-12 min-h-12 gap-2 rounded-full border border-[#fbbc05]/25 bg-[#26324a] px-3 text-[#fbbc05] hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                  isWalletRoute && "border-[#fbbc05] bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
+                )}
+              >
+                <WalletCards className="h-5 w-5 shrink-0" />
+                <span className={cn("rounded-full bg-[#fbbc05] px-2 py-1 text-xs font-bold text-[#26324a]", isWalletRoute && "bg-[#26324a] text-[#fbbc05]")}>{walletQuery.isLoading ? "…" : formatWalletBalance(walletBalance)}</span>
+              </Button>
+            </Link>}
             <Link to={session ? "/account" : "/login"}>
               <Button
                 variant={session ? "secondary" : "icon"}
@@ -333,6 +357,17 @@ const Navbar: React.FC = () => {
             >
               <Search className="h-5 w-5" />
             </button>
+            {session && <Link
+              to="/wallet"
+              aria-label={`Wallet balance ${formatWalletBalance(walletBalance)}`}
+              className={cn(
+                "relative grid h-10 w-10 place-items-center rounded-full border border-[#fbbc05]/25 bg-[#26324a] text-[#fbbc05] shadow-sm transition hover:bg-[#3f4d6c] hover:text-[#fbbc05]",
+                isWalletRoute && "bg-[#fbbc05] text-[#26324a] hover:bg-[#fbbc05] hover:text-[#26324a]"
+              )}
+            >
+              <WalletCards className="h-5 w-5" />
+              <WalletBalanceBadge balance={walletBalance} loading={walletQuery.isLoading} />
+            </Link>}
             <Link
               to={session ? "/account" : "/login"}
               aria-label={session ? `Account for ${accountLabel}` : "Account"}
@@ -555,6 +590,15 @@ const Navbar: React.FC = () => {
                 Wishlist
                 {wishlistCount > 0 && <span className="ml-auto text-xs font-bold">{wishlistCount}</span>}
               </Link>
+              {session && <Link
+                to="/wallet"
+                onClick={closeMobileMenu}
+                className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
+              >
+                <WalletCards className="h-5 w-5" />
+                My Wallet
+                <span className="ml-auto rounded-full bg-[#fbbc05] px-2.5 py-1 text-xs font-bold text-[#26324a]">{walletQuery.isLoading ? "…" : formatWalletBalance(walletBalance)}</span>
+              </Link>}
               <Link
                 to="/cart"
                 className="flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-3 text-base font-semibold text-[#ffe0a0] hover:bg-[#26324a] hover:text-[#fbbc05]"
@@ -579,6 +623,19 @@ function Badge({ count }: { count: number }) {
       {count > 99 ? "99+" : count}
     </span>
   );
+}
+
+function formatWalletBalance(balance: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: balance % 1 === 0 ? 0 : 2,
+  }).format(balance);
+}
+
+function WalletBalanceBadge({ balance, loading }: { balance: number; loading: boolean }) {
+  return <span className="absolute -right-2 -top-1 min-w-7 rounded-full bg-[#fbbc05] px-1.5 py-0.5 text-[9px] font-bold leading-4 text-[#26324a]">{loading ? "…" : formatWalletBalance(balance)}</span>;
 }
 
 export default Navbar;

@@ -429,6 +429,12 @@ function OrderCard({
   const cancellable = isOrderCancellable(order.orderstatus);
   const statusTone = getStatusTone(displayStatus);
   const cancelled = isCancelledStatus(displayStatus);
+  const paidUsingWallet =
+    String(order.mode || "").toLowerCase() === "wallet" ||
+    (Number(order.orderamount || 0) === 0 && Number(order.wallet_discount_total || 0) > 0);
+  const walletPaidLabel = `Paid using Wallet · ${formatCurrency(
+    Number(order.wallet_discount_total || order.discountamount || 0)
+  )}`;
   const highlighted = /transit|dispatch|ship|delivery/i.test(displayStatus || "") && !cancelled;
   const cardClass = [
     "overflow-hidden border bg-white transition hover:border-[var(--color-muted)]",
@@ -481,7 +487,7 @@ function OrderCard({
               <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             </button>
             <span className={cn("text-sm font-semibold", cancelled ? "text-[var(--color-muted)]" : "text-[var(--color-text)]")}>
-              {formatCurrency(order.orderamount)}
+              {paidUsingWallet ? walletPaidLabel : formatCurrency(order.orderamount)}
             </span>
             <span
               className={cn(
@@ -572,7 +578,7 @@ function OrderCard({
                     : "mt-3 border-t border-[var(--color-border)] pt-3"
                 )}>
                   <span>Order total</span>
-                  <span>{formatCurrency(order.orderamount)}</span>
+                  <span>{paidUsingWallet ? walletPaidLabel : formatCurrency(order.orderamount)}</span>
                 </div>
               </div>
             ) : (
@@ -613,8 +619,10 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       productamount: getNumber(orderSource, ["productamount"]),
       discountamount: getNumber(orderSource, ["discountamount"]),
       promotion_discount_total: getNumber(orderSource, ["promotion_discount_total"]),
+      wallet_discount_total: getNumber(orderSource, ["wallet_discount_total"]),
       original_total: getNumber(orderSource, ["original_total"]),
       shipping_cost: getNumber(orderSource, ["shipping_cost"]),
+      mode: getString(orderSource, ["mode"]),
       orderstatus: getString(orderSource, ["orderstatus"]),
       createddate: getNumber(orderSource, ["createddate"]),
       modifieddate: getNumber(orderSource, ["modifieddate"]),
