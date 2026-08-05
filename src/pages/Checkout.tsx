@@ -11,8 +11,10 @@ import {
   PackageCheck,
   Pencil,
   Plus,
+  Sparkles,
   ShieldCheck,
   ShoppingBag,
+  TicketPercent,
   Trash2,
   WalletCards,
 } from "lucide-react";
@@ -20,7 +22,11 @@ import { addressService, type Address, type AddressPayload } from "../services/a
 import { cartService } from "../services/cartService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import { platformProductService } from "../services/productPlatformService";
-import { promotionService, type AppliedPromotion } from "../services/promotionService";
+import {
+  promotionService,
+  type ApplicablePromotion,
+  type AppliedPromotion,
+} from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
 import { userService } from "../services/userService";
 import { Button } from "../components/ui/button";
@@ -36,6 +42,8 @@ import {
   getAppliedPromotionSummary,
   getPromotionCartTotals,
   isFreeShippingAppliedPromotion,
+  isFreeShippingPromotion,
+  isFreeShippingPromotionEligible,
   productUnitPrice,
   readSelectedCartPromotion,
   saveSelectedCartPromotion,
@@ -97,6 +105,42 @@ const checkoutErrorMessage = (error: unknown, fallback: string) => {
 
 const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.promotion_id || 0);
 
+const promotionId = (promotion: ApplicablePromotion) =>
+  Number(promotion.promotion_id || (promotion as ApplicablePromotion & { id?: number }).id || 0);
+
+const uniquePromotions = (promotions: ApplicablePromotion[]) => {
+  const seen = new Set<number | string>();
+
+  return promotions.filter((promotion) => {
+    const key = promotionId(promotion) || promotion.code || promotion.name;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const checkoutVoucherErrorMessage = (message?: string) => {
+  const normalized = String(message || "").toUpperCase();
+
+  if (normalized.includes("PROMOTION_NOT_FOUND") || normalized.includes("PROMOTION NOT FOUND")) {
+    return "This voucher code is not valid.";
+  }
+  if (normalized.includes("PROMOTION_NOT_ASSIGNED_TO_CUSTOMER")) return "This voucher was issued to a different customer.";
+  if (normalized.includes("CUSTOMER_GROUP_NOT_ELIGIBLE")) return "This voucher is not available for your customer group.";
+  if (normalized.includes("VOUCHER_NOT_ACTIVE")) return "This voucher is currently inactive.";
+  if (normalized.includes("VOUCHER_NOT_STARTED")) return "This voucher is not active yet.";
+  if (normalized.includes("VOUCHER_EXPIRED")) return "This voucher has expired.";
+  if (normalized.includes("VOUCHER_USAGE_LIMIT_REACHED")) return "This voucher has already reached its usage limit.";
+  if (normalized.includes("PROMOTION_MAX_REDEMPTIONS_REACHED")) return "This promotion has reached its redemption limit.";
+  if (normalized.includes("PROMOTION_PER_USER_LIMIT_REACHED")) return "You have already used this promotion.";
+  if (normalized.includes("CHANNEL_NOT_ELIGIBLE")) return "This voucher cannot be used on the website.";
+  if (normalized.includes("NOT ELIGIBLE FOR THIS CART")) return "This order does not currently meet this voucher's requirements.";
+  if (normalized.includes("ALREADY APPLIED")) return "This voucher is already applied to your order.";
+  if (normalized.includes("ANOTHER_PROMOTION_ALREADY_APPLIED")) return "Remove the current offer before applying another.";
+
+  return message || "The voucher could not be redeemed.";
+};
+
 const INDIAN_STATES = [
   "Andhra Pradesh",
   "Arunachal Pradesh",
@@ -143,6 +187,8 @@ const Checkout: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState("");
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
+  const [voucherCode, setVoucherCode] = useState("");
+  const [offerActionError, setOfferActionError] = useState("");
   const paymentSubmissionRef = useRef(false);
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(user?.id)
@@ -264,12 +310,35 @@ const Checkout: React.FC = () => {
     staleTime: 1000 * 15,
   });
 
+  const promotionOffersQuery = useQuery({
+    queryKey: ["checkout-promotion-offers", userId, cartSignature],
+    queryFn: () =>
+      promotionService.getRecommendedOffers({
+        userId: String(userId),
+        cartItems: promotionRows.map((row) => ({
+          productId: String(row.productid),
+          qty: row.quantity,
+          category: row.product?.category || row.product?.subcategory || "General",
+          price: productUnitPrice(row.product),
+        })),
+        cartData: promotionCartData,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      }),
+    enabled: Boolean(userId && promotionRows.length > 0),
+    staleTime: 1000 * 30,
+  });
+
   // evaluateAutomatic is scoped to the current cart signature. Using the first
   // user-level active evaluation can attach prices/promotions from an older cart.
   const backendEvaluation = activeEvaluationsQuery.data?.data ?? null;
   const backendAppliedPromotions = backendEvaluation?.applied_promotions ?? [];
   const manualAppliedPromotion = backendAppliedPromotions.find(
     (promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion) && appliedPromotionId(promotion) > 0
+  );
+  const selectedPromotionMatchesOrder = Boolean(
+    selectedPromotion && selectedPromotion.cartSignature === cartSignature
   );
 
   const promotionEvaluationQuery = useQuery({
@@ -298,6 +367,7 @@ const Checkout: React.FC = () => {
     enabled: Boolean(
       userId &&
         selectedPromotionId &&
+        selectedPromotionMatchesOrder &&
         promotionRows.length > 0 &&
         !activeEvaluationsQuery.isLoading &&
         !manualAppliedPromotion
@@ -306,7 +376,7 @@ const Checkout: React.FC = () => {
   });
 
   const promotionEvaluation = promotionEvaluationQuery.data?.data;
-  const selectedPromotionApplies = Boolean(selectedPromotion && selectedPromotion.cartSignature === cartSignature);
+  const selectedPromotionApplies = selectedPromotionMatchesOrder;
   const appliedPromotionsForTotals =
     backendAppliedPromotions.length > 0
       ? backendAppliedPromotions
@@ -339,11 +409,305 @@ const Checkout: React.FC = () => {
     selectedPromotion?.promotionName ||
     "Promotion";
   const hasPromotionDiscount = promotionDiscount > 0 || promotionSummary.normalPromotions.length > 0 || Boolean(manualAppliedPromotion);
+  const appliedPromotionIds = new Set(
+    appliedPromotionsForTotals.map(appliedPromotionId).filter((id) => id > 0)
+  );
+  const promotionCandidates = useMemo(() => {
+    const offers = promotionOffersQuery.data?.data;
+    if (!offers) return [];
+
+    const stackablePromotionIds = new Set(
+      offers.stackablePromotions.map((promotion) => promotionId(promotion))
+    );
+    const withStackability = (promotion: ApplicablePromotion) => ({
+      ...promotion,
+      stackable:
+        promotion.stackable === true ||
+        stackablePromotionIds.has(promotionId(promotion)),
+    });
+
+    return uniquePromotions(
+      [
+        offers.bestCoupon,
+        ...offers.eligibleCoupons,
+        ...offers.autoAppliedPromotions,
+        ...offers.stackablePromotions,
+      ]
+        .filter((promotion): promotion is ApplicablePromotion => Boolean(promotion && promotionId(promotion) > 0))
+        .map(withStackability)
+    );
+  }, [promotionOffersQuery.data]);
+  const eligiblePromotionCandidates = promotionCandidates.filter(
+    (promotion) =>
+      !isFreeShippingPromotion(promotion) ||
+      isFreeShippingPromotionEligible(promotion, cartTotals.subtotal)
+  );
+  const hasManualPromotionApplied = appliedPromotionsForTotals.some(
+    (promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion)
+  );
+  const allAppliedManualPromotionsAreStackable = appliedPromotionsForTotals
+    .filter((promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion))
+    .every((promotion) => promotion.stackable === true || promotion.is_stacked === true);
   const isPromotionResolving = Boolean(
     activeEvaluationsQuery.isLoading ||
       activeEvaluationsQuery.isFetching ||
       (selectedPromotion && (promotionEvaluationQuery.isLoading || promotionEvaluationQuery.isFetching))
   );
+
+  const applyPromotionMutation = useMutation({
+    mutationFn: async (promotion: ApplicablePromotion) => {
+      let evaluationId = backendEvaluation?.evaluation_id;
+      if (!evaluationId) {
+        const automaticEvaluation = await promotionService.evaluateAutomatic({
+          userId: String(userId),
+          cartItems: promotionEvaluationItems,
+          currentTotal: total,
+          mode: "phonepe",
+          channel: "web",
+          geo: "IN",
+        });
+        evaluationId = automaticEvaluation.data.evaluation_id;
+      }
+
+      return promotionService.evaluate({
+        cartId: `checkout-${isBuyNowCheckout ? "buy-now" : "cart"}-${userId}`,
+        userId: String(userId),
+        evaluationId,
+        promotionId: promotionId(promotion),
+        applicationType: promotion.stackable ? "stackable_promotion" : "manual_coupon",
+        cartData: promotionCartData,
+        cartItems: promotionEvaluationItems,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+    },
+    onMutate: () => setOfferActionError(""),
+    onSuccess: async (response, promotion) => {
+      if (!userId) return;
+
+      const evaluation = response.data;
+      queryClient.setQueryData(
+        ["checkout-active-promotion-evaluations", userId, cartSignature],
+        response
+      );
+      const summary = getAppliedPromotionSummary(
+        cartTotals,
+        evaluation.applied_promotions ?? [],
+        Number(evaluation.total_discount || 0)
+      );
+      const nextPromotion: SelectedCartPromotion = {
+        userId,
+        promotionId: promotionId(promotion),
+        promotionName: promotion.name,
+        evaluationId: evaluation.evaluation_id,
+        cartSignature,
+        totalDiscount: summary.normalDiscount,
+        discountedTotal: summary.payableTotal,
+        appliedPromotions: evaluation.applied_promotions ?? [],
+        expiresAt: evaluation.expires_at,
+        savedAt: Date.now(),
+      };
+
+      saveSelectedCartPromotion(nextPromotion);
+      setSelectedPromotion(nextPromotion);
+      await promotionOffersQuery.refetch();
+      setStatusMessage(`${promotion.name} applied to your order.`);
+      setErrorMessage("");
+    },
+    onError: (error) => {
+      setOfferActionError(
+        checkoutVoucherErrorMessage(
+          error instanceof Error ? error.message : "Could not apply this offer."
+        )
+      );
+    },
+  });
+
+  const redeemVoucherMutation = useMutation({
+    mutationFn: async (code: string) => {
+      let evaluationId = backendEvaluation?.evaluation_id;
+      if (!evaluationId) {
+        const automaticEvaluation = await promotionService.evaluateAutomatic({
+          userId: String(userId),
+          cartItems: promotionEvaluationItems,
+          currentTotal: total,
+          mode: "phonepe",
+          channel: "web",
+          geo: "IN",
+        });
+        evaluationId = automaticEvaluation.data.evaluation_id;
+      }
+
+      return promotionService.evaluate({
+        cartId: `checkout-${isBuyNowCheckout ? "buy-now" : "cart"}-${userId}`,
+        userId: String(userId),
+        evaluationId,
+        code,
+        cartData: promotionCartData,
+        cartItems: promotionEvaluationItems,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+    },
+    onMutate: () => setOfferActionError(""),
+    onSuccess: async (response) => {
+      if (!userId) return;
+
+      const evaluation = response.data;
+      queryClient.setQueryData(
+        ["checkout-active-promotion-evaluations", userId, cartSignature],
+        response
+      );
+      const appliedPromotions = evaluation.applied_promotions ?? [];
+      const enteredCode = voucherCode.trim().toUpperCase();
+      const redeemedPromotion =
+        appliedPromotions.find(
+          (promotion) => String(promotion.voucher_code || "").toUpperCase() === enteredCode
+        ) || [...appliedPromotions].reverse().find((promotion) => !promotion.is_auto);
+      const summary = getAppliedPromotionSummary(
+        cartTotals,
+        appliedPromotions,
+        Number(evaluation.total_discount || 0)
+      );
+
+      if (redeemedPromotion && appliedPromotionId(redeemedPromotion) > 0) {
+        const nextPromotion: SelectedCartPromotion = {
+          userId,
+          promotionId: appliedPromotionId(redeemedPromotion),
+          promotionName: redeemedPromotion.promotion_name || "Voucher promotion",
+          evaluationId: evaluation.evaluation_id,
+          cartSignature,
+          totalDiscount: summary.normalDiscount,
+          discountedTotal: summary.payableTotal,
+          appliedPromotions,
+          expiresAt: evaluation.expires_at,
+          savedAt: Date.now(),
+        };
+        saveSelectedCartPromotion(nextPromotion);
+        setSelectedPromotion(nextPromotion);
+      }
+
+      setVoucherCode("");
+      await promotionOffersQuery.refetch();
+      setStatusMessage(
+        redeemedPromotion?.promotion_name
+          ? `${redeemedPromotion.promotion_name} applied to your order.`
+          : "Offer applied to your order."
+      );
+      setErrorMessage("");
+    },
+    onError: (error) => {
+      setOfferActionError(
+        checkoutVoucherErrorMessage(
+          error instanceof Error ? error.message : "The voucher could not be redeemed."
+        )
+      );
+    },
+  });
+
+  const removePromotionMutation = useMutation({
+    mutationFn: async (promotionIdToRemove: number) => {
+      if (!backendEvaluation?.evaluation_id) return;
+      await promotionService.removeEvaluation(backendEvaluation.evaluation_id, promotionIdToRemove);
+    },
+    onMutate: () => setOfferActionError(""),
+    onSuccess: async () => {
+      clearSelectedCartPromotion(userId);
+      setSelectedPromotion(null);
+      await activeEvaluationsQuery.refetch();
+      await promotionOffersQuery.refetch();
+      setStatusMessage("Offer removed from your order.");
+      setErrorMessage("");
+    },
+    onError: (error) => {
+      setOfferActionError(
+        checkoutVoucherErrorMessage(
+          error instanceof Error ? error.message : "Could not remove this offer."
+        )
+      );
+    },
+  });
+
+  const renderCheckoutPromotionOffer = (promotion: ApplicablePromotion) => {
+    const id = promotionId(promotion);
+    const appliedPromotion = appliedPromotionsForTotals.find(
+      (candidate) => appliedPromotionId(candidate) === id
+    );
+    const isApplied = appliedPromotionIds.has(id);
+    const isAutomatic = promotion.application_mode === "automatic" || promotion.auto_apply === true;
+    const isCodeEntry = promotion.application_mode === "code_entry";
+    const canCombine =
+      !hasManualPromotionApplied ||
+      (allAppliedManualPromotionsAreStackable && promotion.stackable === true);
+    const canRemove = Boolean(isApplied && appliedPromotion && !appliedPromotion.is_auto);
+    const offerSavings = Number(
+      promotion.applied_discount || promotion.discountInfo?.discountAmount || 0
+    );
+    const actionPending =
+      (applyPromotionMutation.isPending &&
+        applyPromotionMutation.variables &&
+        promotionId(applyPromotionMutation.variables) === id) ||
+      (removePromotionMutation.isPending && removePromotionMutation.variables === id);
+
+    return (
+      <div key={id} className="rounded-xl border border-[#dce3ec] bg-white p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold leading-5 text-[#172033]">{promotion.name}</p>
+            <p className="mt-0.5 text-[11px] font-semibold text-emerald-700">
+              {isFreeShippingPromotion(promotion)
+                ? "Free shipping"
+                : offerSavings > 0
+                  ? `Save ${formatCurrency(offerSavings)}`
+                  : "Applicable to this order"}
+            </p>
+            {promotion.code && (
+              <span className="mt-2 inline-block max-w-full truncate rounded-md bg-[#eef1f6] px-2 py-1 font-mono text-[10px] font-bold text-[#46536b]">
+                {promotion.code}
+              </span>
+            )}
+          </div>
+
+          {isApplied ? (
+            canRemove ? (
+              <button
+                type="button"
+                disabled={actionPending}
+                onClick={() => removePromotionMutation.mutate(id)}
+                className="shrink-0 rounded-lg border border-emerald-300 px-3 py-2 text-[11px] font-extrabold text-emerald-700 disabled:opacity-50"
+              >
+                {actionPending ? "Removing..." : "Remove"}
+              </button>
+            ) : (
+              <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1.5 text-[10px] font-extrabold text-emerald-700">
+                Applied
+              </span>
+            )
+          ) : isAutomatic ? (
+            <span className="shrink-0 rounded-full bg-[#fff2bd] px-2.5 py-1.5 text-[10px] font-extrabold text-[#856000]">
+              Automatic
+            </span>
+          ) : isCodeEntry ? (
+            <span className="shrink-0 rounded-full bg-[#eef1f6] px-2.5 py-1.5 text-[10px] font-extrabold text-[#58657a]">
+              Use code
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={actionPending || !canCombine || isPromotionResolving}
+              onClick={() => applyPromotionMutation.mutate(promotion)}
+              className="shrink-0 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-[11px] font-extrabold text-[#172033] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionPending ? "Applying..." : "Apply"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const selectedAddress = addresses.find((address) => address.id === selectedAddressId) ?? null;
   const checkoutStockIssues = enrichedItems
     .map(({ item, product, quantity }) => {
@@ -944,6 +1308,117 @@ const Checkout: React.FC = () => {
               </div>
             </div>
 
+            {promotionRows.length > 0 && (
+              <section className="mt-5 border-t border-[var(--color-border)] pt-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fff0ad] text-[#7a5700]">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-extrabold text-[#172033]">Offers for your order</p>
+                      <p className="text-[11px] text-[#68748a]">Choose an applicable benefit</p>
+                    </div>
+                  </div>
+                  {promotionDiscount + promotionSummary.shippingSavings > 0 && (
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-extrabold text-emerald-700">
+                      Saved {formatCurrency(promotionDiscount + promotionSummary.shippingSavings)}
+                    </span>
+                  )}
+                </div>
+
+                <form
+                  className="mt-3 rounded-xl border border-[#dfe4ee] bg-[#f7f8fb] p-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const normalizedCode = voucherCode.trim().toUpperCase();
+                    if (!normalizedCode) {
+                      setOfferActionError("Enter your voucher code.");
+                      return;
+                    }
+                    redeemVoucherMutation.mutate(normalizedCode);
+                  }}
+                >
+                  <label
+                    htmlFor="checkout-voucher-code"
+                    className="flex items-center gap-2 text-xs font-extrabold text-[#26344f]"
+                  >
+                    <TicketPercent className="h-4 w-4 text-[#9a6b00]" />
+                    Have a voucher code?
+                  </label>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      id="checkout-voucher-code"
+                      type="text"
+                      value={voucherCode}
+                      onChange={(event) => setVoucherCode(event.target.value.toUpperCase())}
+                      placeholder="Enter Code"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      maxLength={100}
+                      disabled={
+                        redeemVoucherMutation.isPending ||
+                        (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
+                      }
+                      className="min-w-0 flex-1 rounded-lg border border-[#cbd2df] bg-white px-3 py-2.5 font-mono text-xs font-bold uppercase text-[#172033] outline-none focus:border-[#fbbc05] disabled:cursor-not-allowed disabled:bg-[#edf0f5]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        redeemVoucherMutation.isPending ||
+                        !voucherCode.trim() ||
+                        (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
+                      }
+                      className="shrink-0 rounded-lg bg-[#26344f] px-3 text-[11px] font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {redeemVoucherMutation.isPending ? "Checking..." : "Redeem"}
+                    </button>
+                  </div>
+                  {hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable && (
+                    <p className="mt-2 text-[11px] leading-4 text-[#68748a]">
+                      Remove the current offer before applying another code.
+                    </p>
+                  )}
+                </form>
+
+                {offerActionError && (
+                  <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-600">
+                    {offerActionError}
+                  </p>
+                )}
+
+                {promotionOffersQuery.isLoading ? (
+                  <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-[var(--color-muted)]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Checking offers
+                  </div>
+                ) : promotionOffersQuery.isError ? (
+                  <p className="mt-3 text-xs font-semibold text-red-600">
+                    Offers could not be checked. Please refresh and try again.
+                  </p>
+                ) : eligiblePromotionCandidates.length > 0 ? (
+                  <div className="mt-3 space-y-3">
+                    {eligiblePromotionCandidates.slice(0, 2).map(renderCheckoutPromotionOffer)}
+                    {eligiblePromotionCandidates.length > 2 && (
+                      <details className="group">
+                        <summary className="cursor-pointer list-none rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-center text-xs font-extrabold text-[#26344f]">
+                          View all offers ({eligiblePromotionCandidates.length})
+                        </summary>
+                        <div className="mt-3 space-y-3">
+                          {eligiblePromotionCandidates.slice(2).map(renderCheckoutPromotionOffer)}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-[var(--color-muted)]">
+                    No offers apply to this order right now.
+                  </p>
+                )}
+              </section>
+            )}
+
             <Button
               className="mt-5 w-full gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-[var(--color-text)] shadow-[0_14px_30px_rgba(251,188,5,0.24)] hover:bg-[var(--color-secondary)] hover:text-white"
               disabled={
@@ -951,6 +1426,9 @@ const Checkout: React.FC = () => {
                 paymentMutation.isPending ||
                 createAddressMutation.isPending ||
                 updateAddressMutation.isPending ||
+                applyPromotionMutation.isPending ||
+                redeemVoucherMutation.isPending ||
+                removePromotionMutation.isPending ||
                 isPromotionResolving ||
                 checkoutStockIssues.length > 0 ||
                 Object.keys(backendStockErrors).length > 0 ||
