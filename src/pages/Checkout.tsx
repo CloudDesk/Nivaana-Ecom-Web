@@ -52,6 +52,7 @@ import {
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
+import { isOfferAlreadyUsedError } from "../lib/notificationMessages";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
@@ -194,6 +195,9 @@ const Checkout: React.FC = () => {
   const [voucherCode, setVoucherCode] = useState("");
   const [offerActionError, setOfferActionError] = useState("");
   const [offersModalOpen, setOffersModalOpen] = useState(false);
+  const [alreadyUsedPromotionIds, setAlreadyUsedPromotionIds] = useState<Set<number>>(
+    () => new Set()
+  );
   const [walletApplied, setWalletApplied] = useState(() => readWalletApplied(userId));
   const paymentSubmissionRef = useRef(false);
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
@@ -552,11 +556,20 @@ const Checkout: React.FC = () => {
       setStatusMessage(`${promotion.name} applied to your order.`);
       setErrorMessage("");
     },
-    onError: (error) => {
+    onError: (error, promotion) => {
+      const message = error instanceof Error ? error.message : "Could not apply this offer.";
+      if (isOfferAlreadyUsedError(message)) {
+        const id = promotionId(promotion);
+        if (id > 0) {
+          setAlreadyUsedPromotionIds((current) => new Set(current).add(id));
+        }
+        setOfferActionError("");
+        void promotionOffersQuery.refetch();
+        return;
+      }
+
       setOfferActionError(
-        checkoutVoucherErrorMessage(
-          error instanceof Error ? error.message : "Could not apply this offer."
-        )
+        checkoutVoucherErrorMessage(message)
       );
     },
   });
@@ -673,6 +686,7 @@ const Checkout: React.FC = () => {
       (candidate) => appliedPromotionId(candidate) === id
     );
     const isApplied = appliedPromotionIds.has(id);
+    const isAlreadyUsed = alreadyUsedPromotionIds.has(id);
     const isAutomatic = promotion.application_mode === "automatic" || promotion.auto_apply === true;
     const isCodeEntry = promotion.application_mode === "code_entry";
     const canCombine =
@@ -689,12 +703,14 @@ const Checkout: React.FC = () => {
       (removePromotionMutation.isPending && removePromotionMutation.variables === id);
 
     return (
-      <div key={id} className="rounded-xl border border-[#dce3ec] bg-white p-3">
+      <div key={id} className={`rounded-xl border border-[#dce3ec] p-3 ${isAlreadyUsed ? "bg-[#f5f7fa]" : "bg-white"}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-extrabold leading-5 text-[#172033]">{promotion.name}</p>
             <p className="mt-0.5 text-[11px] font-semibold text-emerald-700">
-              {isFreeShippingPromotion(promotion)
+              {isAlreadyUsed
+                ? "Already Used"
+                : isFreeShippingPromotion(promotion)
                 ? "Free shipping"
                 : offerSavings > 0
                   ? `Save ${formatCurrency(offerSavings)}`
@@ -707,7 +723,15 @@ const Checkout: React.FC = () => {
             )}
           </div>
 
-          {isApplied ? (
+          {isAlreadyUsed ? (
+            <button
+              type="button"
+              disabled
+              className="shrink-0 rounded-lg bg-[#e3e7ee] px-3 py-2 text-[11px] font-extrabold text-[#68748a] disabled:cursor-not-allowed"
+            >
+              Already Used
+            </button>
+          ) : isApplied ? (
             canRemove ? (
               <button
                 type="button"

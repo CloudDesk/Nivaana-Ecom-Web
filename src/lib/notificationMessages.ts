@@ -1,3 +1,12 @@
+export const isOfferAlreadyUsedError = (message?: string | null) => {
+  const normalized = String(message || "").toUpperCase();
+
+  return (
+    normalized.includes("PROMOTION_PER_USER_LIMIT_REACHED") ||
+    normalized.includes("VOUCHER_USAGE_LIMIT_REACHED")
+  );
+};
+
 export const friendlyNotificationMessage = (message?: string | null) => {
   const fallback = "Something went wrong. Please try again.";
   const text = String(message || "").trim();
