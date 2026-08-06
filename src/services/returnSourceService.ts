@@ -207,10 +207,13 @@ export const returnSourceService = {
     return apiService.get<ReturnRequestSummary[]>(`/returns?${query.toString()}`);
   },
 
-  async uploadEvidence(file: File, attachmenttype: AttachmentType): Promise<UploadedEvidence> {
+  async uploadEvidence(file: File, attachmenttype: AttachmentType, orderIdentifier?: string | number): Promise<UploadedEvidence> {
     const data = new FormData();
     data.append("file", file);
     data.append("attachmenttype", attachmenttype);
+    if (orderIdentifier) {
+      data.append("orderid", String(orderIdentifier));
+    }
 
     const response = await axios.post<ApiResponse<UploadedEvidence>>(`${baseUrl}/returns/evidence/upload`, data, {
       headers: authHeaders(),

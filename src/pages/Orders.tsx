@@ -91,6 +91,11 @@ const formatStatus = (status?: string | null) => {
 const getOrderIdentifier = (order?: OrderSummary | null) => order?.id ?? order?.orderid ?? "";
 const getOrderKey = (order: OrderSummary | undefined | null, index: number) => String(order?.orderid ?? order?.id ?? index);
 const orderStatusAnchorId = (orderKey: string) => `order-status-${orderKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+const isReplacementFulfillmentOrder = (order?: OrderSummary | null) => {
+  const mode = String(order?.mode ?? "").toLowerCase();
+  const orderNumber = String(order?.orderid ?? "");
+  return mode === "replacement" || orderNumber.startsWith("REP-REP-");
+};
 
 const scrollToOrderStatus = (orderKey: string) => {
   window.setTimeout(() => {
@@ -155,7 +160,10 @@ const Orders: React.FC = () => {
   }, [ordersQuery.data?.data]);
 
   const orderSummary = useMemo(() => {
-    const totalSpent = orders.reduce((sum, details) => sum + Number(details.order.orderamount || 0), 0);
+    const totalSpent = orders.reduce(
+      (sum, details) => sum + (isReplacementFulfillmentOrder(details.order) ? 0 : Number(details.order.orderamount || 0)),
+      0
+    );
     const cancelled = orders.filter((details) => isCancelledStatus(details.order.orderstatus)).length;
 
     return {
@@ -301,8 +309,9 @@ const Orders: React.FC = () => {
     pendingReturnSubmissionKeys.current.add(submissionKey);
     const uploadedAttachments = [];
     try {
+      const orderIdentifier = payload.order.orderid ?? payload.order.id ?? getOrderIdentifier(payload.order);
       for (const item of payload.evidence) {
-        const response = await returnSourceService.uploadEvidence(item.file, item.attachmenttype);
+        const response = await returnSourceService.uploadEvidence(item.file, item.attachmenttype, orderIdentifier);
         uploadedAttachments.push(response);
       }
 
@@ -862,6 +871,10 @@ function OrderCard({
             {orderlines.length > 0 ? (
               <div className="space-y-2">
                 {returnEligibility && !isLoadingReturnEligibility && (
+                  returnEligibility.eligibleitemcount > 0 || 
+                  normalizeStatusKey(order.orderstatus || "") === "delivered" || 
+                  normalizeStatusKey(order.orderstatus || "") === "completed"
+                ) && (
                   <div className={cn(
                     "rounded-[var(--radius-sm)] border p-3 text-xs font-semibold",
                     returnEligibility.eligibleitemcount > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-800"
@@ -959,6 +972,7 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       orderstatus: getString(orderSource, ["orderstatus"]),
       createddate: getNumber(orderSource, ["createddate"]),
       modifieddate: getNumber(orderSource, ["modifieddate"]),
+      mode: getString(orderSource, ["mode"]),
     },
     orderlines: Array.isArray(raw.orderlines) ? raw.orderlines : [],
     address: isRecord(raw.address) ? raw.address : null,
@@ -1047,6 +1061,9 @@ function OrderLineRow({
   const isReplacementEligible = Boolean(eligibilityItem?.replacement?.eligible);
   const isAnyEligible = isReturnEligible || isReplacementEligible;
   const hasOpenReturnRequest = returnRequests.some((request) => !isReturnRequestTerminal(request.status));
+  const hasRejectedRequest = returnRequests.some((request) =>
+    ["rejected", "evidence_rejected", "inspection_rejected"].includes(normalizeStatusKey(request.status || ""))
+  );
 
   return (
     <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3">
@@ -1101,7 +1118,7 @@ function OrderLineRow({
               <Loader2 className="h-3 w-3 animate-spin" />
               Checking
             </span>
-          ) : eligibilityItem && isAnyEligible && !hasOpenReturnRequest ? (
+          ) : eligibilityItem && isAnyEligible && !hasOpenReturnRequest && !hasRejectedRequest ? (
             <div className="flex flex-col items-end gap-1.5">
               <div className="flex flex-wrap justify-end gap-2">
                 {isReturnEligible && (
@@ -1170,21 +1187,75 @@ function ReturnRequestStatusList({ requests }: { requests: ReturnRequestSummary[
                 {getReturnRequestIssue(request)}
               </p>
             )}
-            <div className="mt-3 grid gap-2 sm:grid-cols-4">
-              {timeline.map((step) => (
-                <div key={step.label} className="flex items-center gap-2">
-                  <span className={cn(
-                    "h-2.5 w-2.5 shrink-0 rounded-full",
-                    step.done ? "bg-green-500" : step.current ? "bg-[#378ADD]" : "bg-slate-300"
-                  )} />
-                  <span className={cn(
-                    "text-[11px] font-semibold",
-                    step.done || step.current ? "text-[var(--color-text)]" : "text-[var(--color-muted)]"
-                  )}>
-                    {step.label}
-                  </span>
-                </div>
-              ))}
+            {/* Amazon-style Progress Tracker */}
+            <div className="mt-5 mb-8 px-4">
+              <div className="relative flex items-center justify-between">
+                {/* Background line */}
+                <div className="absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 bg-slate-200" />
+                
+                {/* Colored progress bar overlay */}
+                {(() => {
+                  const failedIdx = timeline.findIndex(s => s.failed);
+                  const isFailed = failedIdx !== -1;
+                  const progressWidth = isFailed
+                    ? (failedIdx * (100 / (timeline.length - 1)))
+                    : (timeline.every(s => s.done)
+                      ? 100
+                      : timeline.findIndex(s => s.current) * (100 / (timeline.length - 1)));
+                  return (
+                    <div 
+                      className={cn(
+                        "absolute left-0 top-1/2 h-0.5 -translate-y-1/2 transition-all duration-300",
+                        isFailed ? "bg-red-500" : "bg-green-500"
+                      )}
+                      style={{ width: `${progressWidth}%` }}
+                    />
+                  );
+                })()}
+
+                {/* Step indicators */}
+                {timeline.map((step, idx) => {
+                  const isActive = step.done || step.current || step.failed;
+                  return (
+                    <div key={step.label} className="relative z-10 flex flex-col items-center">
+                      {/* Step Circle */}
+                      <div 
+                        className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-all duration-300",
+                          step.done 
+                            ? "border-green-500 bg-green-500 text-white" 
+                            : step.failed
+                              ? "border-red-500 bg-red-500 text-white"
+                              : step.current 
+                                ? "border-[#378ADD] bg-white text-[#378ADD] ring-4 ring-blue-50" 
+                                : "border-slate-300 bg-white text-slate-400"
+                        )}
+                      >
+                        {step.done ? (
+                          "✓"
+                        ) : step.failed ? (
+                          "✗"
+                        ) : (
+                          idx + 1
+                        )}
+                      </div>
+                      
+                      {/* Label underneath */}
+                      <span 
+                        className={cn(
+                          "absolute top-7 w-20 text-center text-[10px] font-bold transition-colors duration-200",
+                          isActive 
+                            ? (step.failed ? "text-red-500" : "text-[var(--color-text)]") 
+                            : "text-slate-400"
+                        )}
+                        style={{ left: "50%", transform: "translateX(-50%)" }}
+                      >
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             {request.statusTimeline?.length ? (
               <div className="mt-3 space-y-2 border-t border-[var(--color-border)] pt-3">
@@ -1262,12 +1333,24 @@ function getReturnRequestIssue(request: ReturnRequestSummary) {
 
 function getReturnRequestTimeline(request: ReturnRequestSummary) {
   const status = normalizeStatusKey(request.status || "");
-  const steps = request.requesttype === "replacement"
-    ? ["Requested", "Approved", "Pickup", "Replacement"]
-    : ["Requested", "Approved", "Pickup", "Refund"];
+  const isRejected = ["rejected", "evidence_rejected", "inspection_rejected"].includes(status);
+  const isCancelled = status === "cancelled";
+
+  let steps = ["Requested", "Approved", "Pickup"];
+  if (isRejected) {
+    steps.push("Rejected");
+  } else if (isCancelled) {
+    steps.push("Cancelled");
+  } else {
+    steps.push(request.requesttype === "replacement" ? "Replacement" : "Refund");
+  }
+
   const rankByStatus: Record<string, number> = {
     requested: 0,
     evidence_pending: 0,
+    rejected: 1,
+    evidence_rejected: 1,
+    cancelled: 1,
     evidence_approved: 1,
     approved: 1,
     pickup_prepared: 2,
@@ -1275,6 +1358,7 @@ function getReturnRequestTimeline(request: ReturnRequestSummary) {
     in_transit: 2,
     received_at_warehouse: 2,
     inspection_pending: 2,
+    inspection_rejected: 3,
     inspection_approved: 3,
     refund_pending: 3,
     refund_completed: 3,
@@ -1285,13 +1369,29 @@ function getReturnRequestTimeline(request: ReturnRequestSummary) {
     missing_item_shipped: 3,
     completed: 3,
   };
-  const rank = rankByStatus[status] ?? 0;
 
-  return steps.map((label, index) => ({
-    label,
-    done: index < rank || (index === 3 && isReturnRequestTerminal(status)),
-    current: index === rank && !isReturnRequestTerminal(status),
-  }));
+  let rank = rankByStatus[status] ?? 0;
+
+  if (status === "rejected" || status === "evidence_rejected") {
+    steps = ["Requested", "Rejected"];
+    rank = 1;
+  } else if (status === "cancelled") {
+    steps = ["Requested", "Cancelled"];
+    rank = 1;
+  }
+
+  return steps.map((label, index) => {
+    const isTerminalStep = index === steps.length - 1;
+    const terminalIsSuccess = isTerminalStep && !isRejected && !isCancelled && isReturnRequestTerminal(status);
+    const terminalIsFailure = isTerminalStep && (isRejected || isCancelled) && isReturnRequestTerminal(status);
+    
+    return {
+      label,
+      done: index < rank || terminalIsSuccess,
+      current: index === rank && !isReturnRequestTerminal(status),
+      failed: terminalIsFailure,
+    };
+  });
 }
 
 function hasAnyReturnPolicy(item: ReturnEligibilityItem) {
