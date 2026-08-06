@@ -28,7 +28,7 @@ import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { ApiResponse, CartItem, Product } from "../types";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
-import { friendlyNotificationMessage } from "../lib/notificationMessages";
+import { friendlyNotificationMessage, isOfferAlreadyUsedError } from "../lib/notificationMessages";
 import {
   buildPromotionCartData,
   buildPromotionEvaluationCartItems,
@@ -114,6 +114,9 @@ const Cart: React.FC = () => {
   const [voucherCode, setVoucherCode] = useState("");
   const [offersModalOpen, setOffersModalOpen] = useState(false);
   const [offerActionError, setOfferActionError] = useState<string | null>(null);
+  const [alreadyUsedPromotionIds, setAlreadyUsedPromotionIds] = useState<Set<number>>(
+    () => new Set()
+  );
   const [walletApplied, setWalletApplied] = useState(() => readWalletApplied(session?.user.id));
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(session?.user.id)
@@ -667,8 +670,19 @@ const Cart: React.FC = () => {
       ]);
       toast.success(`${promotion.name} applied to your cart.`);
     },
-    onError: (error) => {
+    onError: (error, promotion) => {
       const message = error instanceof Error ? error.message : "Could not apply this promotion. Please try another offer.";
+
+      if (isOfferAlreadyUsedError(message)) {
+        const id = promotionId(promotion);
+        if (id > 0) {
+          setAlreadyUsedPromotionIds((current) => new Set(current).add(id));
+        }
+        setOfferActionError(null);
+        toast.warning("This offer has already been used.");
+        void promotionOffersQuery.refetch();
+        return;
+      }
 
       if (message.toLowerCase().includes("already applied")) {
         const alreadyAppliedMessage = "This offer is already applied to your cart.";
@@ -921,6 +935,7 @@ const Cart: React.FC = () => {
           removePromotionMutation.variables === state.id
         }
         isApplied={state.isApplied}
+        isAlreadyUsed={alreadyUsedPromotionIds.has(state.id)}
         isDisabled={
           !session ||
           !state.freeShippingEligible ||
@@ -1363,6 +1378,7 @@ function PromotionOffer({
   isPending,
   isRemoving,
   isApplied,
+  isAlreadyUsed,
   isDisabled,
   shippingSavings,
   onApply,
@@ -1372,6 +1388,7 @@ function PromotionOffer({
   isPending: boolean;
   isRemoving: boolean;
   isApplied: boolean;
+  isAlreadyUsed: boolean;
   isDisabled: boolean;
   shippingSavings: number;
   onApply: () => void;
@@ -1406,6 +1423,8 @@ function PromotionOffer({
       className={`overflow-hidden rounded-2xl border transition ${
         isApplied
           ? "border-emerald-200 bg-emerald-50/60"
+          : isAlreadyUsed
+            ? "border-[#dfe4ee] bg-[#f5f7fa]"
           : "border-[#dfe4ee] bg-white hover:border-[#fbbc05]/70 hover:shadow-sm"
       }`}
     >
@@ -1441,14 +1460,21 @@ function PromotionOffer({
               className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${
                 isApplied
                   ? "!border !border-emerald-200 !bg-white !text-emerald-700 hover:!bg-white"
+                  : isAlreadyUsed
+                    ? "!bg-[#e3e7ee] !text-[#68748a] hover:!bg-[#e3e7ee]"
                   : "!bg-[#fbbc05] !text-[#172033] hover:!bg-[#ffd042]"
               }`}
-              disabled={isPending || isRemoving || (isApplied ? !onRemove : isDisabled)}
+              disabled={isPending || isRemoving || isAlreadyUsed || (isApplied ? !onRemove : isDisabled)}
               variant={isApplied ? "secondary" : "primary"}
               onClick={isApplied && onRemove ? onRemove : onApply}
             >
               {isPending || isRemoving ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : isAlreadyUsed ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Already Used
+                </>
               ) : isApplied && onRemove ? (
                 <>
                   <Trash2 className="h-3.5 w-3.5" />
