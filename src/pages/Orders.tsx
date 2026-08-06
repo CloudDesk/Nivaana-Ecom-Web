@@ -156,14 +156,12 @@ const Orders: React.FC = () => {
     return rawOrders
       .map(normalizeOrderDetails)
       .filter((details): details is OrderDetails => Boolean(details))
+      .filter((details) => !isReplacementFulfillmentOrder(details.order))
       .sort((a, b) => Number(b.order.createddate || 0) - Number(a.order.createddate || 0));
   }, [ordersQuery.data?.data]);
 
   const orderSummary = useMemo(() => {
-    const totalSpent = orders.reduce(
-      (sum, details) => sum + (isReplacementFulfillmentOrder(details.order) ? 0 : Number(details.order.orderamount || 0)),
-      0
-    );
+    const totalSpent = orders.reduce((sum, details) => sum + Number(details.order.orderamount || 0), 0);
     const cancelled = orders.filter((details) => isCancelledStatus(details.order.orderstatus)).length;
 
     return {
