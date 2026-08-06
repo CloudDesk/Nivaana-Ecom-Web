@@ -9,6 +9,7 @@ export interface OrderSummary {
   discountamount?: number;
   promotion_discount_total?: number;
   wallet_discount_total?: number;
+  wallet_amount_applied?: number;
   original_total?: number;
   shipping_cost?: number;
   mode?: string;
@@ -55,9 +56,23 @@ export interface OrderDetails {
   order: OrderSummary;
   orderlines?: OrderLine[];
   address?: OrderAddress | null;
+  wallet_usage?: OrderWalletUsage[];
   status_history?: unknown[];
   statusHistory?: unknown[];
   [key: string]: unknown;
+}
+
+export interface OrderWalletUsage {
+  reservation_id: number;
+  credit_id: number;
+  coupon_code?: string | null;
+  coupon_name?: string | null;
+  amount: number;
+  status: string;
+  consumed_at?: number | null;
+  reversed_at?: number | null;
+  reversal_reason?: string | null;
+  expires_at?: number | null;
 }
 
 export interface TrackingDetails {

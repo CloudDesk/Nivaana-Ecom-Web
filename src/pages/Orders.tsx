@@ -63,6 +63,25 @@ const formatStatus = (status?: string | null) => {
     .join(" ");
 };
 
+const getWalletAmountApplied = (order: OrderSummary) =>
+  Number(order.wallet_amount_applied ?? order.wallet_discount_total ?? 0);
+
+const getOrderTotal = (order: OrderSummary) =>
+  Number(order.orderamount || 0) + getWalletAmountApplied(order);
+
+const getPlacedTimestamp = (details: OrderDetails) => {
+  const history = Array.isArray(details.order.status_history)
+    ? details.order.status_history
+    : Array.isArray(details.status_history)
+      ? details.status_history
+      : [];
+  const timestamps = history
+    .map((entry) => entry && typeof entry === "object" ? Number((entry as Record<string, unknown>).changed_date) : 0)
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  return timestamps[0] || details.order.createddate;
+};
+
 const getOrderIdentifier = (order?: OrderSummary | null) => order?.id ?? order?.orderid ?? "";
 const getOrderKey = (order: OrderSummary | undefined | null, index: number) => String(order?.orderid ?? order?.id ?? index);
 const orderStatusAnchorId = (orderKey: string) => `order-status-${orderKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -114,7 +133,7 @@ const Orders: React.FC = () => {
   }, [ordersQuery.data?.data]);
 
   const orderSummary = useMemo(() => {
-    const totalSpent = orders.reduce((sum, details) => sum + Number(details.order.orderamount || 0), 0);
+    const totalSpent = orders.reduce((sum, details) => sum + getOrderTotal(details.order), 0);
     const cancelled = orders.filter((details) => isCancelledStatus(details.order.orderstatus)).length;
 
     return {
@@ -429,11 +448,17 @@ function OrderCard({
   const cancellable = isOrderCancellable(order.orderstatus);
   const statusTone = getStatusTone(displayStatus);
   const cancelled = isCancelledStatus(displayStatus);
+  const walletAmountApplied = getWalletAmountApplied(order);
+  const promotionDiscount = Number(order.promotion_discount_total || 0);
+  const combinedDiscount = Number(order.discountamount || 0);
+  const productDiscount = Math.max(0, combinedDiscount - promotionDiscount);
+  const orderTotal = getOrderTotal(order);
+  const walletUsage = details.wallet_usage || [];
   const paidUsingWallet =
     String(order.mode || "").toLowerCase() === "wallet" ||
-    (Number(order.orderamount || 0) === 0 && Number(order.wallet_discount_total || 0) > 0);
+    (Number(order.orderamount || 0) === 0 && walletAmountApplied > 0);
   const walletPaidLabel = `Paid using Wallet · ${formatCurrency(
-    Number(order.wallet_discount_total || order.discountamount || 0)
+    walletAmountApplied
   )}`;
   const highlighted = /transit|dispatch|ship|delivery/i.test(displayStatus || "") && !cancelled;
   const cardClass = [
@@ -487,7 +512,7 @@ function OrderCard({
               <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             </button>
             <span className={cn("text-sm font-semibold", cancelled ? "text-[var(--color-muted)]" : "text-[var(--color-text)]")}>
-              {paidUsingWallet ? walletPaidLabel : formatCurrency(order.orderamount)}
+              {paidUsingWallet ? walletPaidLabel : formatCurrency(orderTotal)}
             </span>
             <span
               className={cn(
@@ -505,7 +530,7 @@ function OrderCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-muted)]">
             <span className="inline-flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5" />
-              Placed {formatDate(order.createddate)}
+              Placed {formatDate(getPlacedTimestamp(details))}
             </span>
             <span aria-hidden="true">.</span>
             <span className={cn("inline-flex items-center gap-1", invoiceUrl && "text-[var(--color-secondary)]")}>
@@ -565,6 +590,32 @@ function OrderCard({
                 {orderlines.map((line, index) => (
                   <OrderLineRow key={String(line.id ?? line.orderlinenumber ?? index)} line={line} />
                 ))}
+                <div className="mt-3 space-y-2 border-t border-[var(--color-border)] pt-3 text-sm">
+                  <div className="flex items-center justify-between text-[var(--color-muted)]">
+                    <span>Original total</span>
+                    <span>{formatCurrency(order.original_total || order.productamount)}</span>
+                  </div>
+                  {productDiscount > 0 && (
+                    <div className="flex items-center justify-between text-red-600">
+                      <span>Product discount</span><span>-{formatCurrency(productDiscount)}</span>
+                    </div>
+                  )}
+                  {promotionDiscount > 0 && (
+                    <div className="flex items-center justify-between text-red-600">
+                      <span>Promotion discount</span><span>-{formatCurrency(promotionDiscount)}</span>
+                    </div>
+                  )}
+                  {walletUsage.length > 0 && (
+                    <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3 text-xs text-[var(--color-muted)]">
+                      {walletUsage.map((usage) => (
+                        <div key={usage.reservation_id} className="flex justify-between gap-3">
+                          <span>{usage.coupon_name || usage.coupon_code || `Wallet credit #${usage.credit_id}`}{usage.status === "reversed" ? " (restored)" : ""}</span>
+                          <span>{formatCurrency(usage.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {Number(order.shipping_cost || 0) > 0 ? (
                   <div className="mt-3 flex items-center justify-between border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-muted)]">
                     <span>Shipping charges</span>
@@ -573,13 +624,25 @@ function OrderCard({
                 ) : null}
                 <div className={cn(
                   "flex items-center justify-between text-sm font-semibold text-[var(--color-text)]",
-                  Number(order.shipping_cost || 0) > 0
-                    ? "pt-1"
-                    : "mt-3 border-t border-[var(--color-border)] pt-3"
+                  "mt-3 border-t border-[var(--color-border)] pt-3"
                 )}>
                   <span>Order total</span>
-                  <span>{paidUsingWallet ? walletPaidLabel : formatCurrency(order.orderamount)}</span>
+                  <span>{formatCurrency(orderTotal)}</span>
                 </div>
+                {walletAmountApplied > 0 && (
+                  <div className="space-y-2 rounded-[var(--radius-sm)] bg-amber-50 p-3 text-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Payment allocation</p>
+                    <div className="flex items-center justify-between font-semibold text-amber-700">
+                      <span>Paid using Wallet</span><span>{formatCurrency(walletAmountApplied)}</span>
+                    </div>
+                    {Number(order.orderamount || 0) > 0 && (
+                      <div className="flex items-center justify-between text-[var(--color-text)]">
+                        <span>Paid using {String(order.mode).toLowerCase() === "cod" ? "COD" : "PhonePe"}</span>
+                        <span>{formatCurrency(order.orderamount)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
@@ -620,6 +683,7 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       discountamount: getNumber(orderSource, ["discountamount"]),
       promotion_discount_total: getNumber(orderSource, ["promotion_discount_total"]),
       wallet_discount_total: getNumber(orderSource, ["wallet_discount_total"]),
+      wallet_amount_applied: getNumber(orderSource, ["wallet_amount_applied", "wallet_discount_total"]),
       original_total: getNumber(orderSource, ["original_total"]),
       shipping_cost: getNumber(orderSource, ["shipping_cost"]),
       mode: getString(orderSource, ["mode"]),
