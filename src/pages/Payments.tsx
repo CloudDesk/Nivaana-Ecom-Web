@@ -60,6 +60,19 @@ const formatDateTime = (value?: number | string | null) => {
   });
 };
 
+const getPaymentTimestamp = (details: OrderDetails, transaction?: TransactionRecord | null) => {
+  const history = Array.isArray(details.order.status_history)
+    ? details.order.status_history
+    : Array.isArray(details.status_history)
+      ? details.status_history
+      : [];
+  const completed = history
+    .filter((entry) => entry && typeof entry === "object" && /payment.*completed/i.test(String((entry as Record<string, unknown>).new_status || "")))
+    .map((entry) => Number((entry as Record<string, unknown>).changed_date))
+    .find((value) => Number.isFinite(value) && value > 0);
+  return completed || transaction?.createddate || details.order.createddate;
+};
+
 const formatStatus = (status?: string | null) => {
   if (!status) return "Processing";
 
@@ -80,6 +93,12 @@ const getOrderGatewayTransactionId = (order?: OrderSummary | null) =>
 
 const getOrderAmount = (order?: OrderSummary | null) =>
   getNumber(order, ["orderamount", "amount", "totalamount", "grandtotal", "grandTotal"]);
+
+const getWalletAmountApplied = (order?: OrderSummary | null) =>
+  getNumber(order, ["wallet_amount_applied", "wallet_discount_total"]);
+
+const getOrderTotalAmount = (order?: OrderSummary | null) =>
+  (getOrderAmount(order) ?? 0) + (getWalletAmountApplied(order) ?? 0);
 
 const getTransactionMerchantTransactionId = (transaction?: TransactionRecord | null) =>
   transaction?.merchanttransactionid || getString(transaction, ["merchantTransactionId"]);
@@ -306,7 +325,7 @@ const Payments: React.FC = () => {
                 const merchantTransactionId =
                   getOrderMerchantTransactionId(order) || getTransactionMerchantTransactionId(transaction);
                 const transactionLabel = getDisplayTransactionId(order, transaction);
-                const amount = getOrderAmount(order);
+                const amount = getOrderTotalAmount(order);
                 const key = String(getOrderIdentifier(order) || transactionLabel || index);
                 const isExpanded = expandedPaymentKey === key;
 
@@ -328,7 +347,7 @@ const Payments: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-[var(--color-muted)]">Paid on</p>
-                          <p className="text-sm text-[var(--color-muted)]">{formatDateTime(order.createddate)}</p>
+                          <p className="text-sm text-[var(--color-muted)]">{formatDateTime(getPaymentTimestamp(details, transaction))}</p>
                         </div>
                         <p className="text-sm font-semibold text-[var(--color-text)] md:col-span-4">
                           {formatStatus(order.orderstatus)}
