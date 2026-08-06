@@ -723,6 +723,7 @@ function OrderCard({
       : "rounded-[var(--radius-md)] border-[var(--color-border)]",
     cancelled ? "opacity-75" : "",
   ].filter(Boolean).join(" ");
+  const canUseReturnFlow = isOrderReturnFlowAvailable(displayStatus || order.orderstatus);
   const hasPolicyEligibleItems = Boolean(returnEligibility?.items.some(hasAnyReturnPolicy));
   const returnEligibilityNotice = returnEligibility ? getReturnEligibilityNotice(returnEligibility) : "";
 
@@ -819,20 +820,22 @@ function OrderCard({
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             ) : null}
-            <Button
-              variant={hasReturnableItems ? "primary" : "secondary"}
-              className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
-              disabled={isLoadingReturnEligibility}
-              onClick={onShowReturnOptions}
-              title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
-            >
-              {isLoadingReturnEligibility ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RotateCcw className="h-3.5 w-3.5" />
-              )}
-              {returnBtnLabel}
-            </Button>
+            {canUseReturnFlow ? (
+              <Button
+                variant={hasReturnableItems ? "primary" : "secondary"}
+                className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
+                disabled={isLoadingReturnEligibility}
+                onClick={onShowReturnOptions}
+                title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
+              >
+                {isLoadingReturnEligibility ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+                {returnBtnLabel}
+              </Button>
+            ) : null}
             <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
               {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
               Track
@@ -868,7 +871,7 @@ function OrderCard({
 
             {orderlines.length > 0 ? (
               <div className="space-y-2">
-                {returnEligibility && !isLoadingReturnEligibility && (
+                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && (
                   returnEligibility.eligibleitemcount > 0 || 
                   normalizeStatusKey(order.orderstatus || "") === "delivered" || 
                   normalizeStatusKey(order.orderstatus || "") === "completed"
@@ -892,7 +895,9 @@ function OrderCard({
                   </div>
                 )}
                 {orderlines.map((line, index) => {
-                  const eligibilityItem = returnEligibility?.items.find((item: any) => Number(item.orderlineid) === Number(line.id));
+                  const eligibilityItem = canUseReturnFlow
+                    ? returnEligibility?.items.find((item: any) => Number(item.orderlineid) === Number(line.id))
+                    : undefined;
                   const lineReturnRequests = returnRequestsByLine[String(eligibilityItem?.orderlineid ?? line.id ?? "")] || [];
                   return (
                     <OrderLineRow
@@ -994,6 +999,11 @@ function isOrderCancellable(status?: string | null) {
   ]);
 
   return !blockedStatuses.has(normalized);
+}
+
+function isOrderReturnFlowAvailable(status?: string | null) {
+  const normalized = normalizeStatusKey(status || "");
+  return ["delivered", "completed", "order_completed"].includes(normalized);
 }
 
 function isCancelledStatus(status?: string | null) {
