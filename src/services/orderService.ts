@@ -14,6 +14,10 @@ export interface OrderSummary {
   shipping_cost?: number;
   mode?: string;
   orderstatus?: string;
+  fulfillment_status?: string;
+  effective_status?: string;
+  workflow_type?: string | null;
+  workflow_request_id?: number | null;
   createddate?: number;
   modifieddate?: number;
   invoiceurl?: string | null;

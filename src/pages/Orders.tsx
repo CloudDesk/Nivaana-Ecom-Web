@@ -730,7 +730,21 @@ function OrderCard({
 }) {
   const { order, orderlines = [], address } = details;
   const invoiceUrl = getString(order, ["invoiceurl", "invoice_url", "order_invoice_url", "invoiceUrl"]);
-  const displayStatus = order.orderstatus || tracking?.order_status || tracking?.ekart_tracking?.status;
+  const orderReturnRequests = orderlines
+    .flatMap((line) => returnRequestsByLine[String(line.id ?? "")] || [])
+    .sort((a, b) => Number(b.modifieddate || b.id || 0) - Number(a.modifieddate || a.id || 0));
+  const latestReturnRequest = orderReturnRequests[0];
+  const latestRefundOperation = details.refund_operations?.[0];
+  const locallyDerivedWorkflowStatus = latestReturnRequest
+    ? getCustomerReturnStatus(latestReturnRequest)
+    : latestRefundOperation
+      ? String(latestRefundOperation.status).toLowerCase() === "completed"
+        ? "Refund Completed"
+        : String(latestRefundOperation.status).toLowerCase() === "failed"
+          ? "Refund Failed"
+          : "Refund Processing"
+      : "";
+  const displayStatus = order.effective_status || locallyDerivedWorkflowStatus || order.orderstatus || tracking?.order_status || tracking?.ekart_tracking?.status;
   const statusHistory = getStatusHistory(details, tracking, displayStatus);
   const cancellable = isOrderCancellable(order.orderstatus);
   const statusTone = getStatusTone(displayStatus);
@@ -1047,6 +1061,10 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       shipping_cost: getNumber(orderSource, ["shipping_cost"]),
       mode: getString(orderSource, ["mode"]),
       orderstatus: getString(orderSource, ["orderstatus"]),
+      fulfillment_status: getString(orderSource, ["fulfillment_status"]),
+      effective_status: getString(orderSource, ["effective_status"]),
+      workflow_type: getString(orderSource, ["workflow_type"]),
+      workflow_request_id: getNumber(orderSource, ["workflow_request_id"]),
       createddate: getNumber(orderSource, ["createddate"]),
       modifieddate: getNumber(orderSource, ["modifieddate"]),
     },
@@ -1061,24 +1079,19 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
 
 function isOrderCancellable(status?: string | null) {
   const normalized = (status || "").trim().toLowerCase().replace(/[_\s-]+/g, "_");
-  if (!normalized) return true;
-
-  const blockedStatuses = new Set([
-    "cancelled",
-    "canceled",
-    "delivered",
-    "completed",
-    "order_completed",
-    "refunded",
-    "shipped",
+  const cancellableStatuses = new Set([
+    "order_placed",
+    "payment_completed",
+    "order_confirmed",
+    "packed",
+    "ready_for_dispatch",
   ]);
-
-  return !blockedStatuses.has(normalized);
+  return cancellableStatuses.has(normalized);
 }
 
 function isOrderReturnFlowAvailable(status?: string | null) {
   const normalized = normalizeStatusKey(status || "");
-  return ["delivered", "completed", "order_completed"].includes(normalized);
+  return ["delivered", "cod_payment_received"].includes(normalized);
 }
 
 function isCancelledStatus(status?: string | null) {
@@ -1088,10 +1101,10 @@ function isCancelledStatus(status?: string | null) {
 
 function getStatusTone(status?: string | null) {
   const normalized = (status || "").trim().toLowerCase();
-  if (normalized.includes("cancel")) return "cancel";
+  if (normalized.includes("cancel") || normalized.includes("reject") || normalized.includes("fail")) return "cancel";
   if (normalized.includes("transit") || normalized.includes("ship")) return "transit";
   if (normalized.includes("payment") && normalized.includes("completed")) return "success";
-  if (normalized.includes("ready") || normalized.includes("dispatch") || normalized.includes("pending")) return "pending";
+  if (normalized.includes("ready") || normalized.includes("dispatch") || normalized.includes("pending") || normalized.includes("requested") || normalized.includes("processing") || normalized.includes("inspection") || normalized.includes("approved") || normalized.includes("pickup")) return "pending";
   return "success";
 }
 
@@ -1147,6 +1160,9 @@ function OrderLineRow({
   const hasRejectedRequest = returnRequests.some((request) =>
     ["rejected", "evidence_rejected", "inspection_rejected"].includes(normalizeStatusKey(request.status || ""))
   );
+  const latestLineRequest = [...returnRequests]
+    .sort((a, b) => Number(b.modifieddate || b.id || 0) - Number(a.modifieddate || a.id || 0))[0];
+  const lineDisplayStatus = latestLineRequest ? getCustomerReturnStatus(latestLineRequest) : line.orderstatus;
 
   return (
     <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3">
@@ -1170,10 +1186,10 @@ function OrderLineRow({
           )}
           <p className="mt-1 text-xs text-[var(--color-muted)]">
             Qty: {Number(line.quantity || 0)}
-            {line.orderstatus ? (
+            {lineDisplayStatus ? (
               <>
                 <span aria-hidden="true"> . </span>
-                <span className="font-semibold text-[var(--color-secondary)]">{formatStatus(line.orderstatus)}</span>
+                <span className="font-semibold text-[var(--color-secondary)]">{formatStatus(lineDisplayStatus)}</span>
               </>
             ) : null}
           </p>
