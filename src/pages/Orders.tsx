@@ -33,6 +33,7 @@ import {
   type OrderDetails,
   type OrderLine,
   type OrderSummary,
+  type RefundOperation,
   type TrackingDetails,
 } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
@@ -961,7 +962,7 @@ function OrderCard({
                     <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3 text-xs text-[var(--color-muted)]">
                       {walletUsage.map((usage) => (
                         <div key={usage.reservation_id} className="flex justify-between gap-3">
-                          <span>{usage.coupon_name || usage.coupon_code || `Wallet credit #${usage.credit_id}`}{usage.status === "reversed" ? " (restored)" : ""}</span>
+                          <span>{usage.coupon_name || usage.coupon_code || `Wallet credit #${usage.credit_id}`}{usage.restoration_status === "restored" ? " (restored)" : usage.restoration_status === "skipped_expired" ? " (expired — not restored)" : ""}</span>
                           <span>{formatCurrency(usage.amount)}</span>
                         </div>
                       ))}
@@ -1004,6 +1005,7 @@ function OrderCard({
           </section>
 
           <aside id={statusAnchorId} className="scroll-mt-24 space-y-4">
+            {(details.refund_operations || []).length > 0 && <RefundProgressPanel operation={details.refund_operations![0]} />}
             <AddressPanel address={address} />
             {returnRequestsError && (
               <section className="rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
@@ -1047,10 +1049,11 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       orderstatus: getString(orderSource, ["orderstatus"]),
       createddate: getNumber(orderSource, ["createddate"]),
       modifieddate: getNumber(orderSource, ["modifieddate"]),
-      mode: getString(orderSource, ["mode"]),
     },
     orderlines: Array.isArray(raw.orderlines) ? raw.orderlines : [],
     address: isRecord(raw.address) ? raw.address : null,
+    wallet_usage: Array.isArray(raw.wallet_usage) ? raw.wallet_usage as any[] : [],
+    refund_operations: Array.isArray(raw.refund_operations) ? raw.refund_operations as any[] : [],
     status_history: Array.isArray(raw.status_history) ? raw.status_history : undefined,
     statusHistory: Array.isArray(raw.statusHistory) ? raw.statusHistory : undefined,
   };
@@ -1498,6 +1501,29 @@ function getReturnEligibilityNotice(eligibility: OrderReturnEligibility) {
 
   const firstBlocker = eligibility.items.flatMap((item) => item.blockers || [])[0];
   return firstBlocker || "No items in this order are currently eligible for return or replacement.";
+}
+
+function RefundProgressPanel({ operation }: { operation: RefundOperation }) {
+  const complete = operation.status === "completed";
+  const failed = operation.status === "failed" || operation.status === "partial_failed";
+  const restoredWithExpiry = (operation.wallet_allocations || []).filter((allocation) => allocation.allocationType === "coupon_restore" && allocation.status === "completed");
+  return (
+    <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div><p className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Cancellation refund</p><h3 className="mt-1 font-bold text-[var(--color-text)]">{complete ? "Refund completed" : failed ? "Refund needs attention" : "Refund processing"}</h3></div>
+        <span className={cn("rounded-full px-2.5 py-1 text-xs font-bold", complete ? "bg-green-100 text-green-700" : failed ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800")}>{formatStatus(operation.status)}</span>
+      </div>
+      <div className="mt-4 space-y-2 text-sm">
+        {operation.walletCreditedAmount > 0 && <div className="flex justify-between gap-3"><span className="text-[var(--color-muted)]">Credited to wallet</span><strong>{formatCurrency(operation.walletCreditedAmount)}</strong></div>}
+        {operation.nonExpiringWalletAmount > 0 && <p className="rounded-lg bg-green-50 p-2.5 text-xs text-green-800">{formatCurrency(operation.nonExpiringWalletAmount)} from your online payment was added as non-expiring refund credit.</p>}
+        {operation.phonepeRefundAmount > 0 && <div className="flex justify-between gap-3"><span className="text-[var(--color-muted)]">PhonePe / online refund</span><strong>{formatCurrency(operation.phonepeRefundAmount)}</strong></div>}
+        {operation.phonepeRefundAmount > 0 && <p className="text-xs text-[var(--color-muted)]">Online refund status: {formatStatus(operation.phonepeStatus)}{operation.phonepeRefundId ? ` · Ref ${operation.phonepeRefundId}` : ""}</p>}
+        {restoredWithExpiry.map((allocation) => <p key={allocation.id} className="text-xs text-[var(--color-muted)]">{formatCurrency(allocation.amount)} promotional wallet credit restored{allocation.expiresAt ? ` · expires ${formatDate(allocation.expiresAt)}` : ""}.</p>)}
+        {operation.expiredWalletAmount > 0 && <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900">{formatCurrency(operation.expiredWalletAmount)} was from expired promotional wallet credit and was not restored.</p>}
+      </div>
+      <p className="mt-3 border-t border-[var(--color-border)] pt-3 text-[11px] text-[var(--color-muted)]">Refund reference: {operation.operationNumber}</p>
+    </section>
+  );
 }
 
 function AddressPanel({ address }: { address?: OrderAddress | null }) {
