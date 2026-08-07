@@ -14,6 +14,10 @@ export interface OrderSummary {
   shipping_cost?: number;
   mode?: string;
   orderstatus?: string;
+  fulfillment_status?: string;
+  effective_status?: string;
+  workflow_type?: string | null;
+  workflow_request_id?: number | null;
   createddate?: number;
   modifieddate?: number;
   invoiceurl?: string | null;
@@ -57,9 +61,33 @@ export interface OrderDetails {
   orderlines?: OrderLine[];
   address?: OrderAddress | null;
   wallet_usage?: OrderWalletUsage[];
+  refund_operations?: RefundOperation[];
   status_history?: unknown[];
   statusHistory?: unknown[];
   [key: string]: unknown;
+}
+
+export interface RefundOperation {
+  id: number;
+  operationNumber: string;
+  triggerType: "cancellation" | "return" | string;
+  destination: "original_sources" | "wallet" | string;
+  approvedAmount: number;
+  eligibleWalletAmount: number;
+  expiredWalletAmount: number;
+  onlineAmount: number;
+  nonExpiringWalletAmount: number;
+  walletCreditedAmount: number;
+  phonepeRefundAmount: number;
+  walletStatus: string;
+  phonepeStatus: string;
+  status: string;
+  phonepeRefundId?: string | null;
+  consentAccepted?: boolean;
+  consentChannel?: string | null;
+  createddate: number;
+  completeddate?: number | null;
+  wallet_allocations?: Array<{ id: number; allocationType: string; amount: number; status: string; expiresAt?: number | null }>;
 }
 
 export interface OrderWalletUsage {
@@ -73,6 +101,7 @@ export interface OrderWalletUsage {
   reversed_at?: number | null;
   reversal_reason?: string | null;
   expires_at?: number | null;
+  restoration_status?: "restored" | "skipped_expired" | "not_restored" | string;
 }
 
 export interface TrackingDetails {

@@ -20,6 +20,7 @@ export interface WalletCoupon {
     minimum_cart_amount: number;
     status: string;
     expires_at?: string | number | null;
+    source_type?: "coupon" | "cancellation_refund" | "return_refund" | string;
   } | null;
 }
 
@@ -49,7 +50,7 @@ export interface WalletDiscountQuote {
 
 export interface WalletActivityItem {
   id: string;
-  type: "order_redemption" | "cancellation_reversal";
+  type: "order_redemption" | "cancellation_reversal" | "refund_credit";
   amount: number;
   wallet_credit_id: number;
   coupon_code: string;
