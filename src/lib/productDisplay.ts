@@ -1,6 +1,6 @@
 import type { Product } from "../types";
 
-type ProductDisplayFields = Pick<Product, "name" | "brand">;
+type ProductDisplayFields = Pick<Product, "name" | "shortname" | "brand">;
 
 const normalizeBrand = (value?: string | null) =>
   value
@@ -13,6 +13,8 @@ const knownBrands = new Set(["nivaana", "aurora", "auora", "kraftella"]);
 const leadingBrandPattern = /^\s*([^-–—]+?)\s*[-–—]\s*/;
 
 export const getProductDisplayName = (product?: ProductDisplayFields | null, fallback = "Product") => {
+  const shortName = product?.shortname?.trim();
+  if (shortName) return shortName;
   if (!product?.name) return fallback;
 
   const match = product.name.match(leadingBrandPattern);

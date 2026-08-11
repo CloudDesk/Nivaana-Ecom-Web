@@ -30,11 +30,15 @@ import { ToastProvider } from './components/Toast';
 function AppLayout() {
   const location = useLocation();
   const showsCategoryRail = location.pathname === "/products" || location.pathname.startsWith("/products/");
+  const isProductDetailRoute = /^\/products\/[^/]+\/?$/.test(location.pathname);
+  const pageTopPadding = isProductDetailRoute
+    ? "pt-0"
+    : `pt-[4.5rem] ${showsCategoryRail ? "lg:pt-[6rem]" : "lg:pt-[8.75rem]"}`;
 
   return (
     <div className="flex min-h-screen max-w-full flex-col">
       <Navbar />
-      <main className={`flex-grow pt-[4.5rem] ${showsCategoryRail ? "lg:pt-[6rem]" : "lg:pt-[8.75rem]"}`}>
+      <main className={`flex-grow ${pageTopPadding}`}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/products" element={<Products />} />
