@@ -26,7 +26,6 @@ import { Button } from "../components/ui/button";
 import { toast } from "../components/toastApi";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { ApiResponse, CartItem, Product } from "../types";
-import { getProductDisplayName } from "../lib/productDisplay";
 import { getAvailableStock, isOutOfStock, stockLimitMessage } from "../lib/stock";
 import { friendlyNotificationMessage, isOfferAlreadyUsedError } from "../lib/notificationMessages";
 import {
@@ -1036,7 +1035,7 @@ const Cart: React.FC = () => {
           <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,0.9fr)_460px]">
             <div className="space-y-4">
               {enriched.map(({ apiId, item, product, quantity }) => {
-                const displayName = getProductDisplayName(product, `Product #${item.productid}`);
+                const displayName = product?.name?.trim() || `Product #${item.productid}`;
 
                 return (
                 <article key={`${item.productid}-${apiId ?? "guest"}`} className="relative flex gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)] sm:gap-4">
