@@ -233,7 +233,9 @@ const ProductDetails: React.FC = () => {
     if (!product) return catalogProducts;
     return [product, ...catalogProducts.filter((item) => item.id !== product.id)];
   }, [categoryNavProductsQuery.data?.data, product]);
-  const displayName = getProductDisplayName(product);
+  // Product cards use the short name, but the detail page must show the full product name.
+  const displayName = product?.name?.trim() || "Product";
+  const breadcrumbName = product?.shortname?.trim() || displayName;
   const images = useMemo(() => productImages(product), [product]);
   const activeImage = images[selectedImage] || fallbackProduct;
   const rating = product?.averagerating ?? 4.7;
@@ -614,7 +616,7 @@ const ProductDetails: React.FC = () => {
             </>
           )}
           <span>/</span>
-          <span className="min-w-0 break-words text-[var(--color-text)]">{displayName}</span>
+          <span className="min-w-0 break-words text-[var(--color-text)]">{breadcrumbName}</span>
         </div>
 
         <section className="product-section relative mx-auto w-full min-w-0 max-w-[1440px]">
