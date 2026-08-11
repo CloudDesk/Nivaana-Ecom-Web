@@ -1077,7 +1077,7 @@ const Home: React.FC = () => {
         <div className={homeContainer}>
           <SectionHeader
             eyebrow="Flavours"
-            title="Shop by fragrance mood"
+            title="Shop by Fragrance"
             linkText="View all flavours"
           />
 

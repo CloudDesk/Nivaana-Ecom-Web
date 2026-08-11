@@ -108,6 +108,7 @@ const Navbar: React.FC = () => {
   const isCartRoute = location.pathname === "/cart";
   const isWalletRoute = location.pathname === "/wallet";
   const showsCategoryRail = location.pathname === "/products" || location.pathname.startsWith("/products/");
+  const isProductDetailRoute = /^\/products\/[^/]+\/?$/.test(location.pathname);
   const searchSuggestions = (productResponse?.data ?? [])
     .filter((product) => {
       const query = searchTerm.trim().toLowerCase();
@@ -239,7 +240,12 @@ const Navbar: React.FC = () => {
   );
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 w-full max-w-full bg-[#33405d] [transform:none]">
+    <header
+      className={cn(
+        "z-50 w-full max-w-full bg-[#33405d] [transform:none]",
+        isProductDetailRoute ? "relative" : "fixed inset-x-0 top-0"
+      )}
+    >
       <motion.nav
         className={cn(
           "w-full border-b transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300",
