@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { Smartphone } from "lucide-react";
+import { ArrowLeft, Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
@@ -17,6 +17,14 @@ const Login: React.FC = () => {
   const [requiresName, setRequiresName] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const changeMobileNumber = () => {
+    setOtpSent(false);
+    setRequiresName(false);
+    setOtp("");
+    setName("");
+    setMessage("");
+  };
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -101,11 +109,31 @@ const Login: React.FC = () => {
               placeholder="10-digit mobile number"
               inputMode="numeric"
               autoComplete="tel"
-              className="min-w-0 flex-1 px-4 text-sm text-[#33271b] outline-none placeholder:text-[#b9aea0]"
+              readOnly={otpSent}
+              aria-readonly={otpSent}
+              className={`min-w-0 flex-1 px-4 text-sm text-[#33271b] outline-none placeholder:text-[#b9aea0] ${
+                otpSent ? "cursor-not-allowed bg-[#f4f1eb] text-[#766c63]" : "bg-white"
+              }`}
               required
             />
           </div>
-          <p className="mt-2 text-sm text-[#9b9188]">We'll send a one-time password to this number.</p>
+          <p className="mt-2 text-sm text-[#9b9188]">
+            {otpSent
+              ? `OTP sent to +91 ${mobile}.`
+              : "We'll send a one-time password to this number."}
+          </p>
+
+          {otpSent && (
+            <button
+              type="button"
+              onClick={changeMobileNumber}
+              disabled={loading}
+              className="mt-3 inline-flex items-center gap-2 bg-transparent p-0 text-sm font-semibold text-[#766c63] shadow-none transition hover:bg-transparent hover:text-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to change mobile number
+            </button>
+          )}
 
           {otpSent && (
             <>
