@@ -29,6 +29,10 @@ export interface PaymentRequest {
   shippingCost?: number;
   taxAmount?: number;
   evaluation_ids?: string[];
+  wallet?: {
+    apply: boolean;
+    eligibility_base: number;
+  };
 }
 
 export interface PaymentResponseData {
@@ -41,6 +45,11 @@ export interface PaymentResponseData {
   paymentMode?: string;
   mode?: string;
   message?: string;
+  orderCreation?: {
+    status?: "success" | "already_exists" | "failed" | string;
+    orderId?: number | null;
+    error?: string | null;
+  };
   paymentData?: {
     merchantTransactionId?: string;
     transactionId?: string;
@@ -60,6 +69,10 @@ export interface PaymentResponseData {
   next_steps?: {
     phonepe?: {
       redirectUrl?: string;
+    } | null;
+    wallet?: {
+      action?: "order_complete" | string;
+      instructions?: string;
     } | null;
   };
 }

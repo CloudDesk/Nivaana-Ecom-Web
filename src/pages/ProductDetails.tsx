@@ -20,8 +20,10 @@ import {
   ShoppingBag,
   Sparkles,
   Star,
+  Sun,
   Truck,
-  WandSparkles,
+  Droplet,
+  Wind,
   X,
 } from "lucide-react";
 import CategoryNavigationRail from "../components/CategoryNavigationRail";
@@ -38,6 +40,7 @@ import {
 import CategoryShowcaseBanner from "../components/CategoryShowcaseBanner";
 import ProductCard from "../components/ProductCard";
 import RecentProductRail from "../components/RecentProductRail";
+import { RichTextContent } from "../components/RichTextContent";
 import { toast } from "../components/toastApi";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import { Button } from "../components/ui/button";
@@ -49,7 +52,7 @@ import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type Promotion } from "../services/promotionService";
 import { ratingService } from "../services/ratingService";
 import { sessionService } from "../services/sessionService";
-import type { Product, Rating } from "../types";
+import type { BenefitIconKey, BenefitItem, Product, Rating } from "../types";
 import { cn } from "../lib/utils";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { saveRecentlyViewedProductId } from "../lib/recentlyViewed";
@@ -69,22 +72,6 @@ const isAuthExpiredError = (error: Error) =>
 
 const isWarningMessage = (message: string) =>
   /out of stock|available stock|only \d+ item|currently available|quantity/i.test(message);
-
-const splitDescriptionPoints = (product: Product) => {
-  const source = product.fulldescription || product.shortdescription || product.name;
-  const chunks = source
-    .split(/[.|]/)
-    .map((value) => value.trim())
-    .filter((value) => value.length > 18);
-
-  const fallback = [
-    "Premium fragrance crafted for everyday rituals",
-    "Designed for calm homes and mindful spaces",
-    "Easy to place, use, and enjoy daily",
-  ];
-
-  return (chunks.length ? chunks : fallback).slice(0, 3);
-};
 
 const productOfferItems = (product: Product, promotions: Promotion[] = []) => {
   if (promotions.length > 0) {
@@ -159,7 +146,6 @@ const ProductDetails: React.FC = () => {
   const [mainImageDragOffset, setMainImageDragOffset] = useState(0);
   const thumbnailButtonRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
   const mainImageSwipeRef = React.useRef({ startX: 0, startY: 0, tracking: false });
-  const mainImageWheelLockRef = React.useRef(false);
 
   const productQuery = useQuery({
     queryKey: ["product", id],
@@ -211,15 +197,8 @@ const ProductDetails: React.FC = () => {
 
   const publicPromotionsQuery = useQuery({
     queryKey: ["detail-public-promotions", session?.user.id],
-    queryFn: () =>
-      promotionService.list({
-        userid: session?.user.id,
-        channel: "web",
-        geo: "IN",
-        status: "active",
-        visibility: "public",
-        limit: 8,
-      }),
+    queryFn: () => promotionService.mine("web"),
+    enabled: Boolean(session),
     staleTime: 1000 * 60 * 5,
   });
 
@@ -254,7 +233,9 @@ const ProductDetails: React.FC = () => {
     if (!product) return catalogProducts;
     return [product, ...catalogProducts.filter((item) => item.id !== product.id)];
   }, [categoryNavProductsQuery.data?.data, product]);
-  const displayName = getProductDisplayName(product);
+  // Product cards use the short name, but the detail page must show the full product name.
+  const displayName = product?.name?.trim() || "Product";
+  const breadcrumbName = product?.shortname?.trim() || displayName;
   const images = useMemo(() => productImages(product), [product]);
   const activeImage = images[selectedImage] || fallbackProduct;
   const rating = product?.averagerating ?? 4.7;
@@ -635,25 +616,14 @@ const ProductDetails: React.FC = () => {
             </>
           )}
           <span>/</span>
-          <span className="min-w-0 break-words text-[var(--color-text)]">{displayName}</span>
+          <span className="min-w-0 break-words text-[var(--color-text)]">{breadcrumbName}</span>
         </div>
 
-        <div className="relative mx-auto grid w-full min-w-0 max-w-[1440px] grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(480px,0.92fr)_minmax(560px,0.78fr)] lg:items-start xl:grid-cols-[minmax(560px,0.88fr)_minmax(620px,0.82fr)]">
-          <div className="min-w-0 self-start">
-            <div className="lg:mx-auto lg:w-full lg:max-w-[560px] xl:max-w-[620px]">
+        <section className="product-section relative mx-auto w-full min-w-0 max-w-[1440px]">
+          <aside className="product-gallery-sticky">
+            <div className="w-full">
               <div
                 className="min-w-0 cursor-grab touch-pan-y select-none overflow-hidden bg-white active:cursor-grabbing"
-              onWheel={(event) => {
-                if (images.length <= 1 || mainImageWheelLockRef.current) return;
-                if (Math.abs(event.deltaX) < 28 || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.2) return;
-
-                event.preventDefault();
-                mainImageWheelLockRef.current = true;
-                moveMainImage(event.deltaX > 0 ? 1 : -1);
-                window.setTimeout(() => {
-                  mainImageWheelLockRef.current = false;
-                }, 420);
-              }}
               onPointerDown={(event) => {
                 if (images.length <= 1) return;
 
@@ -699,7 +669,7 @@ const ProductDetails: React.FC = () => {
                 draggable={false}
                 animate={{ x: mainImageDragOffset }}
                 transition={mainImageDragOffset === 0 ? { type: "spring", stiffness: 260, damping: 28 } : { duration: 0 }}
-                className="pointer-events-none block h-[360px] w-full max-w-full bg-white object-contain sm:h-[520px] lg:h-[520px] xl:h-[560px]"
+                className="product-gallery-main-image pointer-events-none bg-white"
                 onError={(event: React.SyntheticEvent<HTMLImageElement>) => {
                   event.currentTarget.src = fallbackProduct;
                 }}
@@ -727,7 +697,7 @@ const ProductDetails: React.FC = () => {
                       }}
                       onClick={() => setSelectedImage(index)}
                       className={cn(
-                        "h-16 w-16 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white p-1 sm:h-20 sm:w-20 sm:p-1.5 xl:h-24 xl:w-24",
+                        "h-16 w-16 shrink-0 overflow-hidden rounded-2xl border bg-white p-1 sm:h-20 sm:w-20 sm:p-1.5 xl:h-24 xl:w-24",
                         selectedImage === index
                           ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]"
                           : "border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
@@ -752,9 +722,9 @@ const ProductDetails: React.FC = () => {
               </div>
             )}
             </div>
-          </div>
+          </aside>
 
-          <aside className="min-w-0 pb-8 lg:pr-4">
+          <article className="product-details pb-8 lg:pr-4">
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wide text-[var(--color-secondary)]">
               <span>{formatLabel(product.subcategory || product.category)}</span>
               {productOutOfStock && <span className="text-[var(--color-danger)]">Out of Stock</span>}
@@ -769,12 +739,6 @@ const ProductDetails: React.FC = () => {
                 {rating.toFixed(1)}
               </span>
               <span>{stockStatusLabel(product)}</span>
-            </div>
-
-            <div className="mt-4 min-w-0 break-words text-sm leading-7 text-[var(--color-muted)]">
-              <p>
-                {product.shortdescription || product.fulldescription || "Premium Nivaana fragrance crafted for everyday rituals."}
-              </p>
             </div>
 
             <div className="mt-5">
@@ -880,11 +844,11 @@ const ProductDetails: React.FC = () => {
             </div>
 
             <ProductInsights product={product} hasReviews={productReviews.length > 0} />
-          </aside>
-        </div>
+          </article>
+        </section>
 
         {relatedProducts.length > 0 && (
-          <section className="mt-12 min-w-0">
+          <section className="recommendations mt-12 min-w-0">
             <div className="mb-5 flex items-end justify-between">
               <div>
                 <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-secondary)]">More recommendations</p>
@@ -892,7 +856,7 @@ const ProductDetails: React.FC = () => {
               </div>
               <Link to="/products" className="text-sm font-bold text-[var(--color-secondary)] hover:underline">View all</Link>
             </div>
-            <div className="-mx-4 flex max-w-[calc(100%+2rem)] snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-4 px-4 pb-3 scrollbar-hide sm:-mx-6 sm:max-w-[calc(100%+3rem)] sm:scroll-px-6 sm:px-6 lg:mx-0 lg:max-w-full lg:scroll-px-0 lg:px-0">
+            <div className="-mx-4 flex max-w-[calc(100%+2rem)] gap-4 overflow-x-auto overscroll-x-contain px-4 pb-3 scrollbar-hide sm:-mx-6 sm:max-w-[calc(100%+3rem)] sm:px-6 lg:mx-0 lg:max-w-full lg:px-0">
               {relatedProducts.map((item) => (
                 <div key={item.id} className={fiveCardProductRailItem}>
                   <ProductCard product={item} compact />
@@ -960,25 +924,60 @@ function PromotionRail({ items }: { items: string[] }) {
 }
 
 function ProductHighlights({ product }: { product: Product }) {
-  const points = [
-    ...splitDescriptionPoints(product),
-    "Long-lasting freshness",
-    "Refill, reuse, and enjoy daily",
-  ].slice(0, 6);
-  const icons = [WandSparkles, Leaf, ShieldCheck, Repeat2, Sparkles, Package];
+  const benefits = product.shortdescription?.trim();
+  const persistedBenefits: BenefitItem[] = Array.isArray(product.benefititems)
+    ? product.benefititems.filter(
+        (item): item is BenefitItem =>
+          Boolean(item && typeof item.text === "string" && item.text.trim()),
+      )
+    : [];
+
+  const defaultIcons: BenefitIconKey[] = ["sparkles", "leaf", "shield", "repeat", "star", "package"];
+  const legacyBenefits: BenefitItem[] = benefits && persistedBenefits.length === 0
+    ? (() => {
+        const withBoundaries = benefits
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/(?:p|li|h2|h3|blockquote)>/gi, "$&\n");
+        const text = typeof DOMParser === "undefined"
+          ? withBoundaries.replace(/<[^>]*>/g, "")
+          : new DOMParser().parseFromString(withBoundaries, "text/html").body.textContent || "";
+        return text
+          .split(/\n|\u2022|\uF0A7/)
+          .map((item) => item.replace(/^[-*]\s*/, "").trim())
+          .filter(Boolean)
+          .slice(0, 12)
+          .map((text, index) => ({ icon: defaultIcons[index % defaultIcons.length], text }));
+      })()
+    : [];
+  const structuredBenefits = persistedBenefits.length > 0 ? persistedBenefits : legacyBenefits;
+
+  const iconMap: Record<BenefitIconKey, React.ComponentType<{ className?: string }>> = {
+    sparkles: Sparkles,
+    leaf: Leaf,
+    shield: ShieldCheck,
+    repeat: Repeat2,
+    package: Package,
+    heart: Heart,
+    droplet: Droplet,
+    sun: Sun,
+    star: Star,
+    wind: Wind,
+  };
+
+  if (structuredBenefits.length === 0) return null;
 
   return (
     <div className="mt-5 border-t border-[var(--color-border)] pt-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {points.map((point, index) => {
-          const Icon = icons[index % icons.length];
-
+      <h2 className="text-sm font-extrabold text-[var(--color-text)]">Benefits</h2>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {structuredBenefits.map((item, index) => {
+          const Icon = iconMap[item.icon] || Sparkles;
           return (
-            <div key={`${point}-${index}`} className="flex min-w-0 items-center gap-3 text-sm font-medium text-[var(--color-text)]">
+            <div key={`${item.icon}-${item.text}-${index}`} className="flex min-w-0 items-center gap-3 text-sm font-medium text-[var(--color-text)]">
               <span className="grid h-8 w-8 shrink-0 place-items-center text-[var(--color-secondary)]">
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="min-w-0 break-words line-clamp-2">{point}</span>
+              <span className="min-w-0 break-words">{item.text}</span>
             </div>
           );
         })}
@@ -988,45 +987,93 @@ function ProductHighlights({ product }: { product: Product }) {
 }
 
 function ProductInsights({ product, hasReviews }: { product: Product; hasReviews: boolean }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "how-to-use">("overview");
+  const hasUsage = Boolean(
+    product.usage
+      ?.replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .trim(),
+  );
+
+  useEffect(() => {
+    setActiveTab("overview");
+  }, [product.id]);
+
   return (
-    <section className="mt-9 space-y-8 border-t border-[var(--color-border)] pt-6">
-      <nav className="flex flex-wrap gap-8 border-b border-[var(--color-border)] pb-3 text-base font-extrabold text-[var(--color-muted)]">
-        <a href="#overview" className="text-[var(--color-text)] hover:text-[var(--color-secondary)]">
+    <section className="mt-9 border-t border-[var(--color-border)] pt-6">
+      <nav
+        aria-label="Product information"
+        className="flex flex-wrap gap-8 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-base font-extrabold text-[var(--color-muted)]"
+        role="tablist"
+      >
+        <button
+          type="button"
+          id="overview-tab"
+          role="tab"
+          aria-controls="overview"
+          aria-selected={activeTab === "overview"}
+          className={cn(
+            "appearance-none border-0 bg-transparent px-0 pb-3 outline-none transition-colors hover:text-[var(--color-secondary)] focus-visible:ring-2 focus-visible:ring-[var(--color-secondary)] focus-visible:ring-offset-2",
+            activeTab === "overview"
+              ? "text-[var(--color-text)]"
+              : "text-[var(--color-muted)]",
+          )}
+          onClick={() => setActiveTab("overview")}
+        >
           Overview
-        </a>
-        <a href="#how-to-use" className="hover:text-[var(--color-secondary)]">
-          How to Use
-        </a>
+        </button>
+        {hasUsage && (
+          <button
+            type="button"
+            id="how-to-use-tab"
+            role="tab"
+            aria-controls="how-to-use"
+            aria-selected={activeTab === "how-to-use"}
+            className={cn(
+              "appearance-none border-0 bg-transparent px-0 pb-3 outline-none transition-colors hover:text-[var(--color-secondary)] focus-visible:ring-2 focus-visible:ring-[var(--color-secondary)] focus-visible:ring-offset-2",
+              activeTab === "how-to-use"
+                ? "text-[var(--color-text)]"
+                : "text-[var(--color-muted)]",
+            )}
+            onClick={() => setActiveTab("how-to-use")}
+          >
+            How to Use
+          </button>
+        )}
         {hasReviews && (
-          <a href="#reviews" className="hover:text-[var(--color-secondary)]">
+          <a href="#reviews" className="border-b-2 border-transparent pb-3 hover:text-[var(--color-secondary)]">
             Review
           </a>
         )}
       </nav>
 
-      <div id="overview" className="scroll-mt-28 sm:scroll-mt-32 lg:scroll-mt-36">
-        <p className="mt-4 break-words text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8">
-          {product.fulldescription || product.shortdescription || "A premium Nivaana product made to add calm, freshness, and a refined ritual feel to everyday spaces."}
-        </p>
-      </div>
-
-      <div id="how-to-use" className="scroll-mt-28 sm:scroll-mt-32 lg:scroll-mt-36">
-        <h2 className="text-base font-extrabold text-[var(--color-text)]">How to Use</h2>
-        <div className="mt-4 grid min-w-0 gap-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8 lg:grid-cols-3">
-          {[
-            "Place or use the product in a clean, dry space.",
-            "Keep away from direct heat, children, and pets unless product instructions say otherwise.",
-            "Use regularly in your preferred room, car, or ritual space for a consistent fragrance experience.",
-          ].map((step, index) => (
-            <div key={step} className="flex min-w-0 items-start gap-3 break-words">
-              <span className="w-5 shrink-0 text-sm font-extrabold text-[var(--color-secondary)] sm:w-6">
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1">{step}</span>
-            </div>
-          ))}
+      {activeTab === "overview" && (
+        <div
+          id="overview"
+          role="tabpanel"
+          aria-labelledby="overview-tab"
+          className="pt-5"
+        >
+          <RichTextContent
+            className="text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8"
+            content={product.fulldescription || product.shortdescription || "A premium Nivaana product made to add calm, freshness, and a refined ritual feel to everyday spaces."}
+          />
         </div>
-      </div>
+      )}
+
+      {activeTab === "how-to-use" && hasUsage && (
+        <div
+          id="how-to-use"
+          role="tabpanel"
+          aria-labelledby="how-to-use-tab"
+          className="pt-5"
+        >
+          <RichTextContent
+            className="text-sm leading-7 text-[var(--color-muted)] sm:text-base sm:leading-8"
+            content={product.usage!}
+          />
+        </div>
+      )}
     </section>
   );
 }

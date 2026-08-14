@@ -17,13 +17,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 export function GuestOnlyRoute({ children }: { children: ReactNode }) {
-  const location = useLocation();
   const session = sessionService.getSession();
-  const from = location.state && typeof location.state === "object" ? (location.state as { from?: unknown }).from : null;
-  const target = typeof from === "string" && from.startsWith("/") && from !== "/login" ? from : "/account";
 
   if (session) {
-    return <Navigate to={target} replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;

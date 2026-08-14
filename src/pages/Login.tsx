@@ -1,29 +1,30 @@
-import React, { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Smartphone } from "lucide-react";
+import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
 
 const Login: React.FC = () => {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
   const [mobile, setMobile] = useState("");
+  const [name, setName] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [requiresName, setRequiresName] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const session = sessionService.getSession();
-  const locationState = location.state && typeof location.state === "object" ? (location.state as { from?: unknown }).from : null;
-  const redirectParam = searchParams.get("redirect");
-  const redirectTarget =
-    typeof locationState === "string" && locationState.startsWith("/") && locationState !== "/login"
-      ? locationState
-      : redirectParam?.startsWith("/") && redirectParam !== "/login"
-        ? redirectParam
-        : "/account";
+
+  const changeMobileNumber = () => {
+    setOtpSent(false);
+    setRequiresName(false);
+    setOtp("");
+    setName("");
+    setMessage("");
+  };
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -36,7 +37,8 @@ const Login: React.FC = () => {
     setMessage("");
 
     try {
-      await authService.requestOTP(Number(mobile));
+      const response = await authService.requestOTP(Number(mobile));
+      setRequiresName(Boolean(response.data.requiresName ?? response.data.isNewUser));
       setOtpSent(true);
       setMessage("OTP sent successfully.");
     } catch {
@@ -53,30 +55,32 @@ const Login: React.FC = () => {
       return;
     }
 
+    if (requiresName && name.trim().replace(/\s+/g, " ").length < 2) {
+      setMessage("Please enter your name.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
     try {
-      await authService.verifyOTP(Number(mobile), Number(otp));
+      const hadGuestCartItems = guestStoreService.getCart().length > 0;
+      await authService.verifyOTP(Number(mobile), Number(otp), requiresName ? name : undefined);
       const session = sessionService.getSession();
       if (session) {
         await guestStoreService.mergeToUser(session.user.id);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] }),
+          queryClient.invalidateQueries({ queryKey: ["wishlist", session.user.id] }),
+        ]);
       }
-      navigate(redirectTarget, { replace: true });
+      navigate(hadGuestCartItems ? "/cart" : "/", { replace: true });
     } catch {
       setMessage("OTP verification failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (session) {
-      navigate(redirectTarget, { replace: true });
-    }
-  }, [navigate, redirectTarget, session]);
-
-  if (session) return null;
 
   return (
     <section className="flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden bg-white px-6 py-12 font-sans lg:min-h-[calc(100vh-5rem)]">
@@ -105,28 +109,69 @@ const Login: React.FC = () => {
               placeholder="10-digit mobile number"
               inputMode="numeric"
               autoComplete="tel"
-              className="min-w-0 flex-1 px-4 text-sm text-[#33271b] outline-none placeholder:text-[#b9aea0]"
+              readOnly={otpSent}
+              aria-readonly={otpSent}
+              className={`min-w-0 flex-1 px-4 text-sm text-[#33271b] outline-none placeholder:text-[#b9aea0] ${
+                otpSent ? "cursor-not-allowed bg-[#f4f1eb] text-[#766c63]" : "bg-white"
+              }`}
               required
             />
           </div>
-          <p className="mt-2 text-sm text-[#9b9188]">We'll send a one-time password to this number.</p>
+          <p className="mt-2 text-sm text-[#9b9188]">
+            {otpSent
+              ? `OTP sent to +91 ${mobile}.`
+              : "We'll send a one-time password to this number."}
+          </p>
 
           {otpSent && (
-            <div className="mt-5">
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="otp">
-                One-Time Password
-              </label>
-              <input
-                id="otp"
-                value={otp}
-                onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                placeholder="4-digit OTP"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
-                required
-              />
-            </div>
+            <button
+              type="button"
+              onClick={changeMobileNumber}
+              disabled={loading}
+              className="mt-3 inline-flex items-center gap-2 bg-transparent p-0 text-sm font-semibold text-[#766c63] shadow-none transition hover:bg-transparent hover:text-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to change mobile number
+            </button>
+          )}
+
+          {otpSent && (
+            <>
+              {requiresName && (
+                <div className="mt-5">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="name">
+                    Customer Name
+                  </label>
+                  <input
+                    id="name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value.slice(0, 100))}
+                    placeholder="Enter your full name"
+                    autoComplete="name"
+                    minLength={2}
+                    maxLength={100}
+                    className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="mt-5">
+                <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="otp">
+                  One-Time Password
+                </label>
+                <input
+                  id="otp"
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="4-digit OTP"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                  required
+                />
+              </div>
+            </>
           )}
 
           {message && <p className="mt-4 text-sm font-medium text-[#766c63]">{message}</p>}

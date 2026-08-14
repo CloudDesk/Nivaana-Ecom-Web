@@ -36,7 +36,7 @@ export function ToastProvider() {
   }, []);
 
   return (
-    <div className="pointer-events-none fixed left-1/2 top-20 z-[80] flex w-[calc(100vw-2rem)] max-w-[300px] -translate-x-1/2 flex-col items-center gap-3 sm:top-24 sm:max-w-xs">
+    <div className="pointer-events-none fixed left-1/2 top-20 z-[200] flex w-[calc(100vw-2rem)] max-w-[300px] -translate-x-1/2 flex-col items-center gap-3 sm:top-24 sm:max-w-xs">
       <AnimatePresence initial={false}>
         {items.map((item) => {
           const style = toastStyles[item.type];

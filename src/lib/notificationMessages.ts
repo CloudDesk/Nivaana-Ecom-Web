@@ -1,3 +1,12 @@
+export const isOfferAlreadyUsedError = (message?: string | null) => {
+  const normalized = String(message || "").toUpperCase();
+
+  return (
+    normalized.includes("PROMOTION_PER_USER_LIMIT_REACHED") ||
+    normalized.includes("VOUCHER_USAGE_LIMIT_REACHED")
+  );
+};
+
 export const friendlyNotificationMessage = (message?: string | null) => {
   const fallback = "Something went wrong. Please try again.";
   const text = String(message || "").trim();
@@ -15,6 +24,13 @@ export const friendlyNotificationMessage = (message?: string | null) => {
 
   if (normalized.includes("invalid or expired token") || normalized.includes("unauthorized")) {
     return "Your session has expired. Please log in again.";
+  }
+
+  if (
+    normalized.includes("stackable") ||
+    normalized.includes("another promotion already applied")
+  ) {
+    return "Remove the current offer before applying another.";
   }
 
   return text.replace(/\biscart\b/gi, "cart").replace(/\biswishlist\b/gi, "wishlist");

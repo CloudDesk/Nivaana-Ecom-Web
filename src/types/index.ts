@@ -1,8 +1,18 @@
+export type BenefitIconKey = "sparkles" | "leaf" | "shield" | "repeat" | "package" | "heart" | "droplet" | "sun" | "star" | "wind";
+
+export interface BenefitItem {
+  icon: BenefitIconKey;
+  text: string;
+}
+
 export interface Product {
   id: number;
   name: string;
+  shortname?: string | null;
   shortdescription: string | null;
   fulldescription: string | null;
+  benefititems?: BenefitItem[] | null;
+  usage?: string | null;
   fragnancetype: string | null;
   soldquantity: number;
   availablequantity: number;
@@ -209,10 +219,17 @@ export interface OTPRequest {
 export interface OTPVerifyRequest {
   usermobilenumber: number;
   otp: number;
+  firstname?: string;
 }
 
 export interface OTPRequestResponse {
   message: string;
+  mobileNumber?: number;
+  otpSent?: boolean;
+  expiresIn?: number;
+  canResendAfter?: number;
+  isNewUser?: boolean;
+  requiresName?: boolean;
 }
 
 export interface OTPVerifyResponse {

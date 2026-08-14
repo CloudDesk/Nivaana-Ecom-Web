@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, ReceiptText, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { paymentService, type PaymentResponseData, type TransactionRecord } from "../services/paymentService";
 import { orderService, type OrderDetails, type OrderSummary } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
+import { clearSelectedCartPromotion } from "../lib/cartPromotions";
+import { saveWalletApplied } from "../lib/walletSelection";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 
@@ -14,7 +16,20 @@ const getStatusText = (data?: PaymentResponseData | null) =>
 
 const isSuccessfulPayment = (data?: PaymentResponseData | null) => {
   const statusText = getStatusText(data).toLowerCase();
-  return Boolean(data?.success) || statusText.includes("success") || statusText.includes("completed");
+  const paymentSucceeded =
+    statusText === "success" ||
+    statusText.includes("payment_success") ||
+    statusText.includes("completed");
+  return paymentSucceeded && data?.orderCreation?.status !== "failed";
+};
+
+const isPendingPayment = (data?: PaymentResponseData | null) => {
+  const statusText = getStatusText(data).toLowerCase();
+  return (
+    statusText.includes("pending") ||
+    statusText.includes("initiated") ||
+    statusText.includes("processing")
+  );
 };
 
 const formatCurrency = (value?: number | string | null, source: "rupees" | "paise" = "rupees", showZero = false) => {
@@ -45,6 +60,19 @@ const formatDateTime = (value?: number | string | null) => {
   });
 };
 
+const getPaymentTimestamp = (details: OrderDetails, transaction?: TransactionRecord | null) => {
+  const history = Array.isArray(details.order.status_history)
+    ? details.order.status_history
+    : Array.isArray(details.status_history)
+      ? details.status_history
+      : [];
+  const completed = history
+    .filter((entry) => entry && typeof entry === "object" && /payment.*completed/i.test(String((entry as Record<string, unknown>).new_status || "")))
+    .map((entry) => Number((entry as Record<string, unknown>).changed_date))
+    .find((value) => Number.isFinite(value) && value > 0);
+  return completed || transaction?.createddate || details.order.createddate;
+};
+
 const formatStatus = (status?: string | null) => {
   if (!status) return "Processing";
 
@@ -65,6 +93,12 @@ const getOrderGatewayTransactionId = (order?: OrderSummary | null) =>
 
 const getOrderAmount = (order?: OrderSummary | null) =>
   getNumber(order, ["orderamount", "amount", "totalamount", "grandtotal", "grandTotal"]);
+
+const getWalletAmountApplied = (order?: OrderSummary | null) =>
+  getNumber(order, ["wallet_amount_applied", "wallet_discount_total"]);
+
+const getOrderTotalAmount = (order?: OrderSummary | null) =>
+  (getOrderAmount(order) ?? 0) + (getWalletAmountApplied(order) ?? 0);
 
 const getTransactionMerchantTransactionId = (transaction?: TransactionRecord | null) =>
   transaction?.merchanttransactionid || getString(transaction, ["merchantTransactionId"]);
@@ -124,6 +158,7 @@ const findMatchingTransaction = (order: OrderSummary, transactions: TransactionR
 
 const Payments: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [session] = useState(() => sessionService.getSession());
   const [statusData, setStatusData] = useState<PaymentResponseData | null>(null);
@@ -184,6 +219,8 @@ const Payments: React.FC = () => {
 
       if (isSuccessfulPayment(response)) {
         localStorage.removeItem(PENDING_TRANSACTION_KEY);
+        clearSelectedCartPromotion(session?.user.id);
+        saveWalletApplied(session?.user.id, false);
         setPendingMerchantTransactionId("");
 
         if (session?.user.id) {
@@ -191,7 +228,11 @@ const Payments: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["orders", session.user.id] });
           queryClient.invalidateQueries({ queryKey: ["payments", session.user.id] });
           queryClient.invalidateQueries({ queryKey: ["payment-transactions", session.user.id] });
+          queryClient.invalidateQueries({ queryKey: ["wallet"] });
+          queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] });
         }
+
+        window.setTimeout(() => navigate("/", { replace: true }), 1200);
       }
     },
     onError: (error) => {
@@ -210,6 +251,16 @@ const Payments: React.FC = () => {
     );
     statusMutation.mutate(returnedMerchantTransactionId);
   }, [returnedMerchantTransactionId, returnedPaymentStatus, statusData, statusMutation]);
+
+  useEffect(() => {
+    if (!returnedMerchantTransactionId || !isPendingPayment(statusData)) return;
+
+    const timer = window.setTimeout(() => {
+      setStatusData(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [returnedMerchantTransactionId, statusData]);
 
   if (!session) {
     return (
@@ -274,7 +325,7 @@ const Payments: React.FC = () => {
                 const merchantTransactionId =
                   getOrderMerchantTransactionId(order) || getTransactionMerchantTransactionId(transaction);
                 const transactionLabel = getDisplayTransactionId(order, transaction);
-                const amount = getOrderAmount(order);
+                const amount = getOrderTotalAmount(order);
                 const key = String(getOrderIdentifier(order) || transactionLabel || index);
                 const isExpanded = expandedPaymentKey === key;
 
@@ -296,7 +347,7 @@ const Payments: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-[var(--color-muted)]">Paid on</p>
-                          <p className="text-sm text-[var(--color-muted)]">{formatDateTime(order.createddate)}</p>
+                          <p className="text-sm text-[var(--color-muted)]">{formatDateTime(getPaymentTimestamp(details, transaction))}</p>
                         </div>
                         <p className="text-sm font-semibold text-[var(--color-text)] md:col-span-4">
                           {formatStatus(order.orderstatus)}

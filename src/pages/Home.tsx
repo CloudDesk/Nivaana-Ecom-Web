@@ -24,6 +24,7 @@ import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type Promotion } from "../services/promotionService";
+import { sessionService } from "../services/sessionService";
 import { ratingService } from "../services/ratingService";
 import { storefrontPageSectionService } from "../services/storefrontPageSectionService";
 import type { Product, Rating, StorefrontMedia, StorefrontPageSection } from "../types";
@@ -365,16 +366,16 @@ const Home: React.FC = () => {
     queryFn: () => ratingService.getRatings(1, 12),
   });
 
-  const promotionsQuery = useQuery({
-    queryKey: ["home-promotion-deals"],
-    queryFn: () =>
-      promotionService.list({
-        channel: "web",
-        geo: "IN",
-        status: "active",
-        visibility: "public",
-        limit: 10,
-      }),
+  const homeSession = sessionService.getSession();
+  const publicPromotionsQuery = useQuery({
+    queryKey: ["home-public-promotion-deals"],
+    queryFn: () => promotionService.public("web", "IN", 10),
+  });
+
+  const assignedPromotionsQuery = useQuery({
+    queryKey: ["home-assigned-promotion-deals", homeSession?.user.id],
+    queryFn: () => promotionService.mine("web"),
+    enabled: Boolean(homeSession),
   });
 
   const storefrontConfigQuery = useQuery({
@@ -384,7 +385,22 @@ const Home: React.FC = () => {
   });
 
   const products = useMemo(() => data?.data ?? [], [data?.data]);
-  const dealPromotions = useMemo(() => promotionsQuery.data?.data ?? [], [promotionsQuery.data?.data]);
+  const dealPromotions = useMemo(() => {
+    const promotionsById = new Map<number, Promotion>();
+
+    for (const promotion of publicPromotionsQuery.data?.data ?? []) {
+      promotionsById.set(promotion.id, promotion);
+    }
+    for (const promotion of assignedPromotionsQuery.data?.data ?? []) {
+      // Prefer the assigned record because it can contain the customer's
+      // voucher code, group validity, and usage information.
+      promotionsById.set(promotion.id, promotion);
+    }
+
+    return Array.from(promotionsById.values()).sort(
+      (a, b) => (a.priority ?? 999) - (b.priority ?? 999)
+    );
+  }, [assignedPromotionsQuery.data?.data, publicPromotionsQuery.data?.data]);
   const storefrontSections = storefrontConfigQuery.data?.data?.sections_by_key;
   const heroSection = firstStorefrontSection(storefrontSections?.["home.hero"]);
   const showcaseSection = firstStorefrontSection(storefrontSections?.["home.showcase"]);
@@ -855,7 +871,7 @@ const Home: React.FC = () => {
 
           <DealTripleSlider
             activeIndex={activeDeal}
-            loading={promotionsQuery.isLoading}
+            loading={publicPromotionsQuery.isLoading || (Boolean(homeSession) && assignedPromotionsQuery.isLoading)}
             promotions={dealPromotions}
             setActiveIndex={setActiveDeal}
           />
@@ -1061,7 +1077,7 @@ const Home: React.FC = () => {
         <div className={homeContainer}>
           <SectionHeader
             eyebrow="Flavours"
-            title="Shop by fragrance mood"
+            title="Shop by Fragrance"
             linkText="View all flavours"
           />
 
@@ -1641,6 +1657,13 @@ function DealTripleSlider({
       return;
     }
 
+    if (
+      promotion.application_mode === "click_to_apply" ||
+      promotion.application_mode === "code_entry"
+    ) {
+      navigate("/promotions");
+      return;
+    }
     navigate(promotionProductListPath(promotion));
   };
 
@@ -2028,7 +2051,11 @@ function DealCard({
               onOpenDeals?.();
             }}
           >
-            Shop deals
+            {promotion.application_mode === "click_to_apply"
+              ? "Apply offer"
+              : promotion.application_mode === "code_entry"
+                ? "Use code"
+                : "Shop deals"}
             <ChevronRight className="ml-1.5 h-4 w-4 stroke-[2.6]" />
           </button>
         </div>

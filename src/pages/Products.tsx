@@ -150,6 +150,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       result = result.filter((product) =>
         [
           product.name,
+          product.shortname,
           product.shortdescription,
           product.fulldescription,
           product.category,

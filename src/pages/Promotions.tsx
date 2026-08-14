@@ -1,7 +1,23 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { BadgePercent, CheckCircle2, Loader2, ShoppingBag, Sparkles, Tag, TicketPercent, UserRound } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  BadgeCheck,
+  CalendarDays,
+  Check,
+  Copy,
+  Gift,
+  Loader2,
+  Percent,
+  ShoppingBag,
+  Sparkles,
+  TicketPercent,
+  Truck,
+  UserRound,
+  WalletCards,
+  Zap,
+} from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cartService } from "../services/cartService";
 import { platformProductService } from "../services/productPlatformService";
@@ -13,8 +29,49 @@ import {
 } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
 import type { Product } from "../types";
+import {
+  buildPromotionCartData,
+  buildPromotionEvaluationCartItems,
+} from "../lib/cartPromotions";
+import { toast } from "../components/toastApi";
 
-const formatCurrency = (value?: number | null) => `Rs. ${Math.max(Number(value || 0), 0).toLocaleString("en-IN")}`;
+const formatCurrency = (value?: number | null) =>
+  `₹${Math.max(Number(value || 0), 0).toLocaleString("en-IN")}`;
+
+const formatEligibilityReason = (reason?: string | null) => {
+  const value = String(reason || "").trim();
+  const normalized = value.toLowerCase();
+  if (!value) return "This offer is not available for your current cart yet.";
+  if (normalized.includes("has not started")) return "This offer is not available yet.";
+  if (normalized.includes("expired")) return "This offer has expired.";
+  if (normalized.includes("segment not eligible") || normalized.includes("creation date not eligible")) {
+    return "This offer is not available for your account.";
+  }
+  if (normalized.includes("order count not eligible")) {
+    return "Your previous order count does not meet this offer's requirements.";
+  }
+  const cartTotal = value.match(/Cart total value not eligible\. Required: (?:GTE|GT) ([\d.]+), Current: ([\d.]+)/i);
+  if (cartTotal) {
+    const amountNeeded = Math.max(Number(cartTotal[1]) - Number(cartTotal[2]), 0);
+    return amountNeeded > 0
+      ? `Add ${formatCurrency(amountNeeded)} more to use this offer.`
+      : "Your cart total does not meet this offer's requirements.";
+  }
+  const itemCount = value.match(/Cart item count not eligible\. Required: (?:GTE|GT) ([\d.]+), Current: ([\d.]+)/i);
+  if (itemCount) {
+    const itemsNeeded = Math.max(Math.ceil(Number(itemCount[1]) - Number(itemCount[2])), 0);
+    return itemsNeeded > 0
+      ? `Add ${itemsNeeded} more ${itemsNeeded === 1 ? "item" : "items"} to use this offer.`
+      : "Your cart does not meet this offer's item requirement.";
+  }
+  if (normalized.includes("category not eligible")) {
+    return "This offer applies only to selected product categories.";
+  }
+  if (normalized.includes("no discount applicable")) {
+    return "This offer does not apply to the products currently in your cart.";
+  }
+  return "Your cart does not meet this offer's requirements yet.";
+};
 
 const quantityFor = (quantity: unknown) => {
   const parsed = Number(quantity);
@@ -67,6 +124,36 @@ const publicPromotionKey = (promotion: Promotion) => `${promotion.id}-${promotio
 const Promotions: React.FC = () => {
   const session = sessionService.getSession();
   const userId = session?.user.id;
+  const queryClient = useQueryClient();
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const copyPromotionCode = async (code: string) => {
+    const normalizedCode = code.trim();
+    if (!normalizedCode) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(normalizedCode);
+      } else {
+        const temporaryInput = document.createElement("textarea");
+        temporaryInput.value = normalizedCode;
+        temporaryInput.style.position = "fixed";
+        temporaryInput.style.opacity = "0";
+        document.body.appendChild(temporaryInput);
+        temporaryInput.select();
+        document.execCommand("copy");
+        temporaryInput.remove();
+      }
+      setCopiedCode(normalizedCode);
+      toast.success(`Code ${normalizedCode} copied.`);
+      window.setTimeout(
+        () => setCopiedCode((current) => (current === normalizedCode ? null : current)),
+        1800
+      );
+    } catch {
+      toast.error("Could not copy the code. Please select and copy it manually.");
+    }
+  };
 
   const cartQuery = useQuery({
     queryKey: ["cart", userId],
@@ -82,20 +169,40 @@ const Promotions: React.FC = () => {
   });
 
   const publicPromotionsQuery = useQuery({
-    queryKey: ["public-promotions", userId],
-    queryFn: () =>
-      promotionService.list({
-        userid: userId,
-        channel: "web",
-        geo: "IN",
-        status: "active",
-        visibility: "public",
-        limit: 30,
-      }),
+    queryKey: ["my-promotions", userId],
+    queryFn: () => promotionService.mine("web"),
+    enabled: Boolean(userId),
   });
 
   const cartItems = useMemo(() => (cartQuery.data?.data ?? []).filter((item) => item.iscart), [cartQuery.data]);
-  const products = productsQuery.data?.data ?? [];
+  const products = useMemo(() => productsQuery.data?.data ?? [], [productsQuery.data]);
+  const promotionRows = useMemo(
+    () =>
+      cartItems
+        .map((item) => {
+          const product = products.find((row) => row.id === item.productid);
+          if (!product) return null;
+          return {
+            cartRecordId: item.id ?? item.productid,
+            productid: item.productid,
+            product,
+            quantity: quantityFor(item.quantity),
+          };
+        })
+        .filter(
+          (row): row is NonNullable<typeof row> =>
+            Boolean(row && row.quantity > 0)
+        ),
+    [cartItems, products]
+  );
+  const promotionCartData = useMemo(
+    () => buildPromotionCartData(promotionRows),
+    [promotionRows]
+  );
+  const promotionEvaluationItems = useMemo(
+    () => buildPromotionEvaluationCartItems(promotionRows),
+    [promotionRows]
+  );
   const recommendationItems = useMemo(
     () =>
       cartItems
@@ -129,6 +236,49 @@ const Promotions: React.FC = () => {
     enabled: Boolean(userId && recommendationItems.length > 0 && products.length > 0),
   });
 
+  const applyPromotionMutation = useMutation({
+    mutationFn: async (promotion: Promotion) => {
+      if (!userId || promotionEvaluationItems.length === 0) {
+        throw new Error("Add products to your cart before applying this promotion.");
+      }
+      let evaluationId = offersQuery.data?.data?.currentEvaluation?.evaluation_id;
+      if (!evaluationId) {
+        const automaticEvaluation = await promotionService.evaluateAutomatic({
+          userId: String(userId),
+          cartItems: promotionEvaluationItems,
+          currentTotal: promotionCartData.total,
+          mode: "phonepe",
+          channel: "web",
+          geo: "IN",
+        });
+        evaluationId = automaticEvaluation.data.evaluation_id;
+      }
+      return promotionService.evaluate({
+        evaluationId,
+        cartId: `cart-${userId}`,
+        userId: String(userId),
+        promotionId: promotion.id,
+        applicationType: promotion.stackable
+          ? "stackable_promotion"
+          : "manual_coupon",
+        cartData: promotionCartData,
+        cartItems: promotionEvaluationItems,
+        mode: "phonepe",
+        channel: "web",
+        geo: "IN",
+      });
+    },
+    onSuccess: (_response, promotion) => {
+      toast.success(`${promotion.name} applied to your cart.`);
+      queryClient.invalidateQueries({ queryKey: ["promotion-offers", userId] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Could not apply this promotion."
+      );
+    },
+  });
+
   if (!session) {
     return (
       <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
@@ -148,11 +298,34 @@ const Promotions: React.FC = () => {
 
   const publicPromotions = publicPromotionsQuery.data?.data ?? [];
   const offers = offersQuery.data?.data;
-  const eligiblePromotions = offers?.eligibleCoupons ?? [];
-  const stackablePromotions = offers?.stackablePromotions ?? [];
-  const autoPromotions = offers?.autoAppliedPromotions ?? [];
   const appliedPromotions = offers?.currentEvaluation?.applied_promotions ?? [];
-  const bestCoupon = offers?.bestCoupon ?? null;
+  const ineligibleReasonById = new Map(
+    (offers?.ineligibleCoupons ?? []).map((promotion) => [
+      promotion.promotion_id,
+      formatEligibilityReason(promotion.ineligibleReason),
+    ])
+  );
+  const appliedPromotionIds = new Set(
+    appliedPromotions
+      .map((promotion) => promotion.promotion_id)
+      .filter((id): id is number => typeof id === "number")
+  );
+  const isAlreadyApplied = (promotionId: number | undefined | null) =>
+    typeof promotionId === "number" && appliedPromotionIds.has(promotionId);
+  const eligiblePromotions = (offers?.eligibleCoupons ?? []).filter(
+    (promotion) => !isAlreadyApplied(promotion.promotion_id)
+  );
+  const stackablePromotions = (offers?.stackablePromotions ?? []).filter(
+    (promotion) => !isAlreadyApplied(promotion.promotion_id)
+  );
+  const autoPromotions = (offers?.autoAppliedPromotions ?? []).filter(
+    (promotion) => !isAlreadyApplied(promotion.promotion_id)
+  );
+  const rawBestCoupon = offers?.bestCoupon ?? null;
+  const bestCoupon =
+    rawBestCoupon && !isAlreadyApplied(rawBestCoupon.promotion_id)
+      ? rawBestCoupon
+      : null;
   const isLoadingCartContext = cartQuery.isLoading || productsQuery.isLoading;
   const isLoadingOffers = isLoadingCartContext || offersQuery.isLoading || publicPromotionsQuery.isLoading;
   const hasCartContext = recommendationItems.length > 0;
@@ -162,126 +335,212 @@ const Promotions: React.FC = () => {
     autoPromotions.length > 0 ||
     appliedPromotions.length > 0 ||
     Boolean(bestCoupon);
+  const availableApplicablePromotions = [
+    ...(bestCoupon ? [bestCoupon] : []),
+    ...eligiblePromotions,
+    ...stackablePromotions,
+    ...autoPromotions,
+  ].filter((promotion, index, promotions) => {
+    const id = promotion.promotion_id;
+    const code = promotion.code?.toUpperCase();
+    return promotions.findIndex((candidate) =>
+      typeof id === "number"
+        ? candidate.promotion_id === id
+        : Boolean(code) && candidate.code?.toUpperCase() === code
+    ) === index;
+  });
+  const contextualPromotionIds = new Set(
+    [
+      ...availableApplicablePromotions.map((promotion) => promotion.promotion_id),
+      ...appliedPromotions.map((promotion) => promotion.promotion_id),
+    ].filter((id): id is number => typeof id === "number")
+  );
+  const contextualPromotionCodes = new Set(
+    [
+      ...availableApplicablePromotions.map((promotion) => promotion.code),
+    ]
+      .filter((code): code is string => Boolean(code))
+      .map((code) => code.toUpperCase())
+  );
+  const additionalPublicPromotions = publicPromotions.filter(
+    (promotion) =>
+      !isAlreadyApplied(promotion.id) &&
+      !contextualPromotionIds.has(promotion.id) &&
+      !(promotion.code && contextualPromotionCodes.has(promotion.code.toUpperCase()))
+  );
+  const personalPublicPromotions = additionalPublicPromotions.filter(
+    (promotion) =>
+      Boolean(promotion.assignment_id) ||
+      promotion.audience === "customer" ||
+      promotion.audience === "customer_group"
+  );
+  const morePublicPromotions = additionalPublicPromotions.filter(
+    (promotion) => !personalPublicPromotions.some((personal) => personal.id === promotion.id)
+  );
+  const specialOfferCount =
+    appliedPromotions.length +
+    availableApplicablePromotions.length +
+    personalPublicPromotions.length;
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-6xl">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)]">Account</p>
-            <h1 className="mt-2 text-3xl font-bold text-[var(--color-text)]">Promotions</h1>
-            <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted)]">
-              Applicable offers are checked against the products currently in your cart.
-            </p>
+    <main className="min-h-screen bg-[#f6f7fb] px-4 py-8 sm:px-6 sm:py-10">
+      <section className="mx-auto max-w-7xl">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#26344f] via-[#3f4e6c] to-[#56627e] px-6 py-7 text-white shadow-[0_22px_60px_rgba(38,52,79,0.22)] sm:px-9 lg:px-10">
+          <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[42px] border-[#fbbc05]/15" />
+          <div className="pointer-events-none absolute -bottom-20 right-1/3 h-48 w-48 rounded-full bg-[#fbbc05]/10 blur-2xl" />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-[#ffd84d]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Deals selected for you
+              </span>
+              <h1 className="mt-3 text-3xl font-extrabold tracking-tight">
+                Make every cart more rewarding
+              </h1>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
+                Explore active offers, copy voucher codes in one click, and see exactly
+                what each promotion saves before checkout.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/60">Cart value</p>
+                <p className="mt-1 text-lg font-extrabold">{formatCurrency(promotionCartData.total)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/60">Items</p>
+                <p className="mt-1 text-lg font-extrabold">{recommendationItems.length}</p>
+              </div>
+              <Link
+                to="/cart"
+                className="inline-flex min-h-[58px] items-center gap-2 rounded-2xl bg-[#fbbc05] px-5 text-sm font-extrabold text-[#172033] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#ffd042]"
+              >
+                <ShoppingBag className="h-4 w-4" />
+                View cart
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
-          <Link to="/cart" className="inline-flex">
-            <Button variant="secondary" className="gap-2">
-              <ShoppingBag className="h-4 w-4" />
-              View Cart
-            </Button>
-          </Link>
         </div>
 
         {isLoadingOffers ? (
-          <div className="mt-8 flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 text-sm font-semibold text-[var(--color-secondary)] shadow-[var(--shadow-card)]">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Checking available promotions
+          <div className="mt-8 flex items-center gap-3 rounded-2xl border border-[#e2e5ec] bg-white p-5 text-sm font-semibold text-[#485470] shadow-sm">
+            <Loader2 className="h-5 w-5 animate-spin text-[#f0ae00]" />
+            Finding the best promotions for your cart...
           </div>
         ) : (
-          <div className="mt-8 space-y-6">
+          <div className="mt-8 space-y-8">
             {offersQuery.isError && hasCartContext && (
               <Notice
                 tone="error"
-                title="Could not check cart-specific promotions"
-                text="Public active promotions are still shown below."
+                title="We could not check cart-specific promotions"
+                text="Your other active promotions are still available below."
               />
             )}
 
             {!hasCartContext && (
               <Notice
                 tone="info"
-                title="Add products to see applicable promotions"
-                text="Your cart is empty, so we cannot evaluate eligibility yet."
+                title="Add products to unlock cart recommendations"
+                text="You can browse active offers now. Add an item to see exact savings and eligibility."
               />
             )}
 
             {hasCartContext && !hasApplicableOffers && (
               <Notice
                 tone="info"
-                title="No applicable promotions for this cart"
-                text="You can still browse public active promotions below."
+                title="No promotion matches this cart yet"
+                text="You can still browse the other active offers below."
               />
             )}
 
-            {bestCoupon && (
+            {specialOfferCount > 0 && (
               <section>
-                <SectionHeading icon={<Sparkles className="h-5 w-5" />} title="Best Match" />
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <PromotionCard promotion={bestCoupon} badge="Recommended" />
-                </div>
-              </section>
-            )}
-
-            {appliedPromotions.length > 0 && (
-              <section>
-                <SectionHeading icon={<CheckCircle2 className="h-5 w-5" />} title="Already Applied" />
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <SectionHeading
+                  icon={<TicketPercent className="h-5 w-5" />}
+                  title="Special for you"
+                  subtitle="Your applied benefits and the best offers selected for your account and cart."
+                  count={specialOfferCount}
+                />
+                <div className="mt-5 grid auto-rows-fr gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {appliedPromotions.map((promotion, index) => (
-                    <AppliedPromotionCard key={`${promotion.promotion_id || promotion.promotion_name}-${index}`} promotion={promotion} />
+                    <AppliedPromotionCard
+                      key={`applied-${promotion.promotion_id || promotion.promotion_name}-${index}`}
+                      promotion={promotion}
+                      shippingSavings={promotionCartData.shipping_cost}
+                    />
+                  ))}
+
+                  {availableApplicablePromotions.map((promotion, index) => {
+                    const recommended = promotion.promotion_id === bestCoupon?.promotion_id;
+                    return (
+                      <PromotionCard
+                        key={promotionKey(promotion, "available", index)}
+                        promotion={promotion}
+                        badge={recommended ? "Recommended" : "Eligible"}
+                        featured={recommended}
+                        copied={copiedCode === promotion.code}
+                        onCopy={copyPromotionCode}
+                      />
+                    );
+                  })}
+
+                  {personalPublicPromotions.map((promotion) => (
+                    <PublicPromotionCard
+                      key={publicPromotionKey(promotion)}
+                      promotion={promotion}
+                      canApply={hasCartContext}
+                      copied={copiedCode === promotion.code}
+                      onCopy={copyPromotionCode}
+                      isApplying={
+                        applyPromotionMutation.isPending &&
+                        applyPromotionMutation.variables?.id === promotion.id
+                      }
+                      onApply={() => applyPromotionMutation.mutate(promotion)}
+                      personal
+                      disabledReason={ineligibleReasonById.get(promotion.id)}
+                    />
                   ))}
                 </div>
               </section>
             )}
 
-            {eligiblePromotions.length > 0 && (
+            {morePublicPromotions.length > 0 && (
               <section>
-                <SectionHeading icon={<TicketPercent className="h-5 w-5" />} title="Applicable Coupons" />
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {eligiblePromotions.map((promotion, index) => (
-                    <PromotionCard key={promotionKey(promotion, "eligible", index)} promotion={promotion} badge="Applicable" />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {stackablePromotions.length > 0 && (
-              <section>
-                <SectionHeading icon={<BadgePercent className="h-5 w-5" />} title="Extra Benefits" />
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {stackablePromotions.map((promotion, index) => (
-                    <PromotionCard key={promotionKey(promotion, "stackable", index)} promotion={promotion} badge="Stackable" />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {autoPromotions.length > 0 && (
-              <section>
-                <SectionHeading icon={<Sparkles className="h-5 w-5" />} title="Automatic Offers" />
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {autoPromotions.map((promotion, index) => (
-                    <PromotionCard key={promotionKey(promotion, "auto", index)} promotion={promotion} badge="Auto Apply" />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {publicPromotions.length > 0 && (
-              <section>
-                <SectionHeading icon={<Tag className="h-5 w-5" />} title="Public Promotions" />
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {publicPromotions.map((promotion) => (
-                    <PublicPromotionCard key={publicPromotionKey(promotion)} promotion={promotion} />
+                <SectionHeading
+                  icon={<Gift className="h-5 w-5" />}
+                  title="More offers"
+                  subtitle="Explore other active promotions available for your cart."
+                  count={morePublicPromotions.length}
+                />
+                <div className="mt-5 grid auto-rows-fr gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {morePublicPromotions.map((promotion) => (
+                    <PublicPromotionCard
+                      key={publicPromotionKey(promotion)}
+                      promotion={promotion}
+                      canApply={hasCartContext}
+                      copied={copiedCode === promotion.code}
+                      onCopy={copyPromotionCode}
+                      isApplying={
+                        applyPromotionMutation.isPending &&
+                        applyPromotionMutation.variables?.id === promotion.id
+                      }
+                      onApply={() => applyPromotionMutation.mutate(promotion)}
+                      disabledReason={ineligibleReasonById.get(promotion.id)}
+                    />
                   ))}
                 </div>
               </section>
             )}
 
             {publicPromotions.length === 0 && !hasApplicableOffers && (
-              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
-                <TicketPercent className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
-                <h2 className="mt-4 text-xl font-bold text-[var(--color-text)]">No promotions available</h2>
-                <p className="mt-2 text-sm text-[var(--color-muted)]">Check back later for new offers.</p>
+              <div className="rounded-3xl border border-[#e2e5ec] bg-white p-10 text-center shadow-sm">
+                <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#fff5cc] text-[#9a6b00]">
+                  <TicketPercent className="h-7 w-7" />
+                </span>
+                <h2 className="mt-5 text-xl font-bold text-[#172033]">No promotions available</h2>
+                <p className="mt-2 text-sm text-[#68748a]">Check back later for new rewards and seasonal offers.</p>
               </div>
             )}
           </div>
@@ -294,117 +553,481 @@ const Promotions: React.FC = () => {
 function Notice({ tone, title, text }: { tone: "info" | "error"; title: string; text: string }) {
   return (
     <div
-      className={`rounded-[var(--radius-md)] border bg-white p-5 shadow-[var(--shadow-card)] ${
-        tone === "error" ? "border-red-200" : "border-[var(--color-border)]"
+      className={`flex gap-4 rounded-2xl border bg-white p-5 shadow-sm ${
+        tone === "error" ? "border-red-200" : "border-[#dfe4ee]"
       }`}
     >
-      <h2 className={`text-base font-bold ${tone === "error" ? "text-red-600" : "text-[var(--color-text)]"}`}>
-        {title}
-      </h2>
-      <p className="mt-1 text-sm text-[var(--color-muted)]">{text}</p>
+      <span
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+          tone === "error" ? "bg-red-50 text-red-600" : "bg-[#fff5cc] text-[#9a6b00]"
+        }`}
+      >
+        {tone === "error" ? <TicketPercent className="h-5 w-5" /> : <Gift className="h-5 w-5" />}
+      </span>
+      <div>
+        <h2 className={`text-base font-bold ${tone === "error" ? "text-red-600" : "text-[#172033]"}`}>
+          {title}
+        </h2>
+        <p className="mt-1 text-sm leading-6 text-[#68748a]">{text}</p>
+      </div>
     </div>
   );
 }
 
-function SectionHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
+function SectionHeading({
+  icon,
+  title,
+  subtitle,
+  count,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  count: number;
+}) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)]/30 text-[var(--color-secondary)]">
+    <div className="flex items-start gap-3">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fff0ad] text-[#7a5700]">
         {icon}
       </span>
-      <h2 className="text-xl font-bold text-[var(--color-text)]">{title}</h2>
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-extrabold text-[#172033] sm:text-2xl">{title}</h2>
+          <span className="rounded-full bg-[#e9edf5] px-2.5 py-1 text-xs font-bold text-[#485470]">
+            {count}
+          </span>
+        </div>
+        <p className="mt-1 text-sm text-[#68748a]">{subtitle}</p>
+      </div>
     </div>
   );
 }
 
-function PromotionCard({ promotion, badge }: { promotion: ApplicablePromotion; badge: string }) {
+function offerIcon(type?: string, isFreeShipping?: boolean) {
+  const normalizedType = (type || "").toUpperCase();
+  if (isFreeShipping || normalizedType.includes("SHIPPING")) return <Truck className="h-6 w-6" />;
+  if (normalizedType.includes("PERCENT")) return <Percent className="h-6 w-6" />;
+  if (normalizedType.includes("FIXED") || normalizedType.includes("AMOUNT")) return <WalletCards className="h-6 w-6" />;
+  return <Gift className="h-6 w-6" />;
+}
+
+function applicableBenefit(promotion: ApplicablePromotion) {
+  if (promotion.is_free_shipping || promotion.type?.toUpperCase().includes("SHIPPING")) {
+    return "FREE SHIPPING";
+  }
+
+  const type = `${promotion.type || ""} ${promotion.discount_type || ""} ${promotion.action?.type || ""}`.toLowerCase();
+  const percentageDiscount = type.includes("percent");
+  const configuredValue =
+    promotion.discount_value ??
+    (typeof promotion.action?.value === "number" ? promotion.action.value : undefined);
+  const value = Number(
+    percentageDiscount
+      ? promotion.discountInfo?.discountPercentage ?? configuredValue ?? 0
+      : promotion.discountInfo?.discountAmount ?? promotion.applied_discount ?? configuredValue ?? 0
+  );
+  if (value <= 0) return "SPECIAL OFFER";
+  return percentageDiscount ? `${value}% OFF` : `${formatCurrency(value)} OFF`;
+}
+
+function publicBenefit(promotion: Promotion, discountValue: number, discountType: string) {
+  if (promotion.type?.toUpperCase().includes("SHIPPING")) return "FREE SHIPPING";
+  if (discountValue <= 0) return "SPECIAL OFFER";
+  const type = `${promotion.type || ""} ${discountType}`.toLowerCase();
+  return type.includes("percent")
+    ? `${discountValue}% OFF`
+    : `${formatCurrency(discountValue)} OFF`;
+}
+
+function CodePanel({
+  code,
+  copied,
+  onCopy,
+  disabled = false,
+}: {
+  code: string;
+  copied: boolean;
+  onCopy: (code: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-dashed border-[#cbd2df] bg-[#f7f8fb] p-2">
+      <span className="min-w-0 flex-1 break-all px-2 font-mono text-xs font-extrabold tracking-[0.04em] text-[#26344f]">
+        {code}
+      </span>
+      <button
+        type="button"
+        onClick={() => onCopy(code)}
+        disabled={disabled}
+        aria-label={`Copy voucher code ${code}`}
+        className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-extrabold transition ${
+          disabled
+            ? "cursor-not-allowed bg-[#d9dde6] text-[#7b8496]"
+            : copied
+            ? "bg-emerald-100 text-emerald-700"
+            : "bg-[#26344f] text-white hover:bg-[#364765]"
+        }`}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+function PromotionCard({
+  promotion,
+  badge,
+  featured = false,
+  copied,
+  onCopy,
+}: {
+  promotion: ApplicablePromotion;
+  badge: string;
+  featured?: boolean;
+  copied: boolean;
+  onCopy: (code: string) => void;
+}) {
   const discountAmount = promotion.discountInfo?.discountAmount ?? promotion.applied_discount;
   const validity = formatDate(promotion.end_date, promotion.timezone);
+  const isFreeShipping =
+    promotion.is_free_shipping || promotion.type?.toUpperCase().includes("SHIPPING");
 
   return (
-    <article className="flex min-h-60 flex-col rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-      <div className="flex items-start justify-between gap-3">
-        <span className="rounded-[var(--radius-sm)] bg-[var(--color-primary)]/40 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
-          {badge}
-        </span>
-        {promotion.code && (
-          <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-bold text-[var(--color-text)]">
-            {promotion.code}
+    <article
+      className={`group flex h-full min-h-[31rem] flex-col overflow-hidden rounded-3xl border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.16)] ${
+        featured ? "border-[#fbbc05]/70 shadow-[0_18px_45px_rgba(251,188,5,0.16)]" : "border-[#e0e4ec] shadow-sm"
+      }`}
+    >
+      <div
+        className={`relative min-h-[168px] overflow-hidden px-5 py-5 text-white ${
+          featured
+            ? "bg-gradient-to-br from-[#7b4bb3] via-[#8f4da6] to-[#d46287]"
+            : isFreeShipping
+              ? "bg-gradient-to-br from-[#177a71] to-[#26a497]"
+              : "bg-gradient-to-br from-[#344461] to-[#53617e]"
+        }`}
+      >
+        <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full border-[18px] border-white/10" />
+        <div className="relative flex items-start justify-between gap-3">
+          <span
+            className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15"
+          >
+            {offerIcon(promotion.type, isFreeShipping)}
           </span>
-        )}
+          <span className="rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em]">
+            {badge}
+          </span>
+        </div>
+        <p
+          className="relative mt-5 text-2xl font-black tracking-tight"
+        >
+          {applicableBenefit(promotion)}
+        </p>
       </div>
-      <h3 className="mt-4 text-lg font-bold text-[var(--color-text)]">{promotion.name}</h3>
-      {promotion.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--color-muted)]">{promotion.description}</p>}
-      <div className="mt-auto space-y-2 pt-5 text-sm">
-        {Number(discountAmount || 0) > 0 && <PromotionMeta label="Savings" value={formatCurrency(discountAmount)} />}
+
+      <div className="flex flex-1 flex-col p-5">
+        <h3 className="text-lg font-extrabold leading-6 text-[#172033]">
+          {promotion.name}
+        </h3>
+        {promotion.description && (
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#68748a]">{promotion.description}</p>
+        )}
+
+        {promotion.code && (
+          <div className="mt-4">
+            <CodePanel code={promotion.code} copied={copied} onCopy={onCopy} />
+          </div>
+        )}
+
+        <div
+          className="mt-auto grid gap-2 border-t border-[#edf0f5] pt-4 text-sm"
+        >
+          {Number(discountAmount || 0) > 0 && (
+            <PromotionMeta label="You save" value={formatCurrency(discountAmount)} highlight />
+          )}
         {promotion.discountInfo?.discountedTotal !== undefined && (
           <PromotionMeta label="Cart total after offer" value={formatCurrency(promotion.discountInfo.discountedTotal)} />
         )}
-        {validity && <PromotionMeta label="Valid until" value={validity} />}
+          {validity && <PromotionMeta label="Valid until" value={validity} icon={<CalendarDays className="h-3.5 w-3.5" />} />}
+        </div>
+
+        {promotion.code && (
+          <Link
+            to="/cart"
+            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
+          >
+            Use in cart
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
       </div>
     </article>
   );
 }
 
-function AppliedPromotionCard({ promotion }: { promotion: AppliedPromotion }) {
+function AppliedPromotionCard({
+  promotion,
+  shippingSavings,
+}: {
+  promotion: AppliedPromotion;
+  shippingSavings: number;
+}) {
   const title = promotion.promotion_name || "Applied promotion";
   const type = promotion.promotion_type || (promotion.is_free_shipping ? "FREE_SHIPPING" : "");
+  const isFreeShipping = promotion.is_free_shipping || type.toUpperCase().includes("SHIPPING");
 
   return (
-    <article className="flex min-h-48 flex-col rounded-[var(--radius-md)] border border-green-200 bg-white p-5 shadow-[var(--shadow-card)]">
-      <span className="inline-flex w-fit items-center gap-2 rounded-[var(--radius-sm)] bg-green-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-green-700">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        Applied
-      </span>
-      <h3 className="mt-4 text-lg font-bold text-[var(--color-text)]">{title}</h3>
-      {type && <p className="mt-2 text-sm text-[var(--color-muted)]">{type.replaceAll("_", " ")}</p>}
-      <div className="mt-auto pt-5">
-        {promotion.is_free_shipping ? (
-          <PromotionMeta label="Benefit" value="Free shipping" />
-        ) : (
-          <PromotionMeta label="Savings" value={formatCurrency(promotion.discount_amount)} />
-        )}
-      </div>
-    </article>
-  );
-}
-
-function PublicPromotionCard({ promotion }: { promotion: Promotion }) {
-  const validity = formatDate(promotion.end_date, promotion.timezone);
-  const discountValue = Number(promotion.discount_value || 0);
-
-  return (
-    <article className="flex min-h-56 flex-col rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-      <div className="flex items-start justify-between gap-3">
-        <span className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
-          {promotion.auto_apply ? "Auto Apply" : "Public"}
-        </span>
-        {promotion.code && (
-          <span className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-bold text-[var(--color-text)]">
-            {promotion.code}
+    <article className="flex h-full min-h-[31rem] flex-col overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
+      <div className="relative min-h-[168px] overflow-hidden bg-gradient-to-br from-emerald-700 to-emerald-500 px-5 py-5 text-white">
+        <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full border-[18px] border-white/10" />
+        <div className="relative flex items-start justify-between gap-3">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15">
+            {offerIcon(type, isFreeShipping)}
           </span>
-        )}
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em]">
+            <BadgeCheck className="h-4 w-4" />
+            Applied
+          </span>
+        </div>
+        <p className="relative mt-5 text-2xl font-black tracking-tight">
+          {isFreeShipping
+            ? "FREE SHIPPING"
+            : `${formatCurrency(promotion.discount_amount)} SAVED`}
+        </p>
       </div>
-      <h3 className="mt-4 text-lg font-bold text-[var(--color-text)]">{promotion.name}</h3>
-      {promotion.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--color-muted)]">{promotion.description}</p>}
-      <div className="mt-auto space-y-2 pt-5 text-sm">
-        {discountValue > 0 && (
-          <PromotionMeta
-            label="Value"
-            value={promotion.discount_type?.toLowerCase().includes("percent") ? `${discountValue}%` : formatCurrency(discountValue)}
-          />
-        )}
-        {validity && <PromotionMeta label="Valid until" value={validity} />}
+      <div className="flex flex-1 flex-col p-5">
+        <h3 className="text-lg font-extrabold text-[#172033]">{title}</h3>
+        <p className="mt-2 text-sm text-[#68748a]">
+          {isFreeShipping
+            ? shippingSavings > 0
+              ? `${formatCurrency(shippingSavings)} delivery charge removed from this order.`
+              : "Delivery is free for this order."
+            : "Discount included in your checkout total."}
+        </p>
+        <div className="mt-auto border-t border-emerald-100 pt-4">
+          {isFreeShipping ? (
+            <PromotionMeta
+              label={shippingSavings > 0 ? "Shipping saved" : "Benefit"}
+              value={shippingSavings > 0 ? formatCurrency(shippingSavings) : "Free shipping"}
+              highlight
+            />
+          ) : (
+            <PromotionMeta label="You saved" value={formatCurrency(promotion.discount_amount)} highlight />
+          )}
+        </div>
       </div>
     </article>
   );
 }
 
-function PromotionMeta({ label, value }: { label: string; value: string }) {
+function PublicPromotionCard({
+  promotion,
+  canApply,
+  copied,
+  onCopy,
+  isApplying,
+  onApply,
+  personal = false,
+  disabledReason,
+}: {
+  promotion: Promotion;
+  canApply: boolean;
+  copied: boolean;
+  onCopy: (code: string) => void;
+  isApplying: boolean;
+  onApply: () => void;
+  personal?: boolean;
+  disabledReason?: string;
+}) {
+  const validity = formatDate(promotion.end_date, promotion.timezone);
+  const discountValue = Number(
+    typeof promotion.action?.value === "number"
+      ? promotion.action.value
+      : promotion.discount_value || 0
+  );
+  const discountType = promotion.action?.type || promotion.discount_type || "";
+  const minimumCartCondition = promotion.conditions?.find(
+    (condition) =>
+      (condition.attribute || condition.field) === "cart.total_value" &&
+      condition.operator === "GTE"
+  );
+  const minimumCart = Number(
+    minimumCartCondition?.value ||
+      promotion.action?.min_order_value ||
+      promotion.action?.minimum_order_value ||
+      0
+  );
+  const isAutomatic = promotion.application_mode === "automatic";
+  const isCodeEntry = promotion.application_mode === "code_entry";
+  const isClickToApply = promotion.application_mode === "click_to_apply";
+  const isFreeShipping = promotion.type?.toUpperCase().includes("SHIPPING");
+  const modeLabel = isAutomatic ? "Auto apply" : isCodeEntry ? "Voucher code" : "Tap to apply";
+  const usageLimit = promotion.customer_usage?.limit ?? null;
+  const remainingUses = promotion.customer_usage?.remaining ?? null;
+  const audienceLabel =
+    promotion.audience === "customer_group"
+      ? `${promotion.customer_group?.name || "Customer group"} member offer`
+      : "Personal offer";
+
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-[var(--color-muted)]">{label}</span>
-      <span className="text-right font-bold text-[var(--color-text)]">{value}</span>
+    <article className={`group flex h-full min-h-[31rem] flex-col overflow-hidden rounded-3xl border border-[#e0e4ec] bg-white shadow-sm transition duration-300 ${disabledReason ? "opacity-65" : "hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(38,52,79,0.14)]"}`}>
+      <div
+        className={`relative min-h-[168px] overflow-hidden px-5 py-5 text-white ${
+          isFreeShipping
+            ? "bg-gradient-to-br from-[#177a71] to-[#26a497]"
+            : isCodeEntry
+              ? "bg-gradient-to-br from-[#b16a00] to-[#df9a13]"
+              : isAutomatic
+                ? "bg-gradient-to-br from-[#365985] to-[#4d79a8]"
+                : "bg-gradient-to-br from-[#76459a] to-[#a45d9c]"
+        }`}
+      >
+        <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full border-[18px] border-white/10" />
+        <div className="relative flex items-start justify-between gap-3">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15">
+            {isAutomatic ? <Zap className="h-6 w-6" /> : offerIcon(promotion.type, isFreeShipping)}
+          </span>
+          <span className="rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em]">
+            {modeLabel}
+          </span>
+        </div>
+        <p className="relative mt-5 text-2xl font-black tracking-tight">
+          {publicBenefit(promotion, discountValue, discountType)}
+        </p>
+      </div>
+
+      <div className="flex flex-1 flex-col p-5">
+        {personal && (
+          <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.12em] text-[#7b4bb3]">
+            {audienceLabel}
+          </p>
+        )}
+        <h3 className="text-lg font-extrabold leading-6 text-[#172033]">{promotion.name}</h3>
+        {promotion.description && (
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#68748a]">{promotion.description}</p>
+        )}
+
+        {isCodeEntry && promotion.code && (
+          <div className="mt-4">
+            <CodePanel
+              code={promotion.code}
+              copied={copied}
+              onCopy={onCopy}
+              disabled={Boolean(disabledReason)}
+            />
+          </div>
+        )}
+
+        {disabledReason && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-5 text-amber-800">
+            {disabledReason}
+          </div>
+        )}
+
+        <div className="mt-auto grid gap-2 border-t border-[#edf0f5] pt-4 text-sm">
+          {personal && usageLimit !== null && (
+            <PromotionMeta
+              label="Order benefit"
+              value={`Next ${usageLimit} eligible ${usageLimit === 1 ? "order" : "orders"}`}
+            />
+          )}
+          {personal && remainingUses !== null && (
+            <PromotionMeta
+              label="Remaining"
+              value={`${remainingUses} ${remainingUses === 1 ? "use" : "uses"}`}
+              highlight={remainingUses > 0}
+            />
+          )}
+          {minimumCart > 0 && <PromotionMeta label="Minimum cart" value={formatCurrency(minimumCart)} />}
+          {validity && <PromotionMeta label="Valid until" value={validity} icon={<CalendarDays className="h-3.5 w-3.5" />} />}
+        </div>
+
+        {disabledReason && (
+          <button
+            type="button"
+            disabled
+            className="mt-4 min-h-10 w-full cursor-not-allowed rounded-xl bg-[#e1e4ea] px-4 text-sm font-extrabold text-[#7b8496]"
+          >
+            Not eligible
+          </button>
+        )}
+        {!disabledReason && isClickToApply && canApply && (
+          <Button
+            className="mt-4 w-full rounded-xl"
+            disabled={isApplying}
+            onClick={onApply}
+          >
+            {isApplying ? "Applying..." : "Apply to cart"}
+          </Button>
+        )}
+        {!disabledReason && isClickToApply && !canApply && (
+          <Link
+            to="/"
+            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Add items to apply
+          </Link>
+        )}
+        {!disabledReason && isCodeEntry && canApply && (
+          <Link
+            to="/cart"
+            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
+          >
+            Continue to cart
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
+        {!disabledReason && isCodeEntry && !canApply && (
+          <Link
+            to="/"
+            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#fbbc05] px-4 text-sm font-extrabold text-[#172033] transition hover:bg-[#ffd042]"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Add items to redeem
+          </Link>
+        )}
+        {!disabledReason && isAutomatic && canApply && (
+          <div className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#edf4ff] px-4 text-sm font-bold text-[#365985]">
+            <Zap className="h-4 w-4" />
+            Checked automatically
+          </div>
+        )}
+        {!disabledReason && isAutomatic && !canApply && (
+          <Link
+            to="/"
+            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#edf4ff] px-4 text-sm font-bold text-[#365985] transition hover:bg-[#e2ecfb]"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Add items to qualify
+          </Link>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function PromotionMeta({
+  label,
+  value,
+  highlight = false,
+  icon,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="inline-flex items-center gap-1.5 text-[#68748a]">
+        {icon}
+        {label}
+      </span>
+      <span className={`text-right font-extrabold ${highlight ? "text-emerald-600" : "text-[#172033]"}`}>
+        {value}
+      </span>
     </div>
   );
 }

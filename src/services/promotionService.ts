@@ -9,6 +9,7 @@ export interface Promotion {
   type: string;
   code?: string | null;
   auto_apply?: boolean;
+  application_mode?: "automatic" | "click_to_apply" | "code_entry";
   start_date?: number | string | null;
   end_date?: number | string | null;
   timezone?: string | null;
@@ -21,6 +22,24 @@ export interface Promotion {
   action?: PromotionAction | null;
   actions?: PromotionAction[] | null;
   conditions?: PromotionCondition[] | null;
+  audience?: "global" | "segment" | "customer" | "customer_group" | string;
+  assignment_id?: number | null;
+  voucher_code?: string | null;
+  customer_usage?: {
+    used: number;
+    limit: number | null;
+    remaining: number | null;
+  } | null;
+  assignment_usage?: {
+    used: number;
+    limit: number | null;
+    remaining: number | null;
+  } | null;
+  customer_group?: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
 }
 
 export interface PromotionAction {
@@ -104,6 +123,9 @@ export interface ApplicablePromotion {
   promotionState?: string;
   evaluation_id?: string;
   applied_discount?: number;
+  stackable?: boolean;
+  auto_apply?: boolean;
+  application_mode?: "automatic" | "click_to_apply" | "code_entry";
 }
 
 export interface AppliedPromotion {
@@ -114,6 +136,7 @@ export interface AppliedPromotion {
   is_auto?: boolean;
   is_free_shipping?: boolean;
   is_stacked?: boolean | null;
+  stackable?: boolean;
   bogo_details?: {
     buy_quantity?: number;
     get_quantity?: number;
@@ -175,7 +198,9 @@ export interface ActiveEvaluationsData {
 export interface PromotionEvaluationRequest {
   cartId: string;
   userId: string;
-  promotionId: number;
+  evaluationId?: string;
+  promotionId?: number;
+  code?: string;
   cartData: PromotionCartData;
   cartItems: PromotionEvaluationCartItem[];
   mode: "phonepe" | "cod";
@@ -198,6 +223,12 @@ export interface PromotionRemoveEvaluationData {
   evaluation_id: string;
   applied_promotions: AppliedPromotion[];
   expires_at?: string;
+}
+
+export interface PromotionCheckoutValidationData {
+  evaluation_id: string;
+  is_valid: boolean;
+  reason?: string | null;
 }
 
 export interface AutomaticPromotionEvaluationRequest {
@@ -238,6 +269,20 @@ class PromotionService {
     return apiService.get<Promotion[]>(`/promotions?${queryParams.toString()}`);
   }
 
+  mine(channel: string = "web"): Promise<ApiResponse<Promotion[]>> {
+    return apiService.get<Promotion[]>(`/promotions/mine?channel=${encodeURIComponent(channel)}`);
+  }
+
+  public(channel: string = "web", geo: string = "IN", limit: number = 10): Promise<ApiResponse<Promotion[]>> {
+    const queryParams = new URLSearchParams({
+      channel,
+      geo,
+      limit: String(limit),
+    });
+
+    return apiService.get<Promotion[]>(`/promotions/public?${queryParams.toString()}`);
+  }
+
   getRecommendedOffers(payload: RecommendationRequest): Promise<ApiResponse<RecommendationData>> {
     return apiService.post<RecommendationData>("/promotions/offers", {
       user_id: payload.userId,
@@ -258,8 +303,10 @@ class PromotionService {
   evaluate(payload: PromotionEvaluationRequest): Promise<ApiResponse<PromotionEvaluationData>> {
     return apiService.post<PromotionEvaluationData>("/promotions/evaluate", {
       user_id: payload.userId,
+      ...(payload.evaluationId ? { evaluation_id: payload.evaluationId } : {}),
       application_type: payload.applicationType ?? "manual_coupon",
-      promotion_id: payload.promotionId,
+      ...(payload.promotionId ? { promotion_id: payload.promotionId } : {}),
+      ...(payload.code ? { code: payload.code.trim().toUpperCase() } : {}),
       cart_items: payload.cartItems,
       context: {
         channel: payload.channel ?? "web",
@@ -291,6 +338,16 @@ class PromotionService {
 
   getActiveEvaluations(userId: string | number): Promise<ApiResponse<ActiveEvaluationsData>> {
     return apiService.get<ActiveEvaluationsData>(`/promotions/evaluations?user_id=${userId}`);
+  }
+
+  validateForCheckout(
+    evaluationId: string,
+    userId: string | number,
+  ): Promise<ApiResponse<PromotionCheckoutValidationData>> {
+    return apiService.post<PromotionCheckoutValidationData>("/promotions/evaluations/validate", {
+      evaluation_id: evaluationId,
+      user_id: String(userId),
+    }).then(normalizeResponse);
   }
 }
 

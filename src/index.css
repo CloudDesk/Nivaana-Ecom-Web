@@ -28,14 +28,12 @@
     font-family: var(--font-app) !important;
     scroll-behavior: smooth;
     max-width: 100%;
-    overflow-x: hidden;
   }
   
   body {
     @apply bg-white text-[var(--color-text)] antialiased;
     font-family: var(--font-app) !important;
     max-width: 100%;
-    overflow-x: hidden;
   }
 
   #root {
@@ -66,6 +64,67 @@
 }
 
 @layer components {
+  .product-section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 2rem;
+    overflow: visible;
+  }
+
+  .product-gallery-sticky {
+    min-width: 0;
+    height: fit-content;
+    align-self: start;
+    overflow: visible;
+  }
+
+  .product-gallery-main-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: 360px;
+    object-fit: contain;
+  }
+
+  .product-details {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .recommendations {
+    position: relative;
+  }
+
+  @media (min-width: 640px) {
+    .product-gallery-main-image {
+      height: 520px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .product-section {
+      grid-template-columns: minmax(420px, 0.9fr) minmax(0, 1.1fr);
+      gap: clamp(40px, 6vw, 96px);
+    }
+
+    .product-gallery-sticky {
+      --sticky-top: 16px;
+      --gallery-controls-height: 128px;
+      position: sticky;
+      top: var(--sticky-top);
+      max-width: 620px;
+      margin-inline: auto;
+    }
+
+    .product-gallery-main-image {
+      width: auto;
+      height: auto;
+      max-height: calc(100dvh - var(--sticky-top) - var(--gallery-controls-height) - 16px);
+      margin-inline: auto;
+    }
+  }
+
   .navbar-brand-logo {
     @apply flex h-14 shrink-0 items-center px-1 py-1 transition hover:brightness-110 lg:h-20;
   }
