@@ -54,7 +54,7 @@ const ShippingPolicy: React.FC = () => {
                       <li><strong>Metro Cities:</strong> 3-5 business days</li>
                       <li><strong>Tier 2 Cities:</strong> 5-7 business days</li>
                       <li><strong>Other Locations:</strong> 7-10 business days</li>
-                      <li><strong>Cost:</strong> Free on orders above ₹999</li>
+                      <li><strong>Cost:</strong> ₹150 per order unless an eligible free-shipping promotion applies</li>
                     </ul>
                   </div>
                   
@@ -74,8 +74,8 @@ const ShippingPolicy: React.FC = () => {
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">4. Shipping Costs</h2>
                 <div className="bg-primary-gold/10 p-4 rounded-lg">
                   <ul className="space-y-2">
-                    <li><strong>Free Shipping:</strong> Orders above ₹999</li>
-                    <li><strong>Standard Shipping:</strong> ₹99 for orders below ₹999</li>
+                    <li><strong>Free Shipping:</strong> Available through eligible promotions</li>
+                    <li><strong>Standard Shipping:</strong> ₹150 per order</li>
                     <li><strong>Express Shipping:</strong> ₹150 additional charge</li>
                     <li><strong>Cash on Delivery:</strong> ₹50 additional charge</li>
                   </ul>

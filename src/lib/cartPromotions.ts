@@ -2,7 +2,7 @@ import type { AppliedPromotion } from "../services/promotionService";
 import type { Product } from "../types";
 
 const SELECTED_PROMOTION_KEY = "nivaana_selected_cart_promotion";
-const STANDARD_SHIPPING_FEE = 40;
+const STANDARD_SHIPPING_FEE = 150;
 
 export interface PromotionCartRow {
   cartRecordId?: number | string;
