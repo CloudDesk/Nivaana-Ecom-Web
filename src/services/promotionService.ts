@@ -219,6 +219,44 @@ export interface PromotionEvaluationData {
   expires_at?: string;
 }
 
+export interface PromotionV2Adjustment {
+  adjustment_id: string;
+  promotion_id: number;
+  rule_version: number;
+  type: "PERCENT_DISCOUNT" | "FIXED_AMOUNT_DISCOUNT" | "FREE_ITEM" | "FREE_SHIPPING";
+  cart_record_id?: string;
+  product_id?: string;
+  affected_quantity: number;
+  list_amount: number;
+  amount: number;
+  payable_amount: number;
+  source_product_ids: string[];
+  metadata: { fulfilment?: "AUTO_ADD" | "DISCOUNT_EXISTING"; [key: string]: unknown };
+}
+
+export interface PromotionV2Quote {
+  schema_version: 2;
+  evaluation_id: string;
+  currency: "INR";
+  original_total: number;
+  shipping_amount: number;
+  discount_total: number;
+  payable_total: number;
+  adjustments: PromotionV2Adjustment[];
+  applied_promotions: Array<{ promotion_id: number; name: string; saving: number }>;
+  eligible_alternatives: Array<{ promotion_id: number; name: string; saving: number }>;
+  rejected_candidates: Array<{ promotion_id: number; reason_code: string; details?: Record<string, unknown> }>;
+  next_tier_progress: Array<{ promotion_id: number; current: number; next_minimum: number; remaining: number; metric: string }>;
+  gift_choices: Array<{ promotion_id: number; product_ids: string[] }>;
+  expires_at: string;
+}
+
+export interface PromotionEligibilityResult {
+  versioned_promotion_ids: number[];
+  eligible_promotions: Array<{ promotion_id: number; name: string; saving: number }>;
+  ineligible_promotions: Array<{ promotion_id: number; reason_code: string; details?: Record<string, unknown> }>;
+}
+
 export interface PromotionRemoveEvaluationData {
   evaluation_id: string;
   applied_promotions: AppliedPromotion[];
@@ -254,6 +292,56 @@ const normalizeResponse = <T>(response: ApiResponse<T>): ApiResponse<T> => {
 };
 
 class PromotionService {
+  checkEligibility(payload: {
+    promotionIds: number[];
+    cartItems: Array<{ cart_record_id?: string; product_id: string; quantity: number }>;
+    shippingAmount: number;
+    channel?: "web" | "mobile";
+  }): Promise<ApiResponse<PromotionEligibilityResult>> {
+    return apiService.post<PromotionEligibilityResult>('/v2/promotions/eligibility', {
+      schema_version: 2,
+      promotion_ids: payload.promotionIds,
+      cart_items: payload.cartItems,
+      shipping_amount: Math.round(payload.shippingAmount * 100),
+      channel: payload.channel ?? 'web',
+    });
+  }
+
+  quoteV2(payload: {
+    cartItems: Array<{ cart_record_id?: string; product_id: string; quantity: number }>;
+    shippingAmount: number;
+    channel?: "web" | "mobile";
+    couponCode?: string;
+    selectedPromotionIds?: number[];
+    rewardSelections?: Record<string, string>;
+  }): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>('/v2/promotions/quote', {
+      schema_version: 2,
+      cart_items: payload.cartItems,
+      shipping_amount: Math.round(payload.shippingAmount * 100),
+      channel: payload.channel ?? 'web',
+      ...(payload.couponCode ? { coupon_code: payload.couponCode } : {}),
+      ...(payload.selectedPromotionIds ? { selected_promotion_ids: payload.selectedPromotionIds } : {}),
+      ...(payload.rewardSelections ? { reward_selections: payload.rewardSelections } : {}),
+    });
+  }
+
+  selectV2(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/select`, { schema_version: 2, promotion_id: promotionId });
+  }
+
+  removeSelectionV2(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.delete<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/selection/${promotionId}`);
+  }
+
+  selectGiftV2(evaluationId: string, promotionId: number, productId: string): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/select-gift`, { schema_version: 2, promotion_id: promotionId, product_id: productId });
+  }
+
+  validateV2(evaluationId: string): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/validate`, { schema_version: 2 });
+  }
+
   list(params: PromotionListParams = {}): Promise<ApiResponse<Promotion[]>> {
     const queryParams = new URLSearchParams({
       page: String(params.page ?? 1),

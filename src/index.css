@@ -15,6 +15,14 @@
     --color-card: #ffffff;
     --color-success: #15803d;
     --color-danger: #dc2626;
+    --promotion-accent: var(--color-primary);
+    --promotion-accent-text: var(--color-secondary);
+    --promotion-applied: var(--color-success);
+    --promotion-applied-surface: #ecfdf5;
+    --promotion-eligible: var(--color-secondary);
+    --promotion-ineligible: var(--color-danger);
+    --promotion-gift-surface: #fffbe6;
+    --promotion-conflict-surface: #fff7ed;
     --radius-sm: 8px;
     --radius-md: 12px;
     --radius-lg: 16px;
