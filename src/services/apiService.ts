@@ -64,9 +64,12 @@ class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const token = sessionService.getToken();
+      const requestUrl = url.startsWith('/v2/')
+        ? `${this.baseURL.replace(/\/v1\/?$/, '')}${url}`
+        : url;
       const config: AxiosRequestConfig = {
         method,
-        url,
+        url: requestUrl,
         data: payload,
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       };

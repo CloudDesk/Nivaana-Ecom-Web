@@ -38,6 +38,8 @@ export interface CartPromotionTotals {
 
 export interface SelectedCartPromotion {
   userId: number;
+  /** Manual selections retained for V2 stacking. `promotionId` remains for legacy saved carts. */
+  promotionIds?: number[];
   promotionId: number;
   promotionName: string;
   evaluationId: string;
@@ -47,6 +49,7 @@ export interface SelectedCartPromotion {
   appliedPromotions: AppliedPromotion[];
   expiresAt?: string;
   savedAt: number;
+  engine?: "legacy" | "v2";
 }
 
 export interface PromotionDiscountSummary {
@@ -221,10 +224,10 @@ export const freeShippingMinimumOrderValue = (
 
 export const isFreeShippingPromotionEligible = (
   promotion: FreeShippingPromotionLike | null | undefined,
-  subtotal: number
+  qualifyingCartValue: number
 ) => {
   const minimumOrderValue = freeShippingMinimumOrderValue(promotion);
-  return minimumOrderValue <= 0 || subtotal >= minimumOrderValue;
+  return minimumOrderValue <= 0 || qualifyingCartValue >= minimumOrderValue;
 };
 
 export const getAppliedPromotionSummary = (
@@ -233,7 +236,10 @@ export const getAppliedPromotionSummary = (
   fallbackDiscount = 0
 ): PromotionDiscountSummary => {
   const freeShippingPromotions = appliedPromotions.filter(
-    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.subtotal)
+    // Legacy `cart.total_value` conditions are evaluated by the API against
+    // merchandise + shipping + tax. Use the same pre-promotion cart total here
+    // so an API-applied shipping waiver is not incorrectly discarded by the UI.
+    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.total)
   );
   const normalPromotions = appliedPromotions.filter((promotion) => !isFreeShippingAppliedPromotion(promotion));
   const normalDiscountFromPromotions = normalPromotions.reduce(
@@ -267,11 +273,22 @@ export const readSelectedCartPromotion = (userId?: number | null): SelectedCartP
     if (!rawValue) return null;
 
     const promotion = JSON.parse(rawValue) as SelectedCartPromotion;
-    return promotion.userId === userId && promotion.promotionId ? promotion : null;
+    if (promotion.userId !== userId || !promotion.promotionId) return null;
+    return {
+      ...promotion,
+      promotionIds: selectedCartPromotionIds(promotion),
+    };
   } catch {
     return null;
   }
 };
+
+export const selectedCartPromotionIds = (
+  promotion?: Pick<SelectedCartPromotion, "promotionId" | "promotionIds"> | null,
+) => [...new Set([
+  ...(promotion?.promotionIds ?? []),
+  promotion?.promotionId,
+].map(Number).filter((id) => Number.isFinite(id) && id > 0))];
 
 export const saveSelectedCartPromotion = (promotion: SelectedCartPromotion) => {
   localStorage.setItem(`${SELECTED_PROMOTION_KEY}:${promotion.userId}`, JSON.stringify(promotion));
