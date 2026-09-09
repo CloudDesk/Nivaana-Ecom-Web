@@ -79,7 +79,7 @@ const isFreeShippingOffer = (promotion: ApplicablePromotion) => isFreeShippingPr
 const isStackablePromotion = (promotion: Pick<ApplicablePromotion, "stackable">) =>
   promotion.stackable === true;
 const guestPromotionUserId = "guest-web";
-const promotionsV2Enabled = import.meta.env.VITE_PROMOTIONS_V2_ENABLED === "true";
+const promotionsV2Enabled = true;
 const promotionsV2Shadow = import.meta.env.VITE_PROMOTIONS_V2_SHADOW === "true";
 const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
   const messages: Record<string, string> = {

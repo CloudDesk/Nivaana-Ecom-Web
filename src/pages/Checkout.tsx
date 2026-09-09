@@ -56,7 +56,7 @@ import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
 import { isOfferAlreadyUsedError } from "../lib/notificationMessages";
 
 const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
-const promotionsV2Enabled = import.meta.env.VITE_PROMOTIONS_V2_ENABLED === "true";
+const promotionsV2Enabled = true;
 
 const emptyAddressForm = (userId: number, mobileNumber: number, customerName = ""): AddressPayload => ({
   userid: userId,
