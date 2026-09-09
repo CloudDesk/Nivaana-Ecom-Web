@@ -186,7 +186,7 @@ const Cart: React.FC = () => {
     unknown,
     Error,
     { id?: number; productid: number; userid?: number; quantity: number; iswishlist?: boolean },
-    { previousCart?: ApiResponse<CartItem[]> } | undefined
+    { previousCart?: ApiResponse<CartItem[]>; previousPromotion?: SelectedCartPromotion | null } | undefined
   >({
     scope: { id: "cart-quantity-updates" },
     mutationFn: ({ id, productid, userid, quantity, iswishlist }) => {
@@ -220,6 +220,16 @@ const Cart: React.FC = () => {
       });
     },
     onMutate: async ({ productid, quantity }) => {
+      const previousPromotion = selectedPromotion;
+      // Promotion selections and their synthetic gift lines belong to the
+      // exact cart signature they were quoted for. Clear them before the
+      // optimistic quantity update so an old quote cannot remain visible.
+      clearSelectedCartPromotion(session?.user.id);
+      setSelectedPromotion(null);
+      queryClient.removeQueries({
+        queryKey: ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId],
+      });
+
       if (!session) return undefined;
 
       await queryClient.cancelQueries({ queryKey: ["cart", session.user.id] });
@@ -244,14 +254,21 @@ const Cart: React.FC = () => {
         };
       });
 
-      return { previousCart };
+      return { previousCart, previousPromotion };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId],
+      });
     },
     onError: (_error, _variables, context) => {
       if (session && context?.previousCart) {
         queryClient.setQueryData(["cart", session.user.id], context.previousCart);
+      }
+      if (session && context?.previousPromotion) {
+        saveSelectedCartPromotion(context.previousPromotion);
+        setSelectedPromotion(context.previousPromotion);
       }
       toast.error("Could not update cart. Please try again.");
     },
@@ -315,7 +332,10 @@ const Cart: React.FC = () => {
       ? selectedCartPromotionIds(selectedPromotion)
       : [];
   const selectedV2PromotionId = selectedV2PromotionIds.at(-1);
-  const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId, cartSignature] as const;
+  const v2SelectionKey = (ids: number[]) => [...ids].sort((left, right) => left - right).join(",");
+  const promotionsV2QueryKeyFor = (ids: number[]) =>
+    ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId, cartSignature, v2SelectionKey(ids)] as const;
+  const promotionsV2QueryKey = promotionsV2QueryKeyFor(selectedV2PromotionIds);
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
     queryFn: () => promotionService.quoteV2({
@@ -326,8 +346,7 @@ const Cart: React.FC = () => {
     }),
     enabled: Boolean(
       (promotionsV2Enabled || promotionsV2Shadow || selectedV2PromotionId) &&
-        promotionRows.length > 0 &&
-        !mutation.isPending,
+        promotionRows.length > 0,
     ),
     staleTime: 0,
     retry: false,
@@ -863,7 +882,6 @@ const Cart: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
-        queryClient.setQueryData(promotionsV2QueryKey, result.response);
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -910,6 +928,10 @@ const Cart: React.FC = () => {
           savedAt: Date.now(),
           engine: "v2",
         };
+        queryClient.setQueryData(
+          promotionsV2QueryKeyFor(nextPromotion.promotionIds ?? []),
+          result.response,
+        );
         saveSelectedCartPromotion(nextPromotion);
         setSelectedPromotion(nextPromotion);
         setOfferActionError(null);
@@ -1079,7 +1101,6 @@ const Cart: React.FC = () => {
           selectedPromotion.evaluationId,
           promotionIdToRemove,
         );
-        queryClient.setQueryData(promotionsV2QueryKey, response);
         return { localOnly: false, engine: "v2" as const, response };
       }
 
@@ -1154,9 +1175,14 @@ const Cart: React.FC = () => {
             expiresAt: quote.expires_at,
             savedAt: Date.now(),
           };
+          queryClient.setQueryData(
+            promotionsV2QueryKeyFor(remainingPromotionIds),
+            result.response,
+          );
           saveSelectedCartPromotion(nextPromotion);
           setSelectedPromotion(nextPromotion);
         } else {
+          queryClient.setQueryData(promotionsV2QueryKeyFor([]), result.response);
           clearSelectedCartPromotion(session?.user.id);
           setSelectedPromotion(null);
         }

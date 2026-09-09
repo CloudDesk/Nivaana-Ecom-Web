@@ -322,7 +322,11 @@ const Checkout: React.FC = () => {
   const selectedPromotionUsesV2 = Boolean(
     selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
   );
-  const checkoutPromotionsV2QueryKey = ["checkout-promotions-v2", userId, cartSignature] as const;
+  const v2SelectionKey = (ids: number[]) => [...ids].sort((left, right) => left - right).join(",");
+  const checkoutPromotionsV2QueryKeyFor = (ids: number[]) =>
+    ["checkout-promotions-v2", userId, cartSignature, v2SelectionKey(ids)] as const;
+  const activeSelectedPromotionIds = selectedPromotionUsesV2 ? selectedPromotionIds : [];
+  const checkoutPromotionsV2QueryKey = checkoutPromotionsV2QueryKeyFor(activeSelectedPromotionIds);
   const promotionsV2Query = useQuery({
     queryKey: checkoutPromotionsV2QueryKey,
     queryFn: () => promotionService.quoteV2({
@@ -734,7 +738,6 @@ const Checkout: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
-        queryClient.setQueryData(checkoutPromotionsV2QueryKey, result.response);
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -781,6 +784,10 @@ const Checkout: React.FC = () => {
           savedAt: Date.now(),
           engine: "v2",
         };
+        queryClient.setQueryData(
+          checkoutPromotionsV2QueryKeyFor(nextPromotion.promotionIds ?? []),
+          result.response,
+        );
         saveSelectedCartPromotion(nextPromotion);
         setSelectedPromotion(nextPromotion);
         await promotionOffersQuery.refetch();
@@ -932,7 +939,6 @@ const Checkout: React.FC = () => {
           selectedPromotion.evaluationId,
           promotionIdToRemove,
         );
-        queryClient.setQueryData(checkoutPromotionsV2QueryKey, response);
         return { engine: "v2" as const, response };
       }
       if (!backendEvaluation?.evaluation_id) return;
@@ -975,9 +981,14 @@ const Checkout: React.FC = () => {
             expiresAt: quote.expires_at,
             savedAt: Date.now(),
           };
+          queryClient.setQueryData(
+            checkoutPromotionsV2QueryKeyFor(remainingPromotionIds),
+            result.response,
+          );
           saveSelectedCartPromotion(nextPromotion);
           setSelectedPromotion(nextPromotion);
         } else {
+          queryClient.setQueryData(checkoutPromotionsV2QueryKeyFor([]), result.response);
           clearSelectedCartPromotion(userId);
           setSelectedPromotion(null);
         }
