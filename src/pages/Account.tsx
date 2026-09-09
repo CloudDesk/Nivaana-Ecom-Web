@@ -12,6 +12,7 @@ const Account: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
   const [nameMessage, setNameMessage] = useState("");
   const [nameError, setNameError] = useState("");
   const [savingName, setSavingName] = useState(false);
@@ -26,6 +27,7 @@ const Account: React.FC = () => {
     if (session && !hasRequiredUserName(session.user)) {
       setFirstName(session.user.firstname?.trim() || "");
       setLastName(session.user.lastname?.trim() || "");
+      setProfileEmail(session.user.useremail?.trim() || "");
       setIsEditingName(true);
     }
   }, [session]);
@@ -39,6 +41,7 @@ const Account: React.FC = () => {
     const currentUser = session?.user;
     setFirstName(currentUser?.firstname?.trim() || "");
     setLastName(currentUser?.lastname?.trim() || "");
+    setProfileEmail(currentUser?.useremail?.trim() || "");
     setNameMessage("");
     setNameError("");
     setIsEditingName(true);
@@ -56,6 +59,7 @@ const Account: React.FC = () => {
 
     const trimmedFirstName = firstName.trim();
     const trimmedLastName = lastName.trim();
+    const normalizedEmail = profileEmail.trim().toLowerCase();
 
     if (trimmedFirstName.length < 2) {
       setNameError("First name is required and must contain at least 2 characters.");
@@ -71,11 +75,13 @@ const Account: React.FC = () => {
       const response = await userService.updateProfile(session.user.id, {
         firstname: trimmedFirstName || null,
         lastname: trimmedLastName || null,
+        ...(normalizedEmail ? { useremail: normalizedEmail } : {}),
       });
       const updatedUser = response.data || {
         ...session.user,
         firstname: trimmedFirstName || null,
         lastname: trimmedLastName || null,
+        useremail: normalizedEmail || session.user.useremail,
       };
       sessionService.saveSession({
         token: session.token,
@@ -84,7 +90,7 @@ const Account: React.FC = () => {
       });
       setSession({ ...session, user: updatedUser });
       setIsEditingName(false);
-      setNameMessage("Name updated successfully.");
+      setNameMessage("Profile updated successfully.");
 
       const routeState =
         location.state && typeof location.state === "object"
@@ -100,7 +106,7 @@ const Account: React.FC = () => {
         navigate(returnTo, { replace: true });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to update name. Please try again.";
+      const message = error instanceof Error ? error.message : "Unable to update profile. Please try again.";
       setNameError(message);
     } finally {
       setSavingName(false);
@@ -157,7 +163,7 @@ const Account: React.FC = () => {
             </div>
             <div className="mt-5 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Profile name</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Profile</p>
                 <h2 className="mt-1 break-words text-xl font-bold text-[var(--color-text)]">
                   {requiresName ? "Name required" : displayName}
                 </h2>
@@ -189,6 +195,21 @@ const Account: React.FC = () => {
                     autoComplete="given-name"
                     minLength={2}
                     required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]" htmlFor="account-email">
+                    Email <span className="normal-case tracking-normal">(optional)</span>
+                  </label>
+                  <input
+                    id="account-email"
+                    type="email"
+                    value={profileEmail}
+                    onChange={(event) => setProfileEmail(event.target.value.slice(0, 255))}
+                    className="mt-1 h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                    placeholder="Enter email address"
+                    autoComplete="email"
+                    maxLength={255}
                   />
                 </div>
                 <div>

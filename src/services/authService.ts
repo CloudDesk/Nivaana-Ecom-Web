@@ -33,11 +33,17 @@ class AuthService {
    * @param otp - OTP code received
    * @returns Promise with user data and token
    */
-  async verifyOTP(usermobilenumber: number, otp: number, firstname?: string): Promise<ApiResponse<OTPVerifyResponse>> {
+  async verifyOTP(
+    usermobilenumber: number,
+    otp: number,
+    firstname?: string,
+    useremail?: string,
+  ): Promise<ApiResponse<OTPVerifyResponse>> {
     const payload: OTPVerifyRequest = {
       usermobilenumber,
       otp,
       ...(firstname?.trim() ? { firstname: firstname.trim().replace(/\s+/g, " ") } : {}),
+      ...(useremail?.trim() ? { useremail: useremail.trim().toLowerCase() } : {}),
     };
     const response = await apiService.post<OTPVerifyResponse>('/mobile-auth/verify-otp', payload);
     const token = response.data.token || response.data.accessToken || response.data.access_token;
