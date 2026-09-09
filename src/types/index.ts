@@ -220,6 +220,7 @@ export interface OTPVerifyRequest {
   usermobilenumber: number;
   otp: number;
   firstname?: string;
+  useremail?: string;
 }
 
 export interface OTPRequestResponse {
@@ -230,6 +231,7 @@ export interface OTPRequestResponse {
   canResendAfter?: number;
   isNewUser?: boolean;
   requiresName?: boolean;
+  requiresEmail?: boolean;
 }
 
 export interface OTPVerifyResponse {
