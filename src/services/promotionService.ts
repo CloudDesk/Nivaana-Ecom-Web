@@ -234,8 +234,19 @@ export interface PromotionV2Adjustment {
   metadata: { fulfilment?: "AUTO_ADD" | "DISCOUNT_EXISTING"; [key: string]: unknown };
 }
 
+export const isExistingCartFreeItemAdjustment = (adjustment: PromotionV2Adjustment): boolean =>
+  adjustment.type === "FREE_ITEM" && (
+    adjustment.metadata.fulfilment === "DISCOUNT_EXISTING" ||
+    (Object.prototype.hasOwnProperty.call(adjustment.metadata, "added_quantity") && Number(adjustment.metadata.added_quantity) === 0)
+  );
+
+export const isAddedGiftAdjustment = (adjustment: PromotionV2Adjustment): boolean =>
+  adjustment.type === "FREE_ITEM" &&
+  adjustment.metadata.fulfilment === "AUTO_ADD" &&
+  !isExistingCartFreeItemAdjustment(adjustment);
+
 export interface PromotionV2Quote {
-  schema_version: 2;
+  schema_version: 2 | 3;
   evaluation_id: string;
   currency: "INR";
   original_total: number;
@@ -248,6 +259,8 @@ export interface PromotionV2Quote {
   rejected_candidates: Array<{ promotion_id: number; reason_code: string; details?: Record<string, unknown> }>;
   next_tier_progress: Array<{ promotion_id: number; current: number; next_minimum: number; remaining: number; metric: string }>;
   gift_choices: Array<{ promotion_id: number; product_ids: string[] }>;
+  gifts?: Array<{ promotion_id: number; product_id: string; paid_quantity: number; free_quantity: number; total_quantity: number; added_quantity: number; editable: false }>;
+  quantity_breakdown?: Array<{ product_id: string; paid_quantity: number; free_quantity: number; total_quantity: number }>;
   expires_at: string;
 }
 
@@ -292,6 +305,22 @@ const normalizeResponse = <T>(response: ApiResponse<T>): ApiResponse<T> => {
 };
 
 class PromotionService {
+  quote(payload: {
+    cartItems: Array<{ cart_record_id?: string; product_id: string; quantity: number }>;
+    shippingAmount: number;
+    channel?: "web" | "mobile";
+  }): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>('/promotions/quote', {
+      cart_items: payload.cartItems,
+      shipping_amount: Math.round(payload.shippingAmount * 100),
+      channel: payload.channel ?? 'web',
+    });
+  }
+
+  validateQuote(evaluationId: string): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/promotions/quote/${evaluationId}/validate`, {});
+  }
+
   checkEligibility(payload: {
     promotionIds: number[];
     cartItems: Array<{ cart_record_id?: string; product_id: string; quantity: number }>;

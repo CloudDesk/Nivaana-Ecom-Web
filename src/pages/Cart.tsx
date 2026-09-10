@@ -19,7 +19,7 @@ import {
 import { cartService } from "../services/cartService";
 import { couponWalletService } from "../services/couponWalletService";
 import { platformProductService } from "../services/productPlatformService";
-import { promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
+import { isAddedGiftAdjustment, isExistingCartFreeItemAdjustment, promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
@@ -331,22 +331,26 @@ const Cart: React.FC = () => {
     selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
       ? selectedCartPromotionIds(selectedPromotion)
       : [];
-  const selectedV2PromotionId = selectedV2PromotionIds.at(-1);
   const v2SelectionKey = (ids: number[]) => [...ids].sort((left, right) => left - right).join(",");
   const promotionsV2QueryKeyFor = (ids: number[]) =>
     ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId, cartSignature, v2SelectionKey(ids)] as const;
   const promotionsV2QueryKey = promotionsV2QueryKeyFor(selectedV2PromotionIds);
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
-    queryFn: () => promotionService.quoteV2({
+    // Automatic offers use the authoritative current rule. Keep V2 only for
+    // an explicit legacy selection until the selection API is moved to V3.
+    queryFn: () => selectedV2PromotionIds.length ? promotionService.quoteV2({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
       selectedPromotionIds: selectedV2PromotionIds.length ? selectedV2PromotionIds : undefined,
+    }) : promotionService.quote({
+      cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
+      shippingAmount: cartTotals.shipping,
+      channel: "web",
     }),
     enabled: Boolean(
-      (promotionsV2Enabled || promotionsV2Shadow || selectedV2PromotionId) &&
-        promotionRows.length > 0,
+      promotionRows.length > 0,
     ),
     staleTime: 0,
     retry: false,
@@ -602,11 +606,11 @@ const Cart: React.FC = () => {
     },
   );
   const appliedPromotionsForTotals =
-    hasSelectedV2Promotion && selectedPromotionApplies
+    useV2PromotionResult
       ? [
           ...(liveV2AppliedPromotions.length > 0
             ? liveV2AppliedPromotions
-            : selectedV2AppliedPromotions),
+            : selectedPromotionApplies ? selectedV2AppliedPromotions : []),
           ...backendAppliedPromotions.filter(
             (promotion) =>
               isFreeShippingAppliedPromotion(promotion) &&
@@ -645,9 +649,9 @@ const Cart: React.FC = () => {
     appliedPromotionsForTotals,
     fallbackPromotionDiscount
   );
-  const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== "FREE_SHIPPING" && (adjustment.type !== "FREE_ITEM" || adjustment.metadata.fulfilment === "DISCOUNT_EXISTING")).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
+  const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== "FREE_SHIPPING" && (adjustment.type !== "FREE_ITEM" || isExistingCartFreeItemAdjustment(adjustment))).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
   const v2ShippingSavings = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_SHIPPING").reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
-  const v2GiftSavings = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD").reduce((sum, adjustment) => sum + adjustment.list_amount, 0) / 100;
+  const v2GiftSavings = (promotionsV2Quote?.adjustments ?? []).filter(isAddedGiftAdjustment).reduce((sum, adjustment) => sum + adjustment.list_amount, 0) / 100;
   const promotionDiscount = useV2PromotionResult ? v2MerchandiseDiscount : promotionSummary.normalDiscount;
   const shippingSavings = useV2PromotionResult
     ? Math.max(v2ShippingSavings, promotionSummary.shippingSavings)
@@ -660,7 +664,7 @@ const Cart: React.FC = () => {
     ? Math.max(0, promotionsV2Quote!.payable_total / 100 - legacyShippingSavingsMissingFromV2)
     : promotionSummary.payableTotal;
   const effectiveShipping = Math.max(0, cartTotals.shipping - shippingSavings);
-  const v2GiftAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD") : [];
+  const v2GiftAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter(isAddedGiftAdjustment) : [];
   useEffect(() => {
     if (!promotionsV2Shadow || !promotionsV2Quote) return;
     const legacyPayablePaise = Math.round(promotionSummary.payableTotal * 100);
@@ -1344,7 +1348,9 @@ const Cart: React.FC = () => {
     mutationFn: async () => {
       if (!session?.user.id) return null;
       if ((promotionsV2Enabled || hasSelectedV2Promotion) && promotionsV2Quote?.evaluation_id) {
-        const response = await promotionService.validateV2(promotionsV2Quote.evaluation_id);
+        const response = promotionsV2Quote.schema_version === 3
+          ? await promotionService.validateQuote(promotionsV2Quote.evaluation_id)
+          : await promotionService.validateV2(promotionsV2Quote.evaluation_id);
         return { isValid: true, evaluationId: response.data.evaluation_id };
       }
       if (!backendEvaluation?.evaluation_id) return null;
@@ -1418,7 +1424,8 @@ const Cart: React.FC = () => {
             <div className="space-y-4">
               {enriched.map(({ apiId, item, product, quantity }) => {
                 const displayName = product?.name?.trim() || `Product #${item.productid}`;
-                const lineAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.product_id === String(item.productid) && (adjustment.type !== "FREE_ITEM" || adjustment.metadata.fulfilment === "DISCOUNT_EXISTING")) : [];
+                const quantityBreakdown = promotionsV2Quote?.quantity_breakdown?.find((entry) => entry.product_id === String(item.productid));
+                const lineAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.product_id === String(item.productid) && (adjustment.type !== "FREE_ITEM" || isExistingCartFreeItemAdjustment(adjustment))) : [];
                 const linePromotionSummaries = [...lineAdjustments.reduce((groups, adjustment) => {
                   const current = groups.get(adjustment.promotion_id) ?? { quantity: 0, savingPaise: 0 };
                   current.quantity += Math.max(Number(adjustment.affected_quantity || 0), 0);
@@ -1455,7 +1462,11 @@ const Cart: React.FC = () => {
                     >
                       {displayName}
                     </Link>
-                    <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
+                    <p className="mt-1 text-sm text-[var(--color-muted)]">
+                      {quantityBreakdown && quantityBreakdown.free_quantity > 0
+                        ? `Paid: ${quantityBreakdown.paid_quantity} · Free: ${quantityBreakdown.free_quantity} · Total: ${quantityBreakdown.total_quantity}`
+                        : `Qty: ${quantity}`}
+                    </p>
                     {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
                       <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
                           {itemErrors[item.productid] ||

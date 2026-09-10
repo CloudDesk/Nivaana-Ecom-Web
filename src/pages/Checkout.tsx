@@ -25,6 +25,8 @@ import { couponWalletService } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import { platformProductService } from "../services/productPlatformService";
 import {
+  isAddedGiftAdjustment,
+  isExistingCartFreeItemAdjustment,
   promotionService,
   type ApplicablePromotion,
   type AppliedPromotion,
@@ -329,13 +331,15 @@ const Checkout: React.FC = () => {
   const checkoutPromotionsV2QueryKey = checkoutPromotionsV2QueryKeyFor(activeSelectedPromotionIds);
   const promotionsV2Query = useQuery({
     queryKey: checkoutPromotionsV2QueryKey,
-    queryFn: () => promotionService.quoteV2({
+    queryFn: () => activeSelectedPromotionIds.length ? promotionService.quoteV2({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
-      ...(selectedPromotionUsesV2 && selectedPromotionIds.length
-        ? { selectedPromotionIds }
-        : {}),
+      selectedPromotionIds: activeSelectedPromotionIds,
+    }) : promotionService.quote({
+      cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
+      shippingAmount: cartTotals.shipping,
+      channel: "web",
     }),
     enabled: Boolean((promotionsV2Enabled || selectedPromotionUsesV2) && userId && promotionRows.length > 0),
     staleTime: 0,
@@ -496,12 +500,13 @@ const Checkout: React.FC = () => {
       };
     },
   );
+  const useV2PromotionResult = Boolean(promotionsV2Quote && (promotionsV2Enabled || selectedPromotionUsesV2));
   const appliedPromotionsForTotals =
-    selectedPromotionUsesV2 && selectedPromotionApplies
+    useV2PromotionResult
       ? [
           ...(liveV2AppliedPromotions.length > 0
             ? liveV2AppliedPromotions
-            : selectedV2AppliedPromotions),
+            : selectedPromotionApplies ? selectedV2AppliedPromotions : []),
           ...backendAppliedPromotions.filter(
             (promotion) =>
               isFreeShippingAppliedPromotion(promotion) &&
@@ -531,10 +536,9 @@ const Checkout: React.FC = () => {
     appliedPromotionsForTotals,
     fallbackPromotionDiscount
   );
-  const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== 'FREE_SHIPPING' && (adjustment.type !== 'FREE_ITEM' || adjustment.metadata.fulfilment === 'DISCOUNT_EXISTING')).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
+  const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== 'FREE_SHIPPING' && (adjustment.type !== 'FREE_ITEM' || isExistingCartFreeItemAdjustment(adjustment))).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
   const v2ShippingDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === 'FREE_SHIPPING').reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
-  const v2GiftAdjustments = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === 'FREE_ITEM' && adjustment.metadata.fulfilment === 'AUTO_ADD');
-  const useV2PromotionResult = Boolean(promotionsV2Quote && (promotionsV2Enabled || selectedPromotionUsesV2));
+  const v2GiftAdjustments = (promotionsV2Quote?.adjustments ?? []).filter(isAddedGiftAdjustment);
   const promotionDiscount = useV2PromotionResult ? v2MerchandiseDiscount : promotionSummary.normalDiscount;
   const shippingSavings = useV2PromotionResult
     ? Math.max(v2ShippingDiscount, promotionSummary.shippingSavings)
