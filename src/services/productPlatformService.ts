@@ -10,35 +10,6 @@ interface ProductPicklistItem {
     sortorder: number | null;
 }
 
-type ProductTaxonomyField = 'category' | 'subcategory' | 'subsubcategory';
-
-const getActiveProductPicklists = async (
-    fieldname: ProductTaxonomyField
-): Promise<ProductPicklistItem[]> => {
-    const items: ProductPicklistItem[] = [];
-    let page = 1;
-
-    while (true) {
-        const params = new URLSearchParams({
-            object: 'product',
-            fieldname,
-            isactive: 'true',
-            page: page.toString(),
-            limit: '100',
-        });
-        const response = await apiService.get<ProductPicklistItem[]>(
-            `/picklists?${params.toString()}`
-        );
-
-        items.push(...response.data);
-
-        if (!response.pagination?.hasNext) break;
-        page += 1;
-    }
-
-    return items;
-};
-
 const taxonomyOrder = (
     left: { label: string; sortOrder?: number | null },
     right: { label: string; sortOrder?: number | null }
@@ -74,25 +45,17 @@ export class PlatformProductService {
     }
 
     async getCategoryTree(): Promise<ApiResponse<ProductCategoryTree>> {
-        const [
-            countsResponse,
-            categoryItems,
-            subcategoryItems,
-            subsubcategoryItems,
-        ] = await Promise.all([
+        const [countsResponse, picklistsResponse] = await Promise.all([
             apiService.get<ProductCategoryTree>('/products/platform/nivapp/counts'),
-            getActiveProductPicklists('category'),
-            getActiveProductPicklists('subcategory'),
-            getActiveProductPicklists('subsubcategory'),
+            apiService.get<ProductPicklistItem[]>('/picklists?object=product&isactive=true&limit=1000'),
         ]);
-        const picklistItems = [...categoryItems, ...subcategoryItems, ...subsubcategoryItems];
 
         const countCategories = new Map(
             (countsResponse.data.categories ?? []).map((category) => [category.id, category])
         );
         const categories = new Map<string, ProductCategoryTree['categories'][number]>();
 
-        for (const item of picklistItems) {
+        for (const item of picklistsResponse.data) {
             if (item.fieldname !== 'category' || !item.value || !item.label) continue;
             const counted = countCategories.get(item.value);
             categories.set(item.value, {
@@ -104,7 +67,7 @@ export class PlatformProductService {
             });
         }
 
-        for (const item of picklistItems) {
+        for (const item of picklistsResponse.data) {
             if (item.fieldname !== 'subcategory' || !item.value || !item.label) continue;
             const parentCategory = item.controlledvalue || item.parent;
             const category = parentCategory ? categories.get(parentCategory) : undefined;
@@ -121,7 +84,7 @@ export class PlatformProductService {
             });
         }
 
-        for (const item of picklistItems) {
+        for (const item of picklistsResponse.data) {
             if (item.fieldname !== 'subsubcategory' || !item.value || !item.label) continue;
             const parentSubcategory = item.controlledvalue || item.parent;
             if (!parentSubcategory) continue;

@@ -19,7 +19,7 @@ import {
 import { cartService } from "../services/cartService";
 import { couponWalletService } from "../services/couponWalletService";
 import { platformProductService } from "../services/productPlatformService";
-import { isAddedGiftAdjustment, isExistingCartFreeItemAdjustment, promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
+import { promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
@@ -79,6 +79,8 @@ const isFreeShippingOffer = (promotion: ApplicablePromotion) => isFreeShippingPr
 const isStackablePromotion = (promotion: Pick<ApplicablePromotion, "stackable">) =>
   promotion.stackable === true;
 const guestPromotionUserId = "guest-web";
+const promotionsV2Enabled = true;
+const promotionsV2Shadow = import.meta.env.VITE_PROMOTIONS_V2_SHADOW === "true";
 const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
   const messages: Record<string, string> = {
   MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
@@ -184,7 +186,7 @@ const Cart: React.FC = () => {
     unknown,
     Error,
     { id?: number; productid: number; userid?: number; quantity: number; iswishlist?: boolean },
-    { previousCart?: ApiResponse<CartItem[]>; previousPromotion?: SelectedCartPromotion | null } | undefined
+    { previousCart?: ApiResponse<CartItem[]> } | undefined
   >({
     scope: { id: "cart-quantity-updates" },
     mutationFn: ({ id, productid, userid, quantity, iswishlist }) => {
@@ -218,16 +220,6 @@ const Cart: React.FC = () => {
       });
     },
     onMutate: async ({ productid, quantity }) => {
-      const previousPromotion = selectedPromotion;
-      // Promotion selections and their synthetic gift lines belong to the
-      // exact cart signature they were quoted for. Clear them before the
-      // optimistic quantity update so an old quote cannot remain visible.
-      clearSelectedCartPromotion(session?.user.id);
-      setSelectedPromotion(null);
-      queryClient.removeQueries({
-        queryKey: ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId],
-      });
-
       if (!session) return undefined;
 
       await queryClient.cancelQueries({ queryKey: ["cart", session.user.id] });
@@ -252,21 +244,14 @@ const Cart: React.FC = () => {
         };
       });
 
-      return { previousCart, previousPromotion };
+      return { previousCart };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart", session?.user.id] });
-      queryClient.invalidateQueries({
-        queryKey: ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId],
-      });
     },
     onError: (_error, _variables, context) => {
       if (session && context?.previousCart) {
         queryClient.setQueryData(["cart", session.user.id], context.previousCart);
-      }
-      if (session && context?.previousPromotion) {
-        saveSelectedCartPromotion(context.previousPromotion);
-        setSelectedPromotion(context.previousPromotion);
       }
       toast.error("Could not update cart. Please try again.");
     },
@@ -329,26 +314,20 @@ const Cart: React.FC = () => {
     selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
       ? selectedCartPromotionIds(selectedPromotion)
       : [];
-  const v2SelectionKey = (ids: number[]) => [...ids].sort((left, right) => left - right).join(",");
-  const promotionsV2QueryKeyFor = (ids: number[]) =>
-    ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId, cartSignature, v2SelectionKey(ids)] as const;
-  const promotionsV2QueryKey = promotionsV2QueryKeyFor(selectedV2PromotionIds);
+  const selectedV2PromotionId = selectedV2PromotionIds.at(-1);
+  const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId, cartSignature] as const;
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
-    // Automatic offers use the authoritative current rule. Keep V2 only for
-    // an explicit legacy selection until the selection API is moved to V3.
-    queryFn: () => selectedV2PromotionIds.length ? promotionService.quoteV2({
+    queryFn: () => promotionService.quoteV2({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
       selectedPromotionIds: selectedV2PromotionIds.length ? selectedV2PromotionIds : undefined,
-    }) : promotionService.quote({
-      cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
-      shippingAmount: cartTotals.shipping,
-      channel: "web",
     }),
     enabled: Boolean(
-      promotionRows.length > 0,
+      (promotionsV2Enabled || promotionsV2Shadow || selectedV2PromotionId) &&
+        promotionRows.length > 0 &&
+        !mutation.isPending,
     ),
     staleTime: 0,
     retry: false,
@@ -357,7 +336,9 @@ const Cart: React.FC = () => {
   const hasSelectedV2Promotion = Boolean(
     selectedV2PromotionIds.length > 0
   );
-  const useV2PromotionResult = Boolean(promotionsV2Quote);
+  const useV2PromotionResult = Boolean(
+    promotionsV2Quote && (promotionsV2Enabled || hasSelectedV2Promotion)
+  );
   const automaticPromotionsQueryKey = [
     "cart-automatic-promotions",
     session?.user.id,
@@ -602,11 +583,11 @@ const Cart: React.FC = () => {
     },
   );
   const appliedPromotionsForTotals =
-    useV2PromotionResult
+    hasSelectedV2Promotion && selectedPromotionApplies
       ? [
           ...(liveV2AppliedPromotions.length > 0
             ? liveV2AppliedPromotions
-            : selectedPromotionApplies ? selectedV2AppliedPromotions : []),
+            : selectedV2AppliedPromotions),
           ...backendAppliedPromotions.filter(
             (promotion) =>
               isFreeShippingAppliedPromotion(promotion) &&
@@ -645,9 +626,9 @@ const Cart: React.FC = () => {
     appliedPromotionsForTotals,
     fallbackPromotionDiscount
   );
-  const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== "FREE_SHIPPING" && (adjustment.type !== "FREE_ITEM" || isExistingCartFreeItemAdjustment(adjustment))).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
+  const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== "FREE_SHIPPING" && (adjustment.type !== "FREE_ITEM" || adjustment.metadata.fulfilment === "DISCOUNT_EXISTING")).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
   const v2ShippingSavings = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_SHIPPING").reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
-  const v2GiftSavings = (promotionsV2Quote?.adjustments ?? []).filter(isAddedGiftAdjustment).reduce((sum, adjustment) => sum + adjustment.list_amount, 0) / 100;
+  const v2GiftSavings = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD").reduce((sum, adjustment) => sum + adjustment.list_amount, 0) / 100;
   const promotionDiscount = useV2PromotionResult ? v2MerchandiseDiscount : promotionSummary.normalDiscount;
   const shippingSavings = useV2PromotionResult
     ? Math.max(v2ShippingSavings, promotionSummary.shippingSavings)
@@ -660,7 +641,12 @@ const Cart: React.FC = () => {
     ? Math.max(0, promotionsV2Quote!.payable_total / 100 - legacyShippingSavingsMissingFromV2)
     : promotionSummary.payableTotal;
   const effectiveShipping = Math.max(0, cartTotals.shipping - shippingSavings);
-  const v2GiftAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter(isAddedGiftAdjustment) : [];
+  const v2GiftAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD") : [];
+  useEffect(() => {
+    if (!promotionsV2Shadow || !promotionsV2Quote) return;
+    const legacyPayablePaise = Math.round(promotionSummary.payableTotal * 100);
+    if (legacyPayablePaise !== promotionsV2Quote.payable_total) console.info("PROMOTIONS_V2_SHADOW_DIFFERENCE", { cartSignature, legacyPayablePaise, v2PayablePaise: promotionsV2Quote.payable_total, evaluationId: promotionsV2Quote.evaluation_id });
+  }, [cartSignature, promotionSummary.payableTotal, promotionsV2Quote]);
   const walletQuoteQuery = useQuery({
     queryKey: ["wallet-discount-quote", session?.user.id, cartTotals.subtotal, payableTotal],
     queryFn: () => couponWalletService.quoteDiscount(cartTotals.subtotal, payableTotal),
@@ -877,6 +863,7 @@ const Cart: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
+        queryClient.setQueryData(promotionsV2QueryKey, result.response);
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -923,10 +910,6 @@ const Cart: React.FC = () => {
           savedAt: Date.now(),
           engine: "v2",
         };
-        queryClient.setQueryData(
-          promotionsV2QueryKeyFor(nextPromotion.promotionIds ?? []),
-          result.response,
-        );
         saveSelectedCartPromotion(nextPromotion);
         setSelectedPromotion(nextPromotion);
         setOfferActionError(null);
@@ -1096,6 +1079,7 @@ const Cart: React.FC = () => {
           selectedPromotion.evaluationId,
           promotionIdToRemove,
         );
+        queryClient.setQueryData(promotionsV2QueryKey, response);
         return { localOnly: false, engine: "v2" as const, response };
       }
 
@@ -1170,14 +1154,9 @@ const Cart: React.FC = () => {
             expiresAt: quote.expires_at,
             savedAt: Date.now(),
           };
-          queryClient.setQueryData(
-            promotionsV2QueryKeyFor(remainingPromotionIds),
-            result.response,
-          );
           saveSelectedCartPromotion(nextPromotion);
           setSelectedPromotion(nextPromotion);
         } else {
-          queryClient.setQueryData(promotionsV2QueryKeyFor([]), result.response);
           clearSelectedCartPromotion(session?.user.id);
           setSelectedPromotion(null);
         }
@@ -1338,10 +1317,8 @@ const Cart: React.FC = () => {
   const checkoutValidationMutation = useMutation({
     mutationFn: async () => {
       if (!session?.user.id) return null;
-      if (promotionsV2Quote?.evaluation_id) {
-        const response = promotionsV2Quote.schema_version === 3
-          ? await promotionService.validateQuote(promotionsV2Quote.evaluation_id)
-          : await promotionService.validateV2(promotionsV2Quote.evaluation_id);
+      if ((promotionsV2Enabled || hasSelectedV2Promotion) && promotionsV2Quote?.evaluation_id) {
+        const response = await promotionService.validateV2(promotionsV2Quote.evaluation_id);
         return { isValid: true, evaluationId: response.data.evaluation_id };
       }
       if (!backendEvaluation?.evaluation_id) return null;
@@ -1353,7 +1330,7 @@ const Cart: React.FC = () => {
     },
     onSuccess: async (response) => {
       if (!response || response.isValid) {
-        if (response?.evaluationId) sessionStorage.setItem('nivaana_promotions_v2_evaluation_id', response.evaluationId);
+        if ((promotionsV2Enabled || hasSelectedV2Promotion) && response?.evaluationId) sessionStorage.setItem('nivaana_promotions_v2_evaluation_id', response.evaluationId);
         navigate("/checkout");
         return;
       }
@@ -1415,8 +1392,7 @@ const Cart: React.FC = () => {
             <div className="space-y-4">
               {enriched.map(({ apiId, item, product, quantity }) => {
                 const displayName = product?.name?.trim() || `Product #${item.productid}`;
-                const quantityBreakdown = promotionsV2Quote?.quantity_breakdown?.find((entry) => entry.product_id === String(item.productid));
-                const lineAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.product_id === String(item.productid) && (adjustment.type !== "FREE_ITEM" || isExistingCartFreeItemAdjustment(adjustment))) : [];
+                const lineAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.product_id === String(item.productid) && (adjustment.type !== "FREE_ITEM" || adjustment.metadata.fulfilment === "DISCOUNT_EXISTING")) : [];
                 const linePromotionSummaries = [...lineAdjustments.reduce((groups, adjustment) => {
                   const current = groups.get(adjustment.promotion_id) ?? { quantity: 0, savingPaise: 0 };
                   current.quantity += Math.max(Number(adjustment.affected_quantity || 0), 0);
@@ -1453,11 +1429,7 @@ const Cart: React.FC = () => {
                     >
                       {displayName}
                     </Link>
-                    <p className="mt-1 text-sm text-[var(--color-muted)]">
-                      {quantityBreakdown && quantityBreakdown.free_quantity > 0
-                        ? `Paid: ${quantityBreakdown.paid_quantity} · Free: ${quantityBreakdown.free_quantity} · Total: ${quantityBreakdown.total_quantity}`
-                        : `Qty: ${quantity}`}
-                    </p>
+                    <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
                     {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
                       <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
                           {itemErrors[item.productid] ||
