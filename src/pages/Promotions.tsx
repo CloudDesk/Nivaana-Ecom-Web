@@ -385,6 +385,15 @@ const Promotions: React.FC = () => {
   return (
     <main className="min-h-screen bg-[#f6f7fb] px-4 py-8 sm:px-6 sm:py-10">
       <section className="mx-auto max-w-7xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
+          <Link
+            to="/account"
+            className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
+          >
+            Back to profile
+          </Link>
+        </div>
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#26344f] via-[#3f4e6c] to-[#56627e] px-6 py-7 text-white shadow-[0_22px_60px_rgba(38,52,79,0.22)] sm:px-9 lg:px-10">
           <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[42px] border-[#fbbc05]/15" />
           <div className="pointer-events-none absolute -bottom-20 right-1/3 h-48 w-48 rounded-full bg-[#fbbc05]/10 blur-2xl" />

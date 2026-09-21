@@ -271,22 +271,32 @@ const Checkout: React.FC = () => {
     enabled: Boolean(userId),
   });
 
-  const addresses = addressesQuery.data?.data ?? [];
-  const allCartItems = (cartQuery.data?.data ?? []).filter((item) => item.iscart);
-  const products = productsQuery.data?.data ?? [];
-  const buyNowProduct = buyNowProductQuery.data?.data ?? products.find((product) => product.id === buyNowProductId);
-  const cartItems = isBuyNowCheckout
-    ? buyNowProduct
-      ? [{
-          id: buyNowProduct.id,
-          productid: buyNowProduct.id,
-          userid: userId ?? 0,
-          quantity: 1,
-          iscart: true,
-          iswishlist: false,
-        }]
-      : []
-    : allCartItems;
+  const addresses = useMemo(() => addressesQuery.data?.data ?? [], [addressesQuery.data?.data]);
+  const allCartItems = useMemo(
+    () => (cartQuery.data?.data ?? []).filter((item) => item.iscart),
+    [cartQuery.data?.data]
+  );
+  const products = useMemo(() => productsQuery.data?.data ?? [], [productsQuery.data?.data]);
+  const buyNowProduct = useMemo(
+    () => buyNowProductQuery.data?.data ?? products.find((product) => product.id === buyNowProductId),
+    [buyNowProductId, buyNowProductQuery.data?.data, products]
+  );
+  const cartItems = useMemo(
+    () =>
+      isBuyNowCheckout
+        ? buyNowProduct
+          ? [{
+              id: buyNowProduct.id,
+              productid: buyNowProduct.id,
+              userid: userId ?? 0,
+              quantity: 1,
+              iscart: true,
+              iswishlist: false,
+            }]
+          : []
+        : allCartItems,
+    [allCartItems, buyNowProduct, isBuyNowCheckout, userId]
+  );
 
   const enrichedItems = useMemo(
     () =>
@@ -1370,7 +1380,7 @@ const Checkout: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["orders"] }),
         ]);
         paymentSubmissionRef.current = false;
-        navigate("/orders", { replace: true });
+        navigate("/payments", { replace: true });
         return;
       }
 

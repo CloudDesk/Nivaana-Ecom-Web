@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
@@ -128,6 +128,7 @@ const scrollToOrderStatus = (orderKey: string) => {
 
 const Orders: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [session] = useState(() => sessionService.getSession());
   const userId = session?.user.id;
   const [detailsByOrder, setDetailsByOrder] = useState<Record<string, OrderDetails>>({});
@@ -179,6 +180,20 @@ const Orders: React.FC = () => {
       .filter((details) => !isReplacementFulfillmentOrder(details.order))
       .sort((a, b) => Number(b.order.createddate || 0) - Number(a.order.createddate || 0));
   }, [ordersQuery.data?.data]);
+
+  useEffect(() => {
+    const requestedOrderId = searchParams.get("orderId");
+    if (!requestedOrderId || orders.length === 0) return;
+
+    const orderIndex = orders.findIndex(({ order }) =>
+      [order.id, order.orderid].some((identifier) => String(identifier ?? "") === requestedOrderId)
+    );
+    if (orderIndex < 0) return;
+
+    const orderKey = getOrderKey(orders[orderIndex].order, orderIndex);
+    setExpandedOrderKey(orderKey);
+    scrollToOrderStatus(orderKey);
+  }, [orders, searchParams]);
 
   const orderSummary = useMemo(() => {
     const totalSpent = orders.reduce((sum, details) => sum + getOrderTotal(details.order), 0);
@@ -491,13 +506,75 @@ const Orders: React.FC = () => {
     setCancelOrderKey(orderKey);
     setCancelErrorByOrder((current) => ({ ...current, [orderKey]: "" }));
     setStatusMessage("");
+    const previousDetails = detailsByOrder[orderKey];
+    const optimisticDetails: OrderDetails = {
+      ...details,
+      order: {
+        ...details.order,
+        orderstatus: "cancelled",
+        effective_status: "cancelled",
+        fulfillment_status: "cancelled",
+        cancelleddate: Date.now(),
+      },
+    };
+    setDetailsByOrder((current) => ({ ...current, [orderKey]: optimisticDetails }));
+
+    const waitForCancelledStatus = async () => {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, attempt === 0 ? 750 : 2000);
+        });
+
+        try {
+          const latestResponse = await orderService.details(identifier);
+          const latestDetails = normalizeOrderDetails(latestResponse.data);
+          if (latestDetails && isCancelledStatus(latestDetails.order.orderstatus)) {
+            return latestDetails;
+          }
+        } catch {
+          // The cancellation request may still hold a database lock. Keep polling
+          // until the updated order becomes readable.
+        }
+      }
+
+      return null;
+    };
 
     try {
       await orderService.cancel(identifier, userId!);
-      await queryClient.invalidateQueries({ queryKey: ["orders", userId] });
-      await queryClient.refetchQueries({ queryKey: ["orders", userId], type: "active" });
       setStatusMessage("Order cancelled successfully.");
+      await queryClient
+        .refetchQueries({ queryKey: ["orders", userId], type: "active" })
+        .catch(() => undefined);
     } catch (error) {
+      if (error instanceof Error && /timeout/i.test(error.message)) {
+        setStatusMessage("Cancellation submitted. Confirming the updated status...");
+        const latestDetails = await waitForCancelledStatus();
+        if (latestDetails) {
+          setDetailsByOrder((current) => ({ ...current, [orderKey]: latestDetails }));
+          setCancelErrorByOrder((current) => ({ ...current, [orderKey]: "" }));
+          setStatusMessage("Order cancelled successfully.");
+          await queryClient
+            .refetchQueries({ queryKey: ["orders", userId], type: "active" })
+            .catch(() => undefined);
+          return;
+        }
+
+        // Keep the submitted state and silently refresh the list. A transport
+        // timeout does not mean the server rejected the cancellation.
+        await queryClient
+          .refetchQueries({ queryKey: ["orders", userId], type: "active" })
+          .catch(() => undefined);
+        setStatusMessage("Cancellation is still processing. The status will update automatically.");
+        return;
+      }
+
+      setDetailsByOrder((current) => {
+        const next = { ...current };
+        if (previousDetails) next[orderKey] = previousDetails;
+        else delete next[orderKey];
+        return next;
+      });
       const message = error instanceof Error ? error.message : "Could not cancel this order.";
       setCancelErrorByOrder((current) => ({ ...current, [orderKey]: message }));
     } finally {
@@ -538,7 +615,7 @@ const Orders: React.FC = () => {
               to="/account"
               className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
             >
-              Back to account
+              Back to profile
             </Link>
           </div>
           <div>
@@ -1209,9 +1286,6 @@ function OrderLineRow({
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <p className="text-sm font-semibold text-[var(--color-text)]">
-            {formatCurrency(line.orderamount)}
-          </p>
           {isEligibilityLoading ? (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
               <Loader2 className="h-3 w-3 animate-spin" />

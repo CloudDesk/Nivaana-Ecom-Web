@@ -232,10 +232,18 @@ const SavedAddresses: React.FC = () => {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-5xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
+          <Link
+            to="/account"
+            className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
+          >
+            Back to profile
+          </Link>
+        </div>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)]">Account</p>
-            <h1 className="mt-2 text-3xl font-bold text-[var(--color-text)]">Saved Addresses</h1>
+            <h1 className="text-3xl font-bold text-[var(--color-text)]">Saved Addresses</h1>
             <p className="mt-2 text-sm text-[var(--color-muted)]">Add, edit, and delete your delivery addresses.</p>
           </div>
           <Button

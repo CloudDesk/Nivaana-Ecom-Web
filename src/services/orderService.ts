@@ -4,6 +4,8 @@ import type { ApiResponse } from "../types";
 export interface OrderSummary {
   id?: number;
   orderid?: string;
+  transactionid?: string;
+  merchanttransactionid?: string;
   orderamount?: number;
   productamount?: number;
   discountamount?: number;
