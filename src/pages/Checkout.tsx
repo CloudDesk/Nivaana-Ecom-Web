@@ -57,7 +57,6 @@ import {
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
 import { isOfferAlreadyUsedError } from "../lib/notificationMessages";
 
-const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
 const promotionsV2Enabled = true;
 
 const emptyAddressForm = (userId: number, mobileNumber: number, customerName = ""): AddressPayload => ({
@@ -1371,9 +1370,6 @@ const Checkout: React.FC = () => {
       const redirectUrl = data.redirectUrl || data.next_steps?.phonepe?.redirectUrl;
 
       if (redirectUrl) {
-        if (data.merchantTransactionId) {
-          localStorage.setItem(PENDING_TRANSACTION_KEY, data.merchantTransactionId);
-        }
         window.location.replace(redirectUrl);
         return;
       }
@@ -1382,7 +1378,6 @@ const Checkout: React.FC = () => {
         clearSelectedCartPromotion(userId);
         saveWalletApplied(userId, false);
         setWalletApplied(false);
-        localStorage.removeItem(PENDING_TRANSACTION_KEY);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["wallet"] }),
           queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] }),
