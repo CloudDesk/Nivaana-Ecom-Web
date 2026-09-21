@@ -344,7 +344,7 @@ class PromotionService {
     selectedPromotionIds?: number[];
     rewardSelections?: Record<string, string>;
   }): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>('/v2/promotions/quote', {
+    return apiService.post<PromotionV2Quote>('/v2/promotions/evaluations', {
       schema_version: 2,
       cart_items: payload.cartItems,
       shipping_amount: Math.round(payload.shippingAmount * 100),
@@ -356,19 +356,19 @@ class PromotionService {
   }
 
   selectV2(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/select`, { schema_version: 2, promotion_id: promotionId });
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/selections`, { schema_version: 2, promotion_id: promotionId });
   }
 
   removeSelectionV2(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.delete<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/selection/${promotionId}`);
+    return apiService.delete<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/selections/${promotionId}`);
   }
 
   selectGiftV2(evaluationId: string, promotionId: number, productId: string): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/select-gift`, { schema_version: 2, promotion_id: promotionId, product_id: productId });
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/gift-selection`, { schema_version: 2, promotion_id: promotionId, product_id: productId });
   }
 
   validateV2(evaluationId: string): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/validate`, { schema_version: 2 });
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/validate`, { schema_version: 2 });
   }
 
   list(params: PromotionListParams = {}): Promise<ApiResponse<Promotion[]>> {
