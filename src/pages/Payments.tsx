@@ -9,8 +9,6 @@ import { sessionService } from "../services/sessionService";
 import { clearSelectedCartPromotion } from "../lib/cartPromotions";
 import { saveWalletApplied } from "../lib/walletSelection";
 
-const PENDING_TRANSACTION_KEY = "nivaana_pending_payment_transaction";
-
 const getStatusText = (data?: PaymentResponseData | null) =>
   data?.status || data?.message || data?.paymentData?.state || "Status received";
 
@@ -166,10 +164,7 @@ const Payments: React.FC = () => {
   const [message, setMessage] = useState("");
   const userId = session?.user.id;
   const returnedPaymentStatus = searchParams.get("payment");
-  const [pendingMerchantTransactionId, setPendingMerchantTransactionId] = useState(() =>
-    searchParams.get("merchantTransactionId") || localStorage.getItem(PENDING_TRANSACTION_KEY) || ""
-  );
-  const returnedMerchantTransactionId = searchParams.get("merchantTransactionId") || pendingMerchantTransactionId;
+  const returnedMerchantTransactionId = searchParams.get("merchantTransactionId") || "";
 
   const ordersQuery = useQuery({
     queryKey: ["payments", userId],
@@ -218,10 +213,8 @@ const Payments: React.FC = () => {
       setMessage(isSuccessfulPayment(response) ? "" : getStatusText(response));
 
       if (isSuccessfulPayment(response)) {
-        localStorage.removeItem(PENDING_TRANSACTION_KEY);
         clearSelectedCartPromotion(session?.user.id);
         saveWalletApplied(session?.user.id, false);
-        setPendingMerchantTransactionId("");
 
         if (session?.user.id) {
           queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] });

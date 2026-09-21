@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Smartphone } from "lucide-react";
 import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 const Login: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobile, setMobile] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -84,7 +85,16 @@ const Login: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["wishlist", session.user.id] }),
         ]);
       }
-      navigate(hadGuestCartItems ? "/cart" : "/", { replace: true });
+      const requestedReturn = (location.state as { from?: unknown } | null)?.from;
+      const safeReturn =
+        typeof requestedReturn === "string" &&
+        requestedReturn.startsWith("/") &&
+        !requestedReturn.startsWith("//")
+          ? requestedReturn
+          : null;
+      navigate(safeReturn || (hadGuestCartItems ? "/cart" : "/"), {
+        replace: true,
+      });
     } catch {
       setMessage("OTP verification failed. Please try again.");
     } finally {
