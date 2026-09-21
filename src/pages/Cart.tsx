@@ -54,7 +54,10 @@ const quantityFor = (quantity: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const formatCurrency = (value: number) => `₹${Math.max(value, 0).toLocaleString("en-IN")}`;
+const formatCurrency = (value: number) =>
+  `₹${Math.max(value, 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  })}`;
 
 const countDistinctProducts = (items: Array<{ productid: number }>) =>
   new Set(items.map((item) => item.productid)).size;
@@ -80,6 +83,7 @@ const isStackablePromotion = (promotion: Pick<ApplicablePromotion, "stackable">)
   promotion.stackable === true;
 const guestPromotionUserId = "guest-web";
 const promotionsV2Enabled = true;
+const showPromotionCalculationBreakdown = false;
 const promotionsV2Shadow = import.meta.env.VITE_PROMOTIONS_V2_SHADOW === "true";
 const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
   const messages: Record<string, string> = {
@@ -169,6 +173,8 @@ const Cart: React.FC = () => {
     queryKey: ["cart", session?.user.id],
     queryFn: () => cartService.getCart(session!.user.id),
     enabled: Boolean(session),
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const wishlistQuery = useQuery({
@@ -1438,7 +1444,7 @@ const Cart: React.FC = () => {
                             : stockLimitMessage(getAvailableStock(product)))}
                       </p>
                     )}
-                    {linePromotionSummaries.filter((summary) => summary.saving > 0).map((summary) => (
+                    {showPromotionCalculationBreakdown && linePromotionSummaries.filter((summary) => summary.saving > 0).map((summary) => (
                       <p key={summary.promotionId} className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
                         <Sparkles className="mr-1 inline h-3.5 w-3.5" />
                         {summary.quantity > 1
@@ -1584,7 +1590,7 @@ const Cart: React.FC = () => {
                     )}
                   </div>
 
-                  {useV2PromotionResult && promotionsV2Quote && (
+                  {showPromotionCalculationBreakdown && useV2PromotionResult && promotionsV2Quote && (
                     <div className="mt-3 space-y-2" aria-label="Promotion status groups">
                       {promotionsV2Quote.applied_promotions.map((offer) => <div key={`applied-${offer.promotion_id}`} className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"><strong>Applied · {offer.name}</strong><span className="float-right">Save {formatCurrency(offer.saving / 100)}</span></div>)}
                       {promotionsV2Quote.eligible_alternatives.map((offer) => <div key={`eligible-${offer.promotion_id}`} className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-[#26344f]"><strong>Eligible · {offer.name}</strong><p className="mt-1 text-[#68748a]">A better compatible offer is currently applied.</p></div>)}

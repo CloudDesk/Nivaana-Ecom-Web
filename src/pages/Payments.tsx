@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, ReceiptText, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -12,14 +12,17 @@ import { saveWalletApplied } from "../lib/walletSelection";
 const getStatusText = (data?: PaymentResponseData | null) =>
   data?.status || data?.message || data?.paymentData?.state || "Status received";
 
-const isSuccessfulPayment = (data?: PaymentResponseData | null) => {
+const isGatewayPaymentSuccessful = (data?: PaymentResponseData | null) => {
   const statusText = getStatusText(data).toLowerCase();
-  const paymentSucceeded =
+  return (
     statusText === "success" ||
     statusText.includes("payment_success") ||
-    statusText.includes("completed");
-  return paymentSucceeded && data?.orderCreation?.status !== "failed";
+    statusText.includes("completed")
+  );
 };
+
+const isSuccessfulPayment = (data?: PaymentResponseData | null) =>
+  isGatewayPaymentSuccessful(data) && data?.orderCreation?.status !== "failed";
 
 const isPendingPayment = (data?: PaymentResponseData | null) => {
   const statusText = getStatusText(data).toLowerCase();
@@ -156,12 +159,13 @@ const findMatchingTransaction = (order: OrderSummary, transactions: TransactionR
 
 const Payments: React.FC = () => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [session] = useState(() => sessionService.getSession());
   const [statusData, setStatusData] = useState<PaymentResponseData | null>(null);
   const [expandedPaymentKey, setExpandedPaymentKey] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"neutral" | "error">("neutral");
+  const reconciliationAttemptsRef = useRef(0);
   const userId = session?.user.id;
   const returnedPaymentStatus = searchParams.get("payment");
   const returnedMerchantTransactionId = searchParams.get("merchantTransactionId") || "";
@@ -176,6 +180,13 @@ const Payments: React.FC = () => {
     queryKey: ["payment-transactions", userId],
     queryFn: () => paymentService.listUserTransactions(userId!, 1, 50),
     enabled: Boolean(userId),
+  });
+
+  const returnedTransactionQuery = useQuery({
+    queryKey: ["payment-transaction", returnedMerchantTransactionId],
+    queryFn: () => paymentService.getTransaction(returnedMerchantTransactionId),
+    enabled: Boolean(userId && returnedMerchantTransactionId),
+    retry: 1,
   });
 
   const paymentHistory = useMemo(() => {
@@ -208,40 +219,75 @@ const Payments: React.FC = () => {
       const statusResponse = await paymentService.getStatus(merchantTransactionId);
       return statusResponse.data;
     },
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
+      if (
+        isGatewayPaymentSuccessful(response) &&
+        response.orderCreation?.status === "failed" &&
+        reconciliationAttemptsRef.current < 6
+      ) {
+        reconciliationAttemptsRef.current += 1;
+        setStatusData(null);
+        setMessageTone("neutral");
+        setMessage("Payment received. Finalizing your order...");
+        window.setTimeout(() => {
+          statusMutation.mutate(returnedMerchantTransactionId);
+        }, 1500);
+        return;
+      }
+
       setStatusData(response);
-      setMessage(isSuccessfulPayment(response) ? "" : getStatusText(response));
+      reconciliationAttemptsRef.current = 0;
+      setMessageTone(response.orderCreation?.status === "failed" ? "error" : "neutral");
+      setMessage(
+        response.orderCreation?.status === "failed"
+          ? `Payment succeeded, but the order could not be finalized. ${response.orderCreation.error || "Please contact support with the transaction ID."}`
+          : isSuccessfulPayment(response)
+            ? ""
+            : getStatusText(response)
+      );
 
       if (isSuccessfulPayment(response)) {
         clearSelectedCartPromotion(session?.user.id);
         saveWalletApplied(session?.user.id, false);
 
         if (session?.user.id) {
-          queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] });
-          queryClient.invalidateQueries({ queryKey: ["orders", session.user.id] });
-          queryClient.invalidateQueries({ queryKey: ["payments", session.user.id] });
-          queryClient.invalidateQueries({ queryKey: ["payment-transactions", session.user.id] });
-          queryClient.invalidateQueries({ queryKey: ["wallet"] });
-          queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] }),
+            queryClient.invalidateQueries({ queryKey: ["orders", session.user.id] }),
+            queryClient.invalidateQueries({ queryKey: ["payments", session.user.id] }),
+            queryClient.invalidateQueries({ queryKey: ["payment-transactions", session.user.id] }),
+            queryClient.invalidateQueries({ queryKey: ["wallet"] }),
+            queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] }),
+          ]);
+          await queryClient.refetchQueries({
+            queryKey: ["cart", session.user.id],
+            type: "all",
+          });
         }
 
-        window.setTimeout(() => navigate("/", { replace: true }), 1200);
       }
     },
     onError: (error) => {
       setStatusData(null);
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Could not check payment status.");
     },
   });
 
   useEffect(() => {
-    if (!returnedMerchantTransactionId || statusMutation.isPending || statusData) return;
+    if (
+      !returnedMerchantTransactionId ||
+      statusMutation.isPending ||
+      statusData ||
+      reconciliationAttemptsRef.current > 0
+    ) return;
 
     setMessage(
       returnedPaymentStatus === "failure"
         ? "Payment was not completed. Checking the latest status..."
         : "Checking payment status..."
     );
+    setMessageTone("neutral");
     statusMutation.mutate(returnedMerchantTransactionId);
   }, [returnedMerchantTransactionId, returnedPaymentStatus, statusData, statusMutation]);
 
@@ -272,21 +318,30 @@ const Payments: React.FC = () => {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-4xl">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
+            <Link
+              to="/account"
+              className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
+            >
+              Back to profile
+            </Link>
+          </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-secondary)]">Account</p>
-            <h1 className="mt-2 text-3xl font-bold text-[var(--color-text)]">Payments</h1>
+            <h1 className="text-3xl font-bold text-[var(--color-text)]">Payments</h1>
             <p className="mt-2 text-sm text-[var(--color-muted)]">Review completed payments and transaction details.</p>
           </div>
-          <Link to="/account" className="text-sm font-bold text-[var(--color-secondary)] hover:text-[var(--color-text)]">
-            Back to account
-          </Link>
         </div>
 
         {(message || statusData) && (
           <div
             className={`mt-6 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
-              message || (statusData && !isSuccessfulPayment(statusData)) ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
+              messageTone === "error" || (statusData && !isSuccessfulPayment(statusData))
+                ? "border-red-200 text-red-600"
+                : statusData && isSuccessfulPayment(statusData)
+                  ? "border-green-200 text-green-700"
+                  : "border-amber-200 text-amber-700"
             }`}
           >
             {message || `Payment status: ${getStatusText(statusData)}`}
@@ -315,9 +370,20 @@ const Payments: React.FC = () => {
               {paymentHistory.map(({ details, transaction }, index) => {
                 const { order } = details;
                 const orderIdentifier = String(order.orderid ?? order.id ?? "Order");
+                const returnedOrderId = statusData?.orderCreation?.orderId;
+                const isReturnedOrder = Boolean(
+                  returnedMerchantTransactionId &&
+                  returnedOrderId &&
+                  String(order.id) === String(returnedOrderId)
+                );
+                const returnedTransaction = returnedTransactionQuery.data?.data;
+                const effectiveTransaction = transaction || (isReturnedOrder ? returnedTransaction : null);
                 const merchantTransactionId =
-                  getOrderMerchantTransactionId(order) || getTransactionMerchantTransactionId(transaction);
-                const transactionLabel = getDisplayTransactionId(order, transaction);
+                  getOrderMerchantTransactionId(order) ||
+                  getTransactionMerchantTransactionId(effectiveTransaction) ||
+                  (isReturnedOrder ? returnedMerchantTransactionId : "");
+                const transactionLabel =
+                  merchantTransactionId || getDisplayTransactionId(order, effectiveTransaction);
                 const amount = getOrderTotalAmount(order);
                 const key = String(getOrderIdentifier(order) || transactionLabel || index);
                 const isExpanded = expandedPaymentKey === key;
@@ -328,7 +394,12 @@ const Payments: React.FC = () => {
                       <div className="grid min-w-0 gap-3 md:grid-cols-[1.1fr_1.2fr_0.8fr_0.9fr] md:items-center">
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-[var(--color-muted)]">Order</p>
-                          <p className="break-words text-sm font-bold text-[var(--color-text)]">{orderIdentifier}</p>
+                          <Link
+                            to={`/orders?orderId=${encodeURIComponent(String(getOrderIdentifier(order) || orderIdentifier))}`}
+                            className="break-words text-sm font-bold text-[var(--color-secondary)] underline-offset-2 hover:underline"
+                          >
+                            {orderIdentifier}
+                          </Link>
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-[var(--color-muted)]">Transaction</p>
@@ -371,11 +442,14 @@ const Payments: React.FC = () => {
                       </div>
                     </div>
                     {isExpanded && (
-                      <PaymentDetails
-                        details={details}
-                        transaction={transaction}
-                        merchantTransactionId={merchantTransactionId}
-                      />
+                        <PaymentDetails
+                          details={details}
+                          transaction={effectiveTransaction}
+                          merchantTransactionId={merchantTransactionId}
+                          gatewayTransactionIdFallback={
+                            isReturnedOrder ? statusData?.paymentData?.transactionId || "" : ""
+                          }
+                        />
                     )}
                   </article>
                 );
@@ -396,15 +470,20 @@ function PaymentDetails({
   details,
   transaction,
   merchantTransactionId,
+  gatewayTransactionIdFallback,
 }: {
   details: OrderDetails;
   transaction?: TransactionRecord | null;
   merchantTransactionId: string;
+  gatewayTransactionIdFallback: string;
 }) {
   const { order, orderlines = [] } = details;
   const transactionAmount = getTransactionRawAmount(transaction);
   const orderAmount = getOrderAmount(order);
-  const gatewayTransactionId = getOrderGatewayTransactionId(order) || getTransactionGatewayTransactionId(transaction);
+  const gatewayTransactionId =
+    getOrderGatewayTransactionId(order) ||
+    getTransactionGatewayTransactionId(transaction) ||
+    gatewayTransactionIdFallback;
   const paymentMode = getString(order, ["mode", "paymentmode", "paymentMode"]) || "Online";
   const paymentSucceeded = getBoolean(order, ["ispaymentsucceed", "isPaymentSucceed", "paymentSuccess"]);
   const paymentStatus = paymentSucceeded ? "Completed" : formatStatus(getString(order, ["paymentstatus", "paymentStatus", "orderstatus", "status"]));
