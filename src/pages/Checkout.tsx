@@ -55,8 +55,6 @@ import {
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
 import { isOfferAlreadyUsedError } from "../lib/notificationMessages";
 
-const promotionsV2Enabled = true;
-
 const emptyAddressForm = (userId: number, mobileNumber: number, customerName = ""): AddressPayload => ({
   userid: userId,
   name: customerName,
@@ -342,7 +340,7 @@ const Checkout: React.FC = () => {
         ? { selectedPromotionIds }
         : {}),
     }),
-    enabled: Boolean((promotionsV2Enabled || selectedPromotionUsesV2) && userId && promotionRows.length > 0),
+    enabled: Boolean(userId && promotionRows.length > 0),
     staleTime: 0,
     retry: false,
   });
@@ -539,7 +537,7 @@ const Checkout: React.FC = () => {
   const v2MerchandiseDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type !== 'FREE_SHIPPING' && (adjustment.type !== 'FREE_ITEM' || adjustment.metadata.fulfilment === 'DISCOUNT_EXISTING')).reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
   const v2ShippingDiscount = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === 'FREE_SHIPPING').reduce((sum, adjustment) => sum + adjustment.amount, 0) / 100;
   const v2GiftAdjustments = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === 'FREE_ITEM' && adjustment.metadata.fulfilment === 'AUTO_ADD');
-  const useV2PromotionResult = Boolean(promotionsV2Quote && (promotionsV2Enabled || selectedPromotionUsesV2));
+  const useV2PromotionResult = Boolean(promotionsV2Quote);
   const promotionDiscount = useV2PromotionResult ? v2MerchandiseDiscount : promotionSummary.normalDiscount;
   const shippingSavings = useV2PromotionResult
     ? Math.max(v2ShippingDiscount, promotionSummary.shippingSavings)
@@ -665,7 +663,8 @@ const Checkout: React.FC = () => {
     .filter((promotion) => !promotion.is_auto && !isFreeShippingAppliedPromotion(promotion))
     .every((promotion) => promotion.stackable === true || promotion.is_stacked === true);
   const isPromotionResolving = Boolean(
-    ((promotionsV2Enabled || selectedPromotionUsesV2) && (promotionsV2Query.isLoading || promotionsV2Query.isFetching)) ||
+    promotionsV2Query.isLoading ||
+    promotionsV2Query.isFetching ||
     promotionEligibilityQuery.isLoading ||
       promotionEligibilityQuery.isFetching ||
       activeEvaluationsQuery.isLoading ||
