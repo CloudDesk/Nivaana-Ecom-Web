@@ -14,6 +14,9 @@ export interface OrderSummary {
   wallet_amount_applied?: number;
   original_total?: number;
   shipping_cost?: number;
+  total_gst_amount?: number;
+  tax_amount?: number;
+  cost_breakdown?: OrderCostBreakdown;
   mode?: string;
   orderstatus?: string;
   fulfillment_status?: string;
@@ -31,12 +34,45 @@ export interface OrderSummary {
   [key: string]: unknown;
 }
 
+export interface PromotionCostBreakdown {
+  promotion_id: number | null;
+  promotion_name: string;
+  coupon_code: string | null;
+  discount_type: string;
+  merchandise_discount: number;
+  free_item_discount: number;
+  shipping_discount: number;
+  discount_amount: number;
+}
+
+export interface OrderCostBreakdown {
+  original_cart_value: number;
+  promotions: PromotionCostBreakdown[];
+  product_discount: number;
+  promotion_discount: number;
+  free_item_discount: number;
+  shipping_discount: number;
+  total_discount: number;
+  taxes: number;
+  delivery_charges: number;
+  final_payable_amount: number;
+}
+
 export interface OrderLine {
   id?: number;
   productid?: number;
   productname?: string;
   quantity?: number;
+  productamount?: number;
+  discountamount?: number;
   orderamount?: number;
+  original_price?: number;
+  product_discount_amount?: number;
+  promotion_discount_amount?: number;
+  line_type?: string | null;
+  is_free_item?: boolean;
+  list_unit_price?: number;
+  promotion_unit_discount?: number;
   orderstatus?: string;
   orderlinenumber?: string;
   image?: string | null;
