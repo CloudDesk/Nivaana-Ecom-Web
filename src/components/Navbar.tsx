@@ -39,6 +39,7 @@ const Navbar: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [categoryMenuLeft, setCategoryMenuLeft] = useState(16);
   const [, setStoreVersion] = useState(0);
   const categoryCloseTimer = React.useRef<number | null>(null);
   const scrollTickingRef = React.useRef(false);
@@ -74,6 +75,7 @@ const Navbar: React.FC = () => {
     () => buildCategoryGroups(categoryTreeQuery.data?.data),
     [categoryTreeQuery.data?.data]
   );
+  const activeCategoryGroup = categoryGroups.find((group) => group.heading === activeCategoryHeading);
 
   const cartQuery = useQuery({
     queryKey: ["cart", session?.user.id],
@@ -173,8 +175,13 @@ const Navbar: React.FC = () => {
     navigate(`/products?search=${encodeURIComponent(query)}`);
   };
 
-  const openCategoriesMenu = (heading: string) => {
+  const openCategoriesMenu = (heading: string, anchor?: HTMLElement | null) => {
     window.clearTimeout(categoryCloseTimer.current ?? undefined);
+    if (anchor) {
+      const menuWidth = Math.min(416, window.innerWidth - 32);
+      const anchorLeft = anchor.getBoundingClientRect().left;
+      setCategoryMenuLeft(Math.max(16, Math.min(anchorLeft, window.innerWidth - menuWidth - 16)));
+    }
     setActiveCategoryHeading(heading);
   };
 
@@ -400,15 +407,19 @@ const Navbar: React.FC = () => {
       </motion.nav>
 
       {!showsCategoryRail && (
-      <div className="relative z-40 hidden border-b border-[#e5e7eb] bg-white lg:block">
-        <div className={cn(theme.layout.container, "flex h-11 items-center justify-center gap-1 overflow-visible whitespace-nowrap")}>
+      <div className="relative z-40 hidden border-b border-[#e5e7eb] bg-white lg:block" onMouseLeave={closeCategoriesMenu}>
+        <div
+          className="scrollbar-hide h-11 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+          onScroll={() => setActiveCategoryHeading(null)}
+        >
+        <div className="mx-auto flex h-10 w-max min-w-full items-center justify-center gap-1 whitespace-nowrap px-4 sm:px-6 lg:px-10">
           {categoryGroups.map((group) => (
             <div
               key={group.heading}
-              className="relative flex h-11 items-center"
-              onMouseEnter={() => group.links.length > 0 && openCategoriesMenu(group.heading)}
-              onMouseLeave={closeCategoriesMenu}
-              onFocus={() => group.links.length > 0 && openCategoriesMenu(group.heading)}
+              data-category-nav-item
+              className="relative flex h-10 items-center"
+              onMouseEnter={(event) => group.links.length > 0 && openCategoriesMenu(group.heading, event.currentTarget)}
+              onFocus={(event) => group.links.length > 0 && openCategoriesMenu(group.heading, event.currentTarget)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
                   setActiveCategoryHeading(null);
@@ -438,7 +449,14 @@ const Navbar: React.FC = () => {
                     aria-expanded={activeCategoryHeading === group.heading}
                     onClick={(event) => {
                       event.preventDefault();
-                      setActiveCategoryHeading((current) => (current === group.heading ? null : group.heading));
+                      if (activeCategoryHeading === group.heading) {
+                        setActiveCategoryHeading(null);
+                        return;
+                      }
+                      openCategoriesMenu(
+                        group.heading,
+                        event.currentTarget.closest<HTMLElement>("[data-category-nav-item]")
+                      );
                     }}
                   >
                     <ChevronDown
@@ -450,53 +468,57 @@ const Navbar: React.FC = () => {
                   </button>
                 )}
               </div>
-              <AnimatePresence>
-                {group.links.length > 0 && activeCategoryHeading === group.heading && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.16 }}
-                    className="absolute left-0 top-full z-50 mt-[1px] w-max min-w-full max-w-[min(26rem,calc(100vw-2rem))] rounded-[2px] border border-[#e5e7eb] bg-white px-5 py-3 shadow-[var(--shadow-hover)]"
-                  >
-                    <Link
-                      to={group.to}
-                      className="mb-2 block whitespace-nowrap text-sm font-semibold text-black transition hover:text-[#485470]"
-                    >
-                      {group.heading}
-                    </Link>
-                    <div className="h-px scale-y-[0.35] bg-[#e5e7eb]" />
-                    <div className="mt-2 grid gap-1">
-                      {group.links.map((item) => (
-                        <div key={item.label}>
-                          <Link
-                            to={item.to}
-                            className="block whitespace-nowrap px-1.5 py-1 text-sm font-semibold leading-snug text-black transition-colors hover:text-[#485470]"
-                          >
-                            {item.label}
-                          </Link>
-                          {item.children && (
-                            <div className="ml-2 mt-1 space-y-1 border-l-[0.5px] border-[#e5e7eb] pl-2">
-                              {item.children.map((child) => (
-                                <Link
-                                  key={child.label}
-                                  to={child.to}
-                                  className="block whitespace-nowrap px-1.5 py-0.5 text-xs font-semibold leading-snug text-black transition-colors hover:text-[#485470]"
-                                >
-                                  {child.label}
-                                </Link>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
           ))}
         </div>
+        </div>
+
+        <AnimatePresence>
+          {activeCategoryGroup && activeCategoryGroup.links.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.16 }}
+              style={{ left: categoryMenuLeft }}
+              className="absolute top-full z-50 mt-[1px] w-max min-w-[12rem] max-w-[min(26rem,calc(100vw-2rem))] rounded-[2px] border border-[#e5e7eb] bg-white px-5 py-3 shadow-[var(--shadow-hover)]"
+              onMouseEnter={() => window.clearTimeout(categoryCloseTimer.current ?? undefined)}
+            >
+              <Link
+                to={activeCategoryGroup.to}
+                className="mb-2 block whitespace-nowrap text-sm font-semibold text-black transition hover:text-[#485470]"
+              >
+                {activeCategoryGroup.heading}
+              </Link>
+              <div className="h-px scale-y-[0.35] bg-[#e5e7eb]" />
+              <div className="mt-2 grid gap-1">
+                {activeCategoryGroup.links.map((item) => (
+                  <div key={item.label}>
+                    <Link
+                      to={item.to}
+                      className="block whitespace-nowrap px-1.5 py-1 text-sm font-semibold leading-snug text-black transition-colors hover:text-[#485470]"
+                    >
+                      {item.label}
+                    </Link>
+                    {item.children && (
+                      <div className="ml-2 mt-1 space-y-1 border-l-[0.5px] border-[#e5e7eb] pl-2">
+                        {item.children.map((child) => (
+                          <Link
+                            key={child.label}
+                            to={child.to}
+                            className="block whitespace-nowrap px-1.5 py-0.5 text-xs font-semibold leading-snug text-black transition-colors hover:text-[#485470]"
+                          >
+                            {child.label}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       )}
 

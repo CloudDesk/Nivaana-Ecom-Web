@@ -13,17 +13,21 @@ const Login: React.FC = () => {
   const location = useLocation();
   const [mobile, setMobile] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [requiresName, setRequiresName] = useState(false);
+  const [requiresEmail, setRequiresEmail] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const changeMobileNumber = () => {
     setOtpSent(false);
     setRequiresName(false);
+    setRequiresEmail(false);
     setOtp("");
     setName("");
+    setEmail("");
     setMessage("");
   };
 
@@ -40,6 +44,7 @@ const Login: React.FC = () => {
     try {
       const response = await authService.requestOTP(Number(mobile));
       setRequiresName(Boolean(response.data.requiresName ?? response.data.isNewUser));
+      setRequiresEmail(Boolean(response.data.requiresEmail));
       setOtpSent(true);
       setMessage("OTP sent successfully.");
     } catch {
@@ -70,6 +75,7 @@ const Login: React.FC = () => {
         Number(mobile),
         Number(otp),
         requiresName ? name : undefined,
+        requiresEmail ? email : undefined,
       );
       const session = sessionService.getSession();
       if (session) {
@@ -166,6 +172,24 @@ const Login: React.FC = () => {
                     maxLength={100}
                     className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                     required
+                  />
+                </div>
+              )}
+
+              {requiresEmail && (
+                <div className="mt-5">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[#33271b]" htmlFor="email">
+                    Email Address <span className="normal-case tracking-normal text-[#766c63]">(optional)</span>
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value.slice(0, 255))}
+                    placeholder="Enter your email address"
+                    autoComplete="email"
+                    maxLength={255}
+                    className="mt-3 h-12 w-full rounded-[var(--radius-sm)] border border-[#d6cfc2] bg-white px-4 text-sm text-[#33271b] outline-none transition placeholder:text-[#b9aea0] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                   />
                 </div>
               )}
