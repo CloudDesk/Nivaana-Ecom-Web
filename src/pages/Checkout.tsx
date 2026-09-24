@@ -1344,7 +1344,7 @@ const Checkout: React.FC = () => {
 
       return paymentService.initiate({
         mode: "phonepe",
-        returnUrl: `${window.location.origin}/payments`,
+        returnUrl: `${window.location.origin}/checkout/confirmation`,
         order: orderItems,
         transaction: {
           amount: Number(checkoutTotal.toFixed(2)),
@@ -1380,7 +1380,10 @@ const Checkout: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ["orders"] }),
         ]);
         paymentSubmissionRef.current = false;
-        navigate("/payments", { replace: true });
+        const confirmationParams = new URLSearchParams();
+        if (data.orderData.orderId) confirmationParams.set("orderId", String(data.orderData.orderId));
+        if (data.merchantTransactionId) confirmationParams.set("merchantTransactionId", data.merchantTransactionId);
+        navigate(`/checkout/confirmation?${confirmationParams.toString()}`, { replace: true });
         return;
       }
 

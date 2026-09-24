@@ -20,6 +20,7 @@ import Wishlist from './pages/Wishlist';
 import Account from './pages/Account';
 import ProductDetails from './pages/ProductDetails';
 import Checkout from './pages/Checkout';
+import CheckoutConfirmation from './pages/CheckoutConfirmation';
 import SavedAddresses from './pages/SavedAddresses';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
@@ -53,6 +54,7 @@ function AppLayout() {
           <Route path="/addresses" element={<ProtectedRoute><SavedAddresses /></ProtectedRoute>} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
+          <Route path="/checkout/confirmation" element={<ProtectedRoute><CheckoutConfirmation /></ProtectedRoute>} />
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/terms" element={<TermsAndConditions />} />
