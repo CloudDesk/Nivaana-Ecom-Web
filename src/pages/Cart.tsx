@@ -23,6 +23,7 @@ import { promotionService, type ApplicablePromotion, type AppliedPromotion, type
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
+import { PageSkeleton } from "../components/PageSkeleton";
 import { toast } from "../components/toastApi";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { ApiResponse, CartItem, Product } from "../types";
@@ -1375,11 +1376,15 @@ const Cart: React.FC = () => {
           </div>
         )} */}
         {session && cartQuery.isLoading ? (
-          <div className="mt-8 rounded-[var(--radius-md)] bg-white p-8 text-sm text-[var(--color-muted)]">Loading cart...</div>
+          <div className="mt-8">
+            <PageSkeleton variant="cart" count={3} hideHeader />
+          </div>
         ) : items.length === 0 ? (
           <EmptyState title="Your cart is empty" />
         ) : productsQuery.isLoading ? (
-          <CartLoadingState itemCount={items.length} />
+          <div className="mt-8">
+            <PageSkeleton variant="cart" count={Math.max(items.length, 3)} hideHeader />
+          </div>
         ) : productsQuery.isError ? (
           <div className="mt-8 rounded-[var(--radius-md)] border border-red-200 bg-white p-6 text-sm font-semibold text-red-600 shadow-[var(--shadow-card)]">
             Could not load product details for your cart. Please refresh and try again.
@@ -1928,36 +1933,5 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
-function CartLoadingState({ itemCount }: { itemCount: number }) {
-  const rows = Array.from({ length: Math.max(itemCount, 1) });
-
-  return (
-    <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,0.9fr)_460px]">
-      <div className="space-y-4">
-        {rows.map((_, index) => (
-          <article
-            key={index}
-            className="flex gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)]"
-          >
-            <div className="h-24 w-24 shrink-0 animate-pulse rounded-[var(--radius-sm)] bg-[var(--color-surface)]" />
-            <div className="min-w-0 flex-1">
-              <div className="h-5 w-2/3 animate-pulse rounded bg-[var(--color-surface)]" />
-              <div className="mt-3 h-4 w-20 animate-pulse rounded bg-[var(--color-surface)]" />
-              <div className="mt-5 flex items-center gap-3">
-                <Loader2 className="h-4 w-4 animate-spin text-[var(--color-secondary)]" />
-                <span className="text-sm font-semibold text-[var(--color-muted)]">Loading product details</span>
-              </div>
-            </div>
-            <div className="h-5 w-16 animate-pulse rounded bg-[var(--color-surface)]" />
-          </article>
-        ))}
-      </div>
-      <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-        <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>
-        <div className="mt-5 h-10 animate-pulse rounded bg-[var(--color-surface)]" />
-      </aside>
-    </div>
-  );
-}
-
 export default Cart;
+

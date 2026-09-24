@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
+import { AccountBreadcrumb } from '../components/AccountBreadcrumb';
 import type { User } from '../types';
 
 type Step = 1 | 2 | 3;
@@ -176,8 +177,9 @@ const DeleteMyAccount: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-secondary-extra-light-gray py-16">
+    <div className="min-h-screen bg-secondary-extra-light-gray py-12">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        <AccountBreadcrumb currentPage="Delete My Account" />
         <div className="bg-white rounded-xl shadow-md p-8">
           <h1 className="text-3xl md:text-4xl font-bold text-secondary-dark-gray mb-6 text-center">
             Delete My Account

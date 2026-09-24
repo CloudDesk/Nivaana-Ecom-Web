@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Home, Loader2, MapPin, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { addressService, type Address, type AddressPayload } from "../services/addressService";
 import { sessionService } from "../services/sessionService";
+import { PageSkeleton } from "../components/PageSkeleton";
 
 const INDIAN_STATES = [
   "Andhra Pradesh",
@@ -232,15 +234,7 @@ const SavedAddresses: React.FC = () => {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-5xl">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
-          <Link
-            to="/account"
-            className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
-          >
-            Back to profile
-          </Link>
-        </div>
+        <AccountBreadcrumb currentPage="Saved Addresses" />
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-[var(--color-text)]">Saved Addresses</h1>
@@ -278,10 +272,7 @@ const SavedAddresses: React.FC = () => {
 
         <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
           {addressesQuery.isLoading ? (
-            <div className="flex items-center gap-3 text-sm font-semibold text-[var(--color-secondary)]">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Loading addresses
-            </div>
+            <PageSkeleton variant="addresses" count={4} hideHeader />
           ) : addresses.length > 0 ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {addresses.map((address) => (

@@ -7,6 +7,7 @@ import { platformProductService } from "../services/productPlatformService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
+import { PageSkeleton } from "../components/PageSkeleton";
 import { toast } from "../components/toastApi";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { Product } from "../types";
@@ -137,7 +138,9 @@ const Wishlist: React.FC = () => {
         )}
 
         {session && wishlistQuery.isLoading ? (
-          <div className="mt-8 rounded-[var(--radius-md)] bg-white p-8 text-sm text-[var(--color-muted)]">Loading wishlist...</div>
+          <div className="mt-8">
+            <PageSkeleton variant="wishlist" count={4} hideHeader />
+          </div>
         ) : items.length === 0 ? (
           <div className="mt-8 rounded-[var(--radius-md)] bg-white p-10 text-center shadow-[var(--shadow-card)]">
             <h2 className="text-xl font-bold">No wishlist items yet</h2>

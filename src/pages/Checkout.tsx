@@ -32,6 +32,7 @@ import {
 import { sessionService } from "../services/sessionService";
 import { userService } from "../services/userService";
 import { Button } from "../components/ui/button";
+import { PageSkeleton } from "../components/PageSkeleton";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { Product } from "../types";
 import { getProductDisplayName } from "../lib/productDisplay";
@@ -1449,11 +1450,8 @@ const Checkout: React.FC = () => {
 
   if (cartQuery.isLoading || productsQuery.isLoading || (isBuyNowCheckout && buyNowProductQuery.isLoading)) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[var(--color-surface)] px-4">
-        <div className="flex items-center gap-3 rounded-[var(--radius-md)] bg-white p-5 text-sm font-semibold text-[var(--color-secondary)] shadow-[var(--shadow-card)]">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Loading checkout
-        </div>
+      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
+        <PageSkeleton variant="checkout" />
       </main>
     );
   }
@@ -1493,7 +1491,7 @@ const Checkout: React.FC = () => {
         </div>
 
         <div className="mb-8 flex items-center">
-          <CheckoutStep label="Cart" state="done" value="1" />
+          <CheckoutStep label="Cart" state="done" value="1" onClick={() => navigate("/cart")} />
           <div className="mx-3 h-px w-10 bg-[var(--color-border)] sm:w-16" />
           <CheckoutStep label="Checkout" state="active" value="2" />
           <div className="mx-3 h-px w-10 bg-[var(--color-border)] sm:w-16" />
@@ -2183,16 +2181,24 @@ function PaymentOption({
   );
 }
 
-function CheckoutStep({ label, state, value }: { label: string; state: "done" | "active" | "idle"; value: string }) {
+function CheckoutStep({
+  label,
+  state,
+  value,
+  onClick,
+}: {
+  label: string;
+  state: "done" | "active" | "idle";
+  value: string;
+  onClick?: () => void;
+}) {
   const isDone = state === "done";
   const isActive = state === "active";
-
-  return (
-    <div
-      className={`flex items-center gap-2 text-xs ${
-        isDone ? "text-green-700" : isActive ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-muted)]"
-      }`}
-    >
+  const className = `flex items-center gap-2 text-xs ${
+    isDone ? "text-green-700" : isActive ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-muted)]"
+  }`;
+  const content = (
+    <>
       <span
         className={`grid h-[22px] w-[22px] place-items-center rounded-full border text-[11px] font-semibold ${
           isDone
@@ -2205,7 +2211,24 @@ function CheckoutStep({ label, state, value }: { label: string; state: "done" | 
         {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : value}
       </span>
       <span>{label}</span>
-    </div>
+    </>
+  );
+
+  if (isDone && onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`${className} appearance-none border-0 bg-transparent p-0 transition hover:bg-transparent hover:text-green-800 focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2`}
+        aria-label={`Go back to ${label}`}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>{content}</div>
   );
 }
 

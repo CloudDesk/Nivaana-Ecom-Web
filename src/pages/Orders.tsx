@@ -26,6 +26,8 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
+import { PageSkeleton } from "../components/PageSkeleton";
 import { cn } from "../lib/utils";
 import {
   orderService,
@@ -636,17 +638,9 @@ const Orders: React.FC = () => {
       <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
       <section className="mx-auto max-w-5xl">
         <div className="mb-8">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
-            <Link
-              to="/account"
-              className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
-            >
-              Back to profile
-            </Link>
-          </div>
+          <AccountBreadcrumb currentPage="Orders" />
           <div>
-            <h1 className="text-[22px] font-semibold text-[var(--color-text)]">Orders</h1>
+            <h1 className="text-3xl font-bold text-[var(--color-text)]">Orders</h1>
             <p className="mt-2 text-sm text-[var(--color-muted)]">Manage order history, tracking, and purchased items.</p>
           </div>
         </div>
@@ -667,10 +661,7 @@ const Orders: React.FC = () => {
             </div>
           )}
           {ordersQuery.isLoading ? (
-            <div className="flex items-center gap-3 text-sm font-semibold text-[var(--color-secondary)]">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Loading orders
-            </div>
+            <PageSkeleton variant="orders" count={3} hideHeader />
           ) : ordersQuery.isError ? (
             <div className="rounded-[var(--radius-sm)] border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-600">
               Could not load your orders. Please try again.

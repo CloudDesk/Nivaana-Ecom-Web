@@ -3,6 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, ReceiptText, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
+import { PageSkeleton } from "../components/PageSkeleton";
 import { paymentService, type PaymentResponseData, type TransactionRecord } from "../services/paymentService";
 import { orderService, type OrderDetails, type OrderSummary } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
@@ -319,15 +321,7 @@ const Payments: React.FC = () => {
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-4xl">
         <div className="mb-8">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
-            <Link
-              to="/account"
-              className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
-            >
-              Back to profile
-            </Link>
-          </div>
+          <AccountBreadcrumb currentPage="Payments" />
           <div>
             <h1 className="text-3xl font-bold text-[var(--color-text)]">Payments</h1>
             <p className="mt-2 text-sm text-[var(--color-muted)]">Review completed payments and transaction details.</p>
@@ -358,8 +352,8 @@ const Payments: React.FC = () => {
           </div>
 
           {ordersQuery.isLoading ? (
-            <div className="mt-5 rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-4 text-sm font-semibold text-[var(--color-muted)]">
-              Loading payment history
+            <div className="mt-5">
+              <PageSkeleton variant="payments" count={4} hideHeader />
             </div>
           ) : ordersQuery.isError ? (
             <div className="mt-5 rounded-[var(--radius-sm)] border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-600">

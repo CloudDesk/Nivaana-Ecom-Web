@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, CheckCircle2, Gift, History, LockKeyhole, ShieldCheck, Ticket, WalletCards, X } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { toast } from "../components/toastApi";
 import { couponWalletService, type CouponPreview, type CustomerWallet, type WalletActivityResponse, type WalletCoupon } from "../services/couponWalletService";
+import { PageSkeleton } from "../components/PageSkeleton";
 
 const formatCurrency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
 
@@ -152,15 +153,7 @@ export default function Wallet() {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
       <section className="mx-auto max-w-5xl">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
-          <Link
-            to="/account"
-            className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
-          >
-            Back to profile
-          </Link>
-        </div>
+        <AccountBreadcrumb currentPage="My Wallet" />
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 place-items-center rounded-full bg-[var(--color-primary)]/25 text-[var(--color-secondary)]"><WalletCards className="h-6 w-6" /></span>
           <div><h1 className="text-3xl font-bold text-[var(--color-text)]">My Wallet</h1><p className="mt-1 text-sm text-[var(--color-muted)]">Add personalized Nivaana coupons and use the credit on eligible orders.</p></div>
@@ -195,7 +188,7 @@ export default function Wallet() {
 
           <div className="space-y-6">
             {error && <div className="rounded-[var(--radius-md)] border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-            {loading ? <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-sm text-[var(--color-muted)]">Loading your wallet…</div> : <>
+            {loading ? <PageSkeleton variant="wallet" hideHeader /> : <>
               <WalletSection title="Available to add" empty="No personalized coupons are waiting for you." coupons={wallet?.available_coupons || []} render={(coupon) => <AvailableCoupon key={coupon.id} coupon={coupon} checking={checkingCode === coupon.code} onReview={() => void checkCoupon(coupon.code)} />} />
               <WalletSection title="Available wallet credits" action={<button type="button" onClick={() => openHistory()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#d5a800] bg-[#fff8d6] px-3.5 text-sm font-bold text-[#4b421f] transition hover:bg-[#ffefad] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fbbc05] focus-visible:ring-offset-2"><History className="h-4 w-4" />Redemption history</button>} empty="No wallet credit is currently available." coupons={availableWalletCredits} render={(coupon) => <CreditCoupon key={coupon.id} coupon={coupon} onViewUsage={() => openHistory(coupon.wallet_credit?.id, coupon.promotion.name || "Coupon wallet credit")} />} />
             </>}
