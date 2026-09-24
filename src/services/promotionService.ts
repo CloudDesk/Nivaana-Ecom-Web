@@ -314,12 +314,14 @@ class PromotionService {
     couponCode?: string;
     selectedPromotionIds?: number[];
     rewardSelections?: Record<string, string>;
+    previewOnly?: boolean;
   }): Promise<ApiResponse<PromotionV2Quote>> {
     return apiService.post<PromotionV2Quote>('/v2/promotions/quote', {
       schema_version: 2,
       cart_items: payload.cartItems,
       shipping_amount: Math.round(payload.shippingAmount * 100),
       channel: payload.channel ?? 'web',
+      ...(payload.previewOnly ? { preview_only: true } : {}),
       ...(payload.couponCode ? { coupon_code: payload.couponCode } : {}),
       ...(payload.selectedPromotionIds ? { selected_promotion_ids: payload.selectedPromotionIds } : {}),
       ...(payload.rewardSelections ? { reward_selections: payload.rewardSelections } : {}),

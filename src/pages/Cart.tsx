@@ -81,17 +81,16 @@ const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.pro
 const isFreeShippingOffer = (promotion: ApplicablePromotion) => isFreeShippingPromotion(promotion);
 const isStackablePromotion = (promotion: Pick<ApplicablePromotion, "stackable">) =>
   promotion.stackable === true;
-const guestPromotionUserId = "guest-web";
 const showPromotionCalculationBreakdown = false;
 const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
   const messages: Record<string, string> = {
-  MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
-  MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
-  GIFT_OUT_OF_STOCK: 'This promotional gift is currently unavailable.',
-  CONFLICTED_WITH_BETTER_OFFER: 'A better offer is already applied to these items.',
-  CUSTOMER_NOT_ELIGIBLE: 'This offer is not available for this account.',
-  CHANNEL_NOT_ELIGIBLE: 'This offer is not available on this shopping channel.',
-  USAGE_LIMIT_REACHED: 'This offer has already been used.',
+    MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
+    MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
+    GIFT_OUT_OF_STOCK: 'This promotional gift is currently unavailable.',
+    CONFLICTED_WITH_BETTER_OFFER: 'A better offer is already applied to these items.',
+    CUSTOMER_NOT_ELIGIBLE: 'This offer is not available for this account.',
+    CHANNEL_NOT_ELIGIBLE: 'This offer is not available on this shopping channel.',
+    USAGE_LIMIT_REACHED: 'This offer has already been used.',
     BUDGET_EXHAUSTED: 'This offer is no longer available.',
   };
   return messages[reason] ?? reason.replaceAll('_', ' ').toLowerCase();
@@ -204,13 +203,13 @@ const Cart: React.FC = () => {
       if (quantity <= 0) {
         return iswishlist
           ? cartService.upsert({
-              id,
-              productid,
-              userid: userid ?? session.user.id,
-              quantity: 1,
-              iscart: false,
-              iswishlist: true,
-            })
+            id,
+            productid,
+            userid: userid ?? session.user.id,
+            quantity: 1,
+            iscart: false,
+            iswishlist: true,
+          })
           : cartService.remove(id);
       }
 
@@ -238,10 +237,10 @@ const Cart: React.FC = () => {
             .map((cartItem) =>
               cartItem.productid === productid
                 ? {
-                    ...cartItem,
-                    quantity: Math.max(quantity, 0),
-                    iscart: quantity > 0,
-                  }
+                  ...cartItem,
+                  quantity: Math.max(quantity, 0),
+                  iscart: quantity > 0,
+                }
                 : cartItem
             )
             .filter((cartItem) => cartItem.iscart),
@@ -318,18 +317,19 @@ const Cart: React.FC = () => {
     selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
       ? selectedCartPromotionIds(selectedPromotion)
       : [];
-  const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id ?? guestPromotionUserId, cartSignature] as const;
+  const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id, cartSignature] as const;
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
     queryFn: () => promotionService.quoteV2({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
+      previewOnly: !session,
       selectedPromotionIds: selectedV2PromotionIds.length ? selectedV2PromotionIds : undefined,
     }),
     enabled: Boolean(
       promotionRows.length > 0 &&
-        !mutation.isPending,
+      !mutation.isPending,
     ),
     staleTime: 0,
     retry: false,
@@ -373,10 +373,10 @@ const Cart: React.FC = () => {
   }, [automaticPromotionsQuery.dataUpdatedAt, queryClient, session?.user.id]);
 
   const promotionOffersQuery = useQuery({
-    queryKey: ["cart-promotion-offers", session?.user.id ?? guestPromotionUserId, cartSignature],
+    queryKey: ["cart-promotion-offers", session?.user.id, cartSignature],
     queryFn: () =>
       promotionService.getRecommendedOffers({
-        userId: String(session?.user.id ?? guestPromotionUserId),
+        userId: String(session!.user.id),
         cartItems: promotionRows.map((row) => ({
           productId: String(row.productid),
           qty: row.quantity,
@@ -388,7 +388,7 @@ const Cart: React.FC = () => {
         channel: "web",
         geo: "IN",
       }),
-    enabled: Boolean(promotionRows.length > 0 && !mutation.isPending),
+    enabled: Boolean(session?.user.id && promotionRows.length > 0 && !mutation.isPending),
     staleTime: 1000 * 60,
   });
 
@@ -465,7 +465,7 @@ const Cart: React.FC = () => {
     [rawPromotionCandidates],
   );
   const promotionEligibilityQuery = useQuery({
-    queryKey: ["cart-promotion-eligibility", session?.user.id ?? guestPromotionUserId, cartSignature, eligibilityPromotionIds.join(",")],
+    queryKey: ["cart-promotion-eligibility", session?.user.id, cartSignature, eligibilityPromotionIds.join(",")],
     queryFn: () => promotionService.checkEligibility({
       promotionIds: eligibilityPromotionIds,
       cartItems: promotionRows.map((row) => ({
@@ -476,7 +476,7 @@ const Cart: React.FC = () => {
       shippingAmount: cartTotals.shipping,
       channel: "web",
     }),
-    enabled: Boolean(eligibilityPromotionIds.length > 0 && promotionRows.length > 0 && !mutation.isPending),
+    enabled: Boolean(session?.user.id && eligibilityPromotionIds.length > 0 && promotionRows.length > 0 && !mutation.isPending),
     staleTime: 0,
     retry: false,
   });
@@ -498,10 +498,10 @@ const Cart: React.FC = () => {
         return saving === undefined
           ? promotion
           : {
-              ...promotion,
-              applied_discount: saving,
-              discountInfo: { ...promotion.discountInfo, discountAmount: saving, savingsAmount: saving },
-            };
+            ...promotion,
+            applied_discount: saving,
+            discountInfo: { ...promotion.discountInfo, discountAmount: saving, savingsAmount: saving },
+          };
       });
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
 
@@ -543,15 +543,15 @@ const Cart: React.FC = () => {
         const offerDetails = promotionDetailsById.get(appliedPromotionId(promotion));
         return offerDetails
           ? {
-              ...promotion,
-              action: offerDetails.action,
-              actions: offerDetails.actions,
-              conditions: offerDetails.conditions,
-              description: offerDetails.description,
-              min_order_value: offerDetails.min_order_value,
-              minimum_order_value: offerDetails.minimum_order_value,
-              stackable: offerDetails.stackable,
-            }
+            ...promotion,
+            action: offerDetails.action,
+            actions: offerDetails.actions,
+            conditions: offerDetails.conditions,
+            description: offerDetails.description,
+            min_order_value: offerDetails.min_order_value,
+            minimum_order_value: offerDetails.minimum_order_value,
+            stackable: offerDetails.stackable,
+          }
           : promotion;
       }),
     [backendEvaluation?.applied_promotions, promotionDetailsById, promotionEligibilityQuery.data]
@@ -587,36 +587,36 @@ const Cart: React.FC = () => {
   const appliedPromotionsForTotals =
     hasSelectedV2Promotion && selectedPromotionApplies
       ? [
-          ...(liveV2AppliedPromotions.length > 0
-            ? liveV2AppliedPromotions
-            : selectedV2AppliedPromotions),
-          ...backendAppliedPromotions.filter(
-            (promotion) =>
-              isFreeShippingAppliedPromotion(promotion) &&
-              ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
-                (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
-              ),
-          ),
-        ]
+        ...(liveV2AppliedPromotions.length > 0
+          ? liveV2AppliedPromotions
+          : selectedV2AppliedPromotions),
+        ...backendAppliedPromotions.filter(
+          (promotion) =>
+            isFreeShippingAppliedPromotion(promotion) &&
+            ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
+              (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
+            ),
+        ),
+      ]
       : backendAppliedPromotions.length > 0
-      ? backendAppliedPromotions
-      : selectedPromotionApplies
-        ? (selectedPromotion?.appliedPromotions ?? []).map((promotion) => {
+        ? backendAppliedPromotions
+        : selectedPromotionApplies
+          ? (selectedPromotion?.appliedPromotions ?? []).map((promotion) => {
             const offerDetails = promotionDetailsById.get(appliedPromotionId(promotion));
             return offerDetails
               ? {
-                  ...promotion,
-                  action: offerDetails.action,
-                  actions: offerDetails.actions,
-                  conditions: offerDetails.conditions,
-                  description: offerDetails.description,
-                  min_order_value: offerDetails.min_order_value,
-                  minimum_order_value: offerDetails.minimum_order_value,
-                  stackable: offerDetails.stackable,
-                }
+                ...promotion,
+                action: offerDetails.action,
+                actions: offerDetails.actions,
+                conditions: offerDetails.conditions,
+                description: offerDetails.description,
+                min_order_value: offerDetails.min_order_value,
+                minimum_order_value: offerDetails.minimum_order_value,
+                stackable: offerDetails.stackable,
+              }
               : promotion;
           })
-        : [];
+          : [];
   const fallbackPromotionDiscount =
     backendEvaluation && backendAppliedPromotions.length === 0
       ? Number(backendEvaluation.total_discount ?? Math.max(backendEvaluation.original_total - backendEvaluation.discounted_total, 0))
@@ -1241,8 +1241,8 @@ const Cart: React.FC = () => {
       );
     const canRemove = Boolean(
       isApplied &&
-        ((selectedPromotion?.engine === "v2" && selectedV2PromotionIds.includes(id)) ||
-          (appliedPromotion && !appliedPromotion.is_auto)),
+      ((selectedPromotion?.engine === "v2" && selectedV2PromotionIds.includes(id)) ||
+        (appliedPromotion && !appliedPromotion.is_auto)),
     );
 
     return {
@@ -1368,12 +1368,12 @@ const Cart: React.FC = () => {
         <p className="mt-2 text-sm text-[var(--color-muted)]">
           {items.length} items in your cart{session ? "" : " as guest"}
         </p>
-        {!session && items.length > 0 && (
+        {/* {!session && items.length > 0 && (
           <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
             Login before checkout and we will move these guest items into your account.
             <Link to="/login?redirect=/cart" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
           </div>
-        )}
+        )} */}
         {session && cartQuery.isLoading ? (
           <div className="mt-8 rounded-[var(--radius-md)] bg-white p-8 text-sm text-[var(--color-muted)]">Loading cart...</div>
         ) : items.length === 0 ? (
@@ -1404,50 +1404,105 @@ const Cart: React.FC = () => {
                 }));
 
                 return (
-                <article key={`${item.productid}-${apiId ?? "guest"}`} className="relative flex gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)] sm:gap-4">
-                  <Link
-                    to={`/products/${item.productid}`}
-                    className="h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)] sm:h-24 sm:w-24"
-                    aria-label={`View ${displayName}`}
-                  >
-                    <img
-                      src={imageFor(product)}
-                      alt={displayName}
-                      className="h-full w-full object-cover"
-                      onError={(event) => {
-                        event.currentTarget.src = fallbackProduct;
-                      }}
-                    />
-                  </Link>
-                  <div className="min-w-0 flex-1 pr-16 sm:pr-20">
+                  <article key={`${item.productid}-${apiId ?? "guest"}`} className="relative flex gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-card)] sm:gap-4">
                     <Link
                       to={`/products/${item.productid}`}
-                      className="line-clamp-2 text-sm font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)] sm:text-base"
+                      className="h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface)] sm:h-24 sm:w-24"
+                      aria-label={`View ${displayName}`}
                     >
-                      {displayName}
+                      <img
+                        src={imageFor(product)}
+                        alt={displayName}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.src = fallbackProduct;
+                        }}
+                      />
                     </Link>
-                    <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
-                    {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
-                      <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                    <div className="min-w-0 flex-1 pr-16 sm:pr-20">
+                      <Link
+                        to={`/products/${item.productid}`}
+                        className="line-clamp-2 text-sm font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)] sm:text-base"
+                      >
+                        {displayName}
+                      </Link>
+                      <p className="mt-1 text-sm text-[var(--color-muted)]">Qty: {quantity}</p>
+                      {(itemErrors[item.productid] || isOutOfStock(product) || quantity > getAvailableStock(product)) && (
+                        <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
                           {itemErrors[item.productid] ||
-                          (isOutOfStock(product)
-                            ? "This item is out of stock. Save it for later or remove it from your cart."
-                            : stockLimitMessage(getAvailableStock(product)))}
-                      </p>
-                    )}
-                    {showPromotionCalculationBreakdown && linePromotionSummaries.filter((summary) => summary.saving > 0).map((summary) => (
-                      <p key={summary.promotionId} className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-                        <Sparkles className="mr-1 inline h-3.5 w-3.5" />
-                        {summary.quantity > 1
-                          ? `Promotion saving: ${summary.quantity} × ${formatCurrency(summary.unitSaving)} = ${formatCurrency(summary.saving)}`
-                          : `Promotion saving ${formatCurrency(summary.saving)}`}
-                      </p>
-                    ))}
-                    <div className="mt-3 flex flex-nowrap items-center gap-2">
-                      <div className="inline-flex h-9 items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
-                        <button
-                          type="button"
-                          className="grid h-9 w-9 place-items-center bg-white text-[var(--color-text)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                            (isOutOfStock(product)
+                              ? "This item is out of stock. Save it for later or remove it from your cart."
+                              : stockLimitMessage(getAvailableStock(product)))}
+                        </p>
+                      )}
+                      {showPromotionCalculationBreakdown && linePromotionSummaries.filter((summary) => summary.saving > 0).map((summary) => (
+                        <p key={summary.promotionId} className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                          <Sparkles className="mr-1 inline h-3.5 w-3.5" />
+                          {summary.quantity > 1
+                            ? `Promotion saving: ${summary.quantity} × ${formatCurrency(summary.unitSaving)} = ${formatCurrency(summary.saving)}`
+                            : `Promotion saving ${formatCurrency(summary.saving)}`}
+                        </p>
+                      ))}
+                      <div className="mt-3 flex flex-nowrap items-center gap-2">
+                        <div className="inline-flex h-9 items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
+                          <button
+                            type="button"
+                            className="grid h-9 w-9 place-items-center bg-white text-[var(--color-text)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                            disabled={mutation.isPending}
+                            onClick={() =>
+                              updateQuantity({
+                                apiId,
+                                product,
+                                productid: item.productid,
+                                quantity,
+                                nextQuantity: quantity - 1,
+                                iswishlist: item.iswishlist,
+                              })
+                            }
+                            aria-label="Decrease quantity"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="min-w-8 border-x border-[var(--color-border)] px-2 text-center text-sm font-semibold text-[var(--color-text)]">
+                            {quantity}
+                          </span>
+                          <button
+                            type="button"
+                            className="grid h-9 w-9 place-items-center bg-white text-[var(--color-text)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
+                            disabled={mutation.isPending || isOutOfStock(product) || quantity >= getAvailableStock(product)}
+                            onClick={() =>
+                              updateQuantity({
+                                apiId,
+                                product,
+                                productid: item.productid,
+                                quantity,
+                                nextQuantity: quantity + 1,
+                                iswishlist: item.iswishlist,
+                              })
+                            }
+                            aria-label="Increase quantity"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          className="h-9 w-9 !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15"
+                          disabled={moveToWishlist.isPending || mutation.isPending}
+                          aria-label={`Save ${displayName} for later`}
+                          onClick={() =>
+                            moveToWishlist.mutate({
+                              id: apiId,
+                              productid: item.productid,
+                              quantity,
+                            })
+                          }
+                        >
+                          <Heart className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-red-600 hover:!border-red-200 hover:!bg-red-50"
                           disabled={mutation.isPending}
                           onClick={() =>
                             updateQuantity({
@@ -1455,74 +1510,19 @@ const Cart: React.FC = () => {
                               product,
                               productid: item.productid,
                               quantity,
-                              nextQuantity: quantity - 1,
+                              nextQuantity: 0,
                               iswishlist: item.iswishlist,
                             })
                           }
-                          aria-label="Decrease quantity"
                         >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="min-w-8 border-x border-[var(--color-border)] px-2 text-center text-sm font-semibold text-[var(--color-text)]">
-                          {quantity}
-                        </span>
-                        <button
-                          type="button"
-                          className="grid h-9 w-9 place-items-center bg-white text-[var(--color-text)] transition hover:bg-[var(--color-surface)] disabled:opacity-50"
-                          disabled={mutation.isPending || isOutOfStock(product) || quantity >= getAvailableStock(product)}
-                          onClick={() =>
-                            updateQuantity({
-                              apiId,
-                              product,
-                              productid: item.productid,
-                              quantity,
-                              nextQuantity: quantity + 1,
-                              iswishlist: item.iswishlist,
-                            })
-                          }
-                          aria-label="Increase quantity"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="secondary"
-                        className="h-9 w-9 !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15"
-                        disabled={moveToWishlist.isPending || mutation.isPending}
-                        aria-label={`Save ${displayName} for later`}
-                        onClick={() =>
-                          moveToWishlist.mutate({
-                            id: apiId,
-                            productid: item.productid,
-                            quantity,
-                          })
-                        }
-                      >
-                        <Heart className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-red-600 hover:!border-red-200 hover:!bg-red-50"
-                        disabled={mutation.isPending}
-                        onClick={() =>
-                          updateQuantity({
-                            apiId,
-                            product,
-                            productid: item.productid,
-                            quantity,
-                            nextQuantity: 0,
-                            iswishlist: item.iswishlist,
-                          })
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
-                  </div>
-                  <div className="absolute right-4 top-4 text-right text-sm font-bold text-[var(--color-secondary)]">
-                    {formatCurrency(productUnitPrice(product))}
-                  </div>
-                </article>
+                    <div className="absolute right-4 top-4 text-right text-sm font-bold text-[var(--color-secondary)]">
+                      {formatCurrency(productUnitPrice(product))}
+                    </div>
+                  </article>
                 );
               })}
               {v2GiftAdjustments.map((gift) => {
@@ -1540,15 +1540,15 @@ const Cart: React.FC = () => {
                 <SummaryLine label="Items total" value={formatCurrency(cartTotals.subtotal)} />
                 <SummaryLine
                   label="Shipping"
-                  value={effectiveShipping === 0 ? "Free" : formatCurrency(effectiveShipping)}
+                  value={effectiveShipping === 0 ? (!session ? "Free*" : "Free") : formatCurrency(effectiveShipping)}
                   previousValue={shippingSavings > 0 ? formatCurrency(cartTotals.shipping) : undefined}
                   highlight={shippingSavings > 0}
                 />
-                {promotionDiscount > 0 && <SummaryLine label="Promotion" value={`-${formatCurrency(promotionDiscount)}`} />}
+                {promotionDiscount > 0 && <SummaryLine label={!session ? "Promotion*" : "Promotion"} value={`-${formatCurrency(promotionDiscount)}`} />}
                 {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
                 <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
                   <span>Total</span>
-                  <strong>{formatCurrency(finalPayableTotal)}</strong>
+                  <strong>{formatCurrency(finalPayableTotal)}{!session && totalPromotionSavings > 0 ? "*" : ""}</strong>
                 </div>
               </div>
 
@@ -1562,7 +1562,7 @@ const Cart: React.FC = () => {
                 </div>
               )}
 
-              {promotionRows.length > 0 && (
+              {session && promotionRows.length > 0 && (
                 <div className="mt-5 border-t border-[var(--color-border)] pt-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
@@ -1681,6 +1681,13 @@ const Cart: React.FC = () => {
                   )}
                 </div>
               )}
+              {!session && promotionRows.length > 0 && (
+                <p className="mt-5 border-t border-[var(--color-border)] pt-4 text-xs leading-5 text-[var(--color-muted)]">
+                  {totalPromotionSavings > 0
+                    ? "* Estimated offer based on your cart. Sign in to confirm eligibility, availability and the final total."
+                    : "Sign in to check offers available for your cart. Eligibility and availability are confirmed at checkout."}
+                </p>
+              )}
               {session ? (
                 <Button
                   className="mt-5 w-full"
@@ -1785,16 +1792,16 @@ function PromotionOffer({
   const appliedSavings = Number(promotion.applied_discount || 0);
   const discountValue = Number(
     promotion.discount_value ||
-      (appliedSavings > 0 ? 0 : promotion.discountInfo?.discountAmount) ||
-      0
+    (appliedSavings > 0 ? 0 : promotion.discountInfo?.discountAmount) ||
+    0
   );
   const freeShipping = isFreeShippingOffer(promotion);
   const discountType = `${promotion.type || ""} ${promotion.discount_type || ""} ${promotion.action?.type || ""}`.toLowerCase();
   const percentageDiscount = discountType.includes("percent");
   const potentialSavings = Number(
     appliedSavings ||
-      promotion.discountInfo?.discountAmount ||
-      (percentageDiscount ? 0 : discountValue)
+    promotion.discountInfo?.discountAmount ||
+    (percentageDiscount ? 0 : discountValue)
   );
   const benefitLabel = freeShipping
     ? shippingSavings > 0
@@ -1808,23 +1815,21 @@ function PromotionOffer({
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border transition ${
-        isApplied
+      className={`overflow-hidden rounded-2xl border transition ${isApplied
           ? "border-emerald-200 bg-emerald-50/60"
           : isAlreadyUsed
             ? "border-[#dfe4ee] bg-[#f5f7fa]"
-          : "border-[#dfe4ee] bg-white hover:border-[#fbbc05]/70 hover:shadow-sm"
-      }`}
+            : "border-[#dfe4ee] bg-white hover:border-[#fbbc05]/70 hover:shadow-sm"
+        }`}
     >
       <div className="flex items-stretch">
         <div
-          className={`flex w-16 shrink-0 flex-col items-center justify-center gap-1.5 ${
-            isApplied
+          className={`flex w-16 shrink-0 flex-col items-center justify-center gap-1.5 ${isApplied
               ? "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white"
               : freeShipping
                 ? "bg-gradient-to-b from-[#15867c] to-[#27a89a] text-white"
                 : "bg-gradient-to-b from-[#344461] to-[#53617e] text-white"
-          }`}
+            }`}
         >
           {freeShipping ? (
             <Truck className="h-5 w-5" />
@@ -1845,13 +1850,12 @@ function PromotionOffer({
               </p>
             </div>
             <Button
-              className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${
-                isApplied
+              className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${isApplied
                   ? "!border !border-emerald-200 !bg-white !text-emerald-700 hover:!bg-white"
                   : isAlreadyUsed
                     ? "!bg-[#e3e7ee] !text-[#68748a] hover:!bg-[#e3e7ee]"
-                  : "!bg-[#fbbc05] !text-[#172033] hover:!bg-[#ffd042]"
-              }`}
+                    : "!bg-[#fbbc05] !text-[#172033] hover:!bg-[#ffd042]"
+                }`}
               disabled={isPending || isRemoving || isAlreadyUsed || (isApplied ? !onRemove : isDisabled)}
               variant={isApplied ? "secondary" : "primary"}
               onClick={isApplied && onRemove ? onRemove : onApply}
