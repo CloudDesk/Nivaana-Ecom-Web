@@ -7,6 +7,8 @@ import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { addressService, type Address, type AddressPayload } from "../services/addressService";
 import { sessionService } from "../services/sessionService";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { AddressFormModal } from "../components/AddressFormModal";
+import { toast } from "../components/toastApi";
 
 const INDIAN_STATES = [
   "Andhra Pradesh",
@@ -60,8 +62,7 @@ const addressToPayload = (address: Address): AddressPayload => ({
   isdefaultaddress: Boolean(address.isdefaultaddress),
 });
 
-const notificationDisplayMs = 4200;
-const notificationFadeMs = 350;
+
 
 const addressErrorMessage = (error: unknown, fallback: string) => {
   const apiError = error as { message?: string; data?: { message?: string; details?: string } };
@@ -86,9 +87,6 @@ const SavedAddresses: React.FC = () => {
   const [addressForm, setAddressForm] = useState<AddressPayload>(() =>
     emptyAddressForm(user?.id ?? 0, Number(user?.usermobilenumber ?? 0))
   );
-  const [errorMessage, setErrorMessage] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [notificationVisible, setNotificationVisible] = useState(false);
 
   const addressesQuery = useQuery({
     queryKey: ["addresses", userId],
@@ -110,24 +108,6 @@ const SavedAddresses: React.FC = () => {
     }
   }, [addresses.length, addressesQuery.isLoading]);
 
-  useEffect(() => {
-    if (!statusMessage && !errorMessage) {
-      setNotificationVisible(false);
-      return;
-    }
-
-    setNotificationVisible(true);
-    const fadeTimer = window.setTimeout(() => setNotificationVisible(false), notificationDisplayMs);
-    const clearTimer = window.setTimeout(() => {
-      setStatusMessage("");
-      setErrorMessage("");
-    }, notificationDisplayMs + notificationFadeMs);
-
-    return () => {
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(clearTimer);
-    };
-  }, [statusMessage, errorMessage]);
 
   const resetForm = () => {
     if (userId) {
@@ -142,12 +122,10 @@ const SavedAddresses: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
       resetForm();
       setShowAddressForm(false);
-      setStatusMessage("Address saved.");
-      setErrorMessage("");
+      toast.success("Address saved.");
     },
     onError: () => {
-      setErrorMessage("Could not save this address. Please check the details and try again.");
-      setStatusMessage("");
+      toast.error("Could not save this address. Please check the details and try again.");
     },
   });
 
@@ -158,12 +136,10 @@ const SavedAddresses: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["addresses", userId] });
       resetForm();
       setShowAddressForm(false);
-      setStatusMessage("Address updated.");
-      setErrorMessage("");
+      toast.success("Address updated.");
     },
     onError: () => {
-      setErrorMessage("Could not update this address. Please try again.");
-      setStatusMessage("");
+      toast.error("Could not update this address. Please try again.");
     },
   });
 
@@ -182,29 +158,25 @@ const SavedAddresses: React.FC = () => {
       if (editingAddressId === addressId) {
         resetForm();
       }
-      setStatusMessage("Address deleted.");
-      setErrorMessage("");
+      toast.success("Address deleted.");
     },
     onError: (error) => {
-      setErrorMessage(addressErrorMessage(error, "Could not delete this address. Please try again."));
-      setStatusMessage("");
+      toast.error(addressErrorMessage(error, "Could not delete this address. Please try again."));
     },
   });
 
   const handleAddressSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setErrorMessage("");
-    setStatusMessage("");
 
     if (!user) return;
 
     if (!addressForm.name.trim() || !addressForm.address.trim() || !addressForm.city.trim() || !addressForm.state.trim()) {
-      setErrorMessage("Please fill the required address fields.");
+      toast.error("Please fill the required address fields.");
       return;
     }
 
     if (String(addressForm.mobilenumber).length !== 10 || String(addressForm.pincode).length !== 6) {
-      setErrorMessage("Please enter a valid 10-digit mobile number and 6-digit pincode.");
+      toast.error("Please enter a valid 10-digit mobile number and 6-digit pincode.");
       return;
     }
 
@@ -243,14 +215,8 @@ const SavedAddresses: React.FC = () => {
           <Button
             className="gap-2"
             onClick={() => {
-              if (showAddressForm && !editingAddressId) {
-                setShowAddressForm(false);
-                return;
-              }
               resetForm();
               setShowAddressForm(true);
-              setErrorMessage("");
-              setStatusMessage("");
             }}
           >
             <Plus className="h-4 w-4" />
@@ -258,17 +224,6 @@ const SavedAddresses: React.FC = () => {
           </Button>
         </div>
 
-        {(statusMessage || errorMessage) && (
-          <div
-            className={`mt-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold transition duration-300 ${
-              notificationVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
-            } ${
-              errorMessage ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
-            }`}
-          >
-            {errorMessage || statusMessage}
-          </div>
-        )}
 
         <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
           {addressesQuery.isLoading ? (
@@ -284,8 +239,6 @@ const SavedAddresses: React.FC = () => {
                     setEditingAddressId(address.id);
                     setAddressForm(addressToPayload(address));
                     setShowAddressForm(true);
-                    setErrorMessage("");
-                    setStatusMessage("");
                   }}
                   onDelete={() => {
                     if (window.confirm("Delete this address?")) {
@@ -304,17 +257,26 @@ const SavedAddresses: React.FC = () => {
           )}
 
           {showAddressForm && (
-            <AddressForm
-              form={addressForm}
-              isEditing={Boolean(editingAddressId)}
-              isPending={createAddressMutation.isPending || updateAddressMutation.isPending}
-              onChange={setAddressForm}
-              onCancel={() => {
+            <AddressFormModal
+              open={showAddressForm}
+              title={editingAddressId ? "Edit Address" : "Add New Address"}
+              onClose={() => {
                 resetForm();
                 setShowAddressForm(addresses.length === 0);
               }}
-              onSubmit={handleAddressSubmit}
-            />
+            >
+              <AddressForm
+                form={addressForm}
+                isEditing={Boolean(editingAddressId)}
+                isPending={createAddressMutation.isPending || updateAddressMutation.isPending}
+                onChange={setAddressForm}
+                onCancel={() => {
+                  resetForm();
+                  setShowAddressForm(addresses.length === 0);
+                }}
+                onSubmit={handleAddressSubmit}
+              />
+            </AddressFormModal>
           )}
         </section>
       </section>
@@ -400,7 +362,7 @@ function AddressForm({
   };
 
   return (
-    <form className="mt-5 border-t border-[var(--color-border)] pt-5" onSubmit={onSubmit}>
+    <form onSubmit={onSubmit}>
       <div className="rounded-[var(--radius-sm)] bg-[var(--color-primary)]/10 p-5 sm:p-6">
         <p className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
           {isEditing ? "Edit Address" : "Add New Address"}

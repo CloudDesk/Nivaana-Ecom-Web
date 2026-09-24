@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   CheckCircle2,
   CreditCard,
   Home,
@@ -33,6 +32,7 @@ import { sessionService } from "../services/sessionService";
 import { userService } from "../services/userService";
 import { Button } from "../components/ui/button";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { AddressFormModal } from "../components/AddressFormModal";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { Product } from "../types";
 import { getProductDisplayName } from "../lib/productDisplay";
@@ -285,13 +285,13 @@ const Checkout: React.FC = () => {
       isBuyNowCheckout
         ? buyNowProduct
           ? [{
-              id: buyNowProduct.id,
-              productid: buyNowProduct.id,
-              userid: userId ?? 0,
-              quantity: 1,
-              iscart: true,
-              iswishlist: false,
-            }]
+            id: buyNowProduct.id,
+            productid: buyNowProduct.id,
+            userid: userId ?? 0,
+            quantity: 1,
+            iscart: true,
+            iswishlist: false,
+          }]
           : []
         : allCartItems,
     [allCartItems, buyNowProduct, isBuyNowCheckout, userId]
@@ -466,12 +466,12 @@ const Checkout: React.FC = () => {
     },
     enabled: Boolean(
       userId &&
-        selectedPromotionId &&
-        !selectedPromotionUsesV2 &&
-        selectedPromotionMatchesOrder &&
-        promotionRows.length > 0 &&
-        !activeEvaluationsQuery.isLoading &&
-        !manualAppliedPromotion
+      selectedPromotionId &&
+      !selectedPromotionUsesV2 &&
+      selectedPromotionMatchesOrder &&
+      promotionRows.length > 0 &&
+      !activeEvaluationsQuery.isLoading &&
+      !manualAppliedPromotion
     ),
     retry: false,
   });
@@ -503,32 +503,32 @@ const Checkout: React.FC = () => {
   const appliedPromotionsForTotals =
     selectedPromotionUsesV2 && selectedPromotionApplies
       ? [
-          ...(liveV2AppliedPromotions.length > 0
-            ? liveV2AppliedPromotions
-            : selectedV2AppliedPromotions),
-          ...backendAppliedPromotions.filter(
-            (promotion) =>
-              isFreeShippingAppliedPromotion(promotion) &&
-              ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
-                (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
-              ),
-          ),
-        ]
+        ...(liveV2AppliedPromotions.length > 0
+          ? liveV2AppliedPromotions
+          : selectedV2AppliedPromotions),
+        ...backendAppliedPromotions.filter(
+          (promotion) =>
+            isFreeShippingAppliedPromotion(promotion) &&
+            ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
+              (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
+            ),
+        ),
+      ]
       : backendAppliedPromotions.length > 0
-      ? backendAppliedPromotions
-      : promotionEvaluation?.applied_promotions?.length
-        ? promotionEvaluation.applied_promotions
-        : selectedPromotionApplies
-          ? selectedPromotion?.appliedPromotions ?? []
-          : [];
+        ? backendAppliedPromotions
+        : promotionEvaluation?.applied_promotions?.length
+          ? promotionEvaluation.applied_promotions
+          : selectedPromotionApplies
+            ? selectedPromotion?.appliedPromotions ?? []
+            : [];
   const fallbackPromotionDiscount =
     appliedPromotionsForTotals.length === 0
       ? Number(
-          backendEvaluation?.total_discount ??
-            promotionEvaluation?.total_discount ??
-            (selectedPromotionApplies ? selectedPromotion?.totalDiscount : 0) ??
-            0
-        )
+        backendEvaluation?.total_discount ??
+        promotionEvaluation?.total_discount ??
+        (selectedPromotionApplies ? selectedPromotion?.totalDiscount : 0) ??
+        0
+      )
       : 0;
   const promotionSummary = getAppliedPromotionSummary(
     cartTotals,
@@ -635,10 +635,10 @@ const Checkout: React.FC = () => {
         return saving === undefined
           ? promotion
           : {
-              ...promotion,
-              applied_discount: saving,
-              discountInfo: { ...promotion.discountInfo, discountAmount: saving, savingsAmount: saving },
-            };
+            ...promotion,
+            applied_discount: saving,
+            discountInfo: { ...promotion.discountInfo, discountAmount: saving, savingsAmount: saving },
+          };
       });
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
   const eligiblePromotionCandidates = promotionCandidates.filter(
@@ -667,10 +667,10 @@ const Checkout: React.FC = () => {
     promotionsV2Query.isLoading ||
     promotionsV2Query.isFetching ||
     promotionEligibilityQuery.isLoading ||
-      promotionEligibilityQuery.isFetching ||
-      activeEvaluationsQuery.isLoading ||
-      activeEvaluationsQuery.isFetching ||
-      (selectedPromotion && (promotionEvaluationQuery.isLoading || promotionEvaluationQuery.isFetching))
+    promotionEligibilityQuery.isFetching ||
+    activeEvaluationsQuery.isLoading ||
+    activeEvaluationsQuery.isFetching ||
+    (selectedPromotion && (promotionEvaluationQuery.isLoading || promotionEvaluationQuery.isFetching))
   );
 
   const applyPromotionMutation = useMutation({
@@ -1030,9 +1030,9 @@ const Checkout: React.FC = () => {
     const canRemove = Boolean(isApplied && appliedPromotion && !appliedPromotion.is_auto);
     const offerSavings = Number(
       (v2AppliedOffer ? v2AppliedOffer.saving / 100 : 0) ||
-        promotion.applied_discount ||
-        promotion.discountInfo?.discountAmount ||
-        0
+      promotion.applied_discount ||
+      promotion.discountInfo?.discountAmount ||
+      0
     );
     const actionPending =
       (applyPromotionMutation.isPending &&
@@ -1049,10 +1049,10 @@ const Checkout: React.FC = () => {
               {isAlreadyUsed
                 ? "Already Used"
                 : isFreeShippingPromotion(promotion)
-                ? "Free shipping"
-                : offerSavings > 0
-                  ? `Save ${formatCurrency(offerSavings)}`
-                  : "Applicable to this order"}
+                  ? "Free shipping"
+                  : offerSavings > 0
+                    ? `Save ${formatCurrency(offerSavings)}`
+                    : "Applicable to this order"}
             </p>
             {promotion.code && (
               <span className="mt-2 inline-block max-w-full truncate rounded-md bg-[#eef1f6] px-2 py-1 font-mono text-[10px] font-bold text-[#46536b]">
@@ -1475,12 +1475,11 @@ const Checkout: React.FC = () => {
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
       <section className="mx-auto max-w-5xl">
-        <div className="mb-8 flex items-start justify-between gap-3">
-          <div>
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Checkout</p>
-            <h1 className="text-[22px] font-semibold text-[var(--color-text)]">Complete your order</h1>
-          </div>
-          <Link
+        <div className="mb-6">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Checkout</p>
+          <h1 className="text-[22px] font-semibold text-[var(--color-text)]">Complete your order</h1>
+
+          {/* <Link
             to="/cart"
             className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-2.5 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] sm:min-h-9 sm:gap-2 sm:px-4 sm:text-sm"
           >
@@ -1488,6 +1487,7 @@ const Checkout: React.FC = () => {
             <span className="hidden sm:inline">Back to cart</span>
             <span className="sm:hidden">Cart</span>
           </Link>
+           */}
         </div>
 
         <div className="mb-8 flex items-center">
@@ -1500,11 +1500,9 @@ const Checkout: React.FC = () => {
 
         {(statusMessage || errorMessage) && (
           <div
-            className={`mb-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold transition duration-300 ${
-              notificationVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
-            } ${
-              errorMessage ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
-            }`}
+            className={`mb-5 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold transition duration-300 ${notificationVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+              } ${errorMessage ? "border-red-200 text-red-600" : "border-green-200 text-green-700"
+              }`}
           >
             {errorMessage || statusMessage}
           </div>
@@ -1547,11 +1545,10 @@ const Checkout: React.FC = () => {
                     <div
                       key={address.id}
                       onClick={() => setSelectedAddressId(address.id)}
-                      className={`relative min-h-32 cursor-pointer rounded-[var(--radius-sm)] border p-4 pr-12 text-left transition ${
-                        selectedAddressId === address.id
+                      className={`relative min-h-32 cursor-pointer rounded-[var(--radius-sm)] border p-4 pr-12 text-left transition ${selectedAddressId === address.id
                           ? "border-[var(--color-secondary)] bg-white shadow-[0_12px_30px_rgba(17,24,39,0.08)] ring-1 ring-[var(--color-secondary)]/10"
                           : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)] hover:shadow-[0_10px_24px_rgba(17,24,39,0.05)]"
-                      }`}
+                        }`}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(event) => {
@@ -1562,11 +1559,10 @@ const Checkout: React.FC = () => {
                       }}
                     >
                       <span
-                        className={`absolute right-3 top-3 grid h-4 w-4 place-items-center rounded-full border ${
-                          selectedAddressId === address.id
+                        className={`absolute right-3 top-3 grid h-4 w-4 place-items-center rounded-full border ${selectedAddressId === address.id
                             ? "border-[var(--color-secondary)] bg-[var(--color-secondary)] text-white"
                             : "border-[var(--color-border)]"
-                        }`}
+                          }`}
                       >
                         {selectedAddressId === address.id && <CheckCircle2 className="h-2.5 w-2.5" />}
                       </span>
@@ -1621,20 +1617,32 @@ const Checkout: React.FC = () => {
               ) : null}
 
               {showAddressForm && (
-                <AddressForm
-                  form={addressForm}
-                  isEditing={Boolean(editingAddressId)}
-                  isPending={createAddressMutation.isPending || updateAddressMutation.isPending}
-                  onChange={setAddressForm}
-                  onCancel={() => {
+                <AddressFormModal
+                  open={showAddressForm}
+                  title={editingAddressId ? "Edit Address" : "Add New Address"}
+                  onClose={() => {
                     setShowAddressForm(false);
                     setEditingAddressId(null);
                     if (userId) {
                       setAddressForm(emptyAddressForm(userId, userMobile));
                     }
                   }}
-                  onSubmit={handleAddressSubmit}
-                />
+                >
+                  <AddressForm
+                    form={addressForm}
+                    isEditing={Boolean(editingAddressId)}
+                    isPending={createAddressMutation.isPending || updateAddressMutation.isPending}
+                    onChange={setAddressForm}
+                    onCancel={() => {
+                      setShowAddressForm(false);
+                      setEditingAddressId(null);
+                      if (userId) {
+                        setAddressForm(emptyAddressForm(userId, userMobile));
+                      }
+                    }}
+                    onSubmit={handleAddressSubmit}
+                  />
+                </AddressFormModal>
               )}
             </section>
 
@@ -1666,32 +1674,32 @@ const Checkout: React.FC = () => {
                 const displayName = getProductDisplayName(product, `Product #${item.productid}`);
 
                 return (
-                <div key={item.id} className="flex items-center gap-3">
-                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-                    <img
-                      src={productImage(product)}
-                      alt={displayName}
-                      className="h-full w-full object-cover"
-                      onError={(event) => {
-                        event.currentTarget.src = fallbackProduct;
-                      }}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-xs font-semibold text-[var(--color-text)]">
-                      {displayName}
-                    </p>
-                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">Qty: {quantity}</p>
-                    {(checkoutStockIssueMap.has(item.productid) || checkoutBackendIssueMap.has(item.productid)) && (
-                      <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600">
-                        {checkoutBackendIssueMap.get(item.productid) || checkoutStockIssueMap.get(item.productid)}
+                  <div key={item.id} className="flex items-center gap-3">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+                      <img
+                        src={productImage(product)}
+                        alt={displayName}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.src = fallbackProduct;
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-xs font-semibold text-[var(--color-text)]">
+                        {displayName}
                       </p>
-                    )}
+                      <p className="mt-1 text-[11px] text-[var(--color-muted)]">Qty: {quantity}</p>
+                      {(checkoutStockIssueMap.has(item.productid) || checkoutBackendIssueMap.has(item.productid)) && (
+                        <p className="mt-2 rounded-[var(--radius-sm)] bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-600">
+                          {checkoutBackendIssueMap.get(item.productid) || checkoutStockIssueMap.get(item.productid)}
+                        </p>
+                      )}
+                    </div>
+                    <p className="shrink-0 text-xs font-semibold text-[var(--color-text)]">
+                      {formatCurrency(productUnitPrice(product) * quantity)}
+                    </p>
                   </div>
-                  <p className="shrink-0 text-xs font-semibold text-[var(--color-text)]">
-                    {formatCurrency(productUnitPrice(product) * quantity)}
-                  </p>
-                </div>
                 );
               })}
               {useV2PromotionResult && v2GiftAdjustments.map((gift) => {
@@ -1984,7 +1992,7 @@ function AddressForm({
   };
 
   return (
-    <form className="mt-5 border-t border-[var(--color-border)] pt-5" onSubmit={onSubmit}>
+    <form onSubmit={onSubmit}>
       <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-5 shadow-[0_10px_24px_rgba(17,24,39,0.04)] sm:p-6">
         <p className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
           {isEditing ? "Edit Address" : "Add New Address"}
@@ -2157,18 +2165,16 @@ function PaymentOption({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-[var(--radius-sm)] border px-3.5 py-3 text-left transition ${
-        checked
+      className={`flex items-center gap-3 rounded-[var(--radius-sm)] border px-3.5 py-3 text-left transition ${checked
           ? "border-[var(--color-secondary)] bg-white shadow-[0_10px_24px_rgba(17,24,39,0.06)] ring-1 ring-[var(--color-secondary)]/10"
           : "border-[var(--color-border)] bg-white hover:border-[var(--color-muted)]"
-      }`}
+        }`}
     >
       <span
-        className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
-          checked
+        className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${checked
             ? "border-[var(--color-secondary)] bg-[var(--color-secondary)] text-white"
             : "border-[var(--color-muted)]"
-        }`}
+          }`}
       >
         {checked && <CheckCircle2 className="h-2.5 w-2.5" />}
       </span>
@@ -2194,19 +2200,17 @@ function CheckoutStep({
 }) {
   const isDone = state === "done";
   const isActive = state === "active";
-  const className = `flex items-center gap-2 text-xs ${
-    isDone ? "text-green-700" : isActive ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-muted)]"
-  }`;
+  const className = `flex items-center gap-2 text-xs ${isDone ? "text-green-700" : isActive ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-muted)]"
+    }`;
   const content = (
     <>
       <span
-        className={`grid h-[22px] w-[22px] place-items-center rounded-full border text-[11px] font-semibold ${
-          isDone
+        className={`grid h-[22px] w-[22px] place-items-center rounded-full border text-[11px] font-semibold ${isDone
             ? "border-green-200 bg-green-50 text-green-700"
             : isActive
               ? "border-[var(--color-secondary)] bg-white text-[var(--color-secondary)] shadow-[0_0_0_3px_rgba(251,188,5,0.2)]"
               : "border-[var(--color-border)] text-[var(--color-muted)]"
-        }`}
+          }`}
       >
         {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : value}
       </span>
