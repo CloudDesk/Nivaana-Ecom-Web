@@ -348,7 +348,6 @@ const Checkout: React.FC = () => {
   const promotionsV2Quote = promotionsV2Query.data?.data;
   const mrpTotal = cartTotals.mrpTotal;
   const productDiscount = cartTotals.productDiscount;
-  const total = cartTotals.total;
 
   const activeEvaluationsQuery = useQuery({
     queryKey: ["checkout-active-promotion-evaluations", userId, cartSignature],
@@ -356,7 +355,7 @@ const Checkout: React.FC = () => {
       promotionService.evaluateAutomatic({
         userId: String(userId),
         cartItems: promotionEvaluationItems,
-        currentTotal: total,
+        currentTotal: cartTotals.subtotal,
         mode: "phonepe",
         channel: "web",
         geo: "IN",
@@ -447,7 +446,7 @@ const Checkout: React.FC = () => {
       await promotionService.evaluateAutomatic({
         userId: String(userId),
         cartItems: promotionEvaluationItems,
-        currentTotal: total,
+        currentTotal: cartTotals.subtotal,
         mode: "phonepe",
         channel: "web",
         geo: "IN",
@@ -541,14 +540,11 @@ const Checkout: React.FC = () => {
   const useV2PromotionResult = Boolean(promotionsV2Quote);
   const promotionDiscount = useV2PromotionResult ? v2MerchandiseDiscount : promotionSummary.normalDiscount;
   const shippingSavings = useV2PromotionResult
-    ? Math.max(v2ShippingDiscount, promotionSummary.shippingSavings)
+    ? v2ShippingDiscount
     : promotionSummary.shippingSavings;
-  const legacyShippingSavingsMissingFromV2 = useV2PromotionResult && v2ShippingDiscount <= 0
-    ? promotionSummary.shippingSavings
-    : 0;
   const shipping = Math.max(0, cartTotals.shipping - shippingSavings);
   const checkoutTotal = useV2PromotionResult
-    ? Math.max(0, promotionsV2Quote!.payable_total / 100 - legacyShippingSavingsMissingFromV2)
+    ? Math.max(0, promotionsV2Quote!.payable_total / 100)
     : promotionSummary.payableTotal;
   const walletQuoteQuery = useQuery({
     queryKey: ["wallet-discount-quote", userId, cartTotals.subtotal, checkoutTotal],
@@ -644,7 +640,7 @@ const Checkout: React.FC = () => {
   const eligiblePromotionCandidates = promotionCandidates.filter(
     (promotion) =>
       !isFreeShippingPromotion(promotion) ||
-      isFreeShippingPromotionEligible(promotion, cartTotals.total)
+      isFreeShippingPromotionEligible(promotion, cartTotals.subtotal)
   );
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => appliedPromotionIds.has(promotionId(promotion)),
@@ -715,7 +711,7 @@ const Checkout: React.FC = () => {
         const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(userId),
           cartItems: promotionEvaluationItems,
-          currentTotal: total,
+          currentTotal: cartTotals.subtotal,
           mode: "phonepe",
           channel: "web",
           geo: "IN",
@@ -854,7 +850,7 @@ const Checkout: React.FC = () => {
         const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(userId),
           cartItems: promotionEvaluationItems,
-          currentTotal: total,
+          currentTotal: cartTotals.subtotal,
           mode: "phonepe",
           channel: "web",
           geo: "IN",

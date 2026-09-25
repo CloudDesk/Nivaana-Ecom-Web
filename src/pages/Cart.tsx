@@ -354,7 +354,7 @@ const Cart: React.FC = () => {
       promotionService.evaluateAutomatic({
         userId: String(session!.user.id),
         cartItems: promotionEvaluationItems,
-        currentTotal: cartTotals.total,
+        currentTotal: cartTotals.subtotal,
         mode: "phonepe",
         channel: "web",
         geo: "IN",
@@ -634,14 +634,11 @@ const Cart: React.FC = () => {
   const v2GiftSavings = (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD").reduce((sum, adjustment) => sum + adjustment.list_amount, 0) / 100;
   const promotionDiscount = useV2PromotionResult ? v2MerchandiseDiscount : promotionSummary.normalDiscount;
   const shippingSavings = useV2PromotionResult
-    ? Math.max(v2ShippingSavings, promotionSummary.shippingSavings)
+    ? v2ShippingSavings
     : promotionSummary.shippingSavings;
   const totalPromotionSavings = promotionDiscount + shippingSavings + (useV2PromotionResult ? v2GiftSavings : 0);
-  const legacyShippingSavingsMissingFromV2 = useV2PromotionResult && v2ShippingSavings <= 0
-    ? promotionSummary.shippingSavings
-    : 0;
   const payableTotal = useV2PromotionResult
-    ? Math.max(0, promotionsV2Quote!.payable_total / 100 - legacyShippingSavingsMissingFromV2)
+    ? Math.max(0, promotionsV2Quote!.payable_total / 100)
     : promotionSummary.payableTotal;
   const effectiveShipping = Math.max(0, cartTotals.shipping - shippingSavings);
   const v2GiftAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD") : [];
@@ -831,7 +828,7 @@ const Cart: React.FC = () => {
         const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(session!.user.id),
           cartItems: promotionEvaluationItems,
-          currentTotal: cartTotals.total,
+          currentTotal: cartTotals.subtotal,
           mode: "phonepe",
           channel: "web",
           geo: "IN",
@@ -911,7 +908,7 @@ const Cart: React.FC = () => {
         saveSelectedCartPromotion(nextPromotion);
         setSelectedPromotion(nextPromotion);
         setOfferActionError(null);
-        await promotionOffersQuery.refetch();
+        void promotionOffersQuery.refetch();
         toast.success(`${promotion.name} applied to your cart.`);
         return;
       }
@@ -941,7 +938,7 @@ const Cart: React.FC = () => {
       saveSelectedCartPromotion(nextPromotion);
       setSelectedPromotion(nextPromotion);
       setOfferActionError(null);
-      await Promise.all([
+      void Promise.all([
         promotionOffersQuery.refetch(),
         activeEvaluationsQuery.refetch(),
       ]);
@@ -987,7 +984,7 @@ const Cart: React.FC = () => {
         const automaticEvaluation = await promotionService.evaluateAutomatic({
           userId: String(session.user.id),
           cartItems: promotionEvaluationItems,
-          currentTotal: cartTotals.total,
+          currentTotal: cartTotals.subtotal,
           mode: "phonepe",
           channel: "web",
           geo: "IN",
@@ -1046,7 +1043,7 @@ const Cart: React.FC = () => {
 
       setVoucherCode("");
       setOfferActionError(null);
-      await Promise.all([
+      void Promise.all([
         promotionOffersQuery.refetch(),
         activeEvaluationsQuery.refetch(),
       ]);
@@ -1158,7 +1155,7 @@ const Cart: React.FC = () => {
           clearSelectedCartPromotion(session?.user.id);
           setSelectedPromotion(null);
         }
-        await Promise.all([promotionOffersQuery.refetch(), activeEvaluationsQuery.refetch()]);
+        void Promise.all([promotionOffersQuery.refetch(), activeEvaluationsQuery.refetch()]);
         toast.success("Offer removed from your cart.");
         return;
       }
@@ -1229,7 +1226,7 @@ const Cart: React.FC = () => {
     const id = promotionId(promotion);
     const freeShippingOffer = isFreeShippingOffer(promotion);
     const freeShippingEligible =
-      !freeShippingOffer || isFreeShippingPromotionEligible(promotion, cartTotals.total);
+      !freeShippingOffer || isFreeShippingPromotionEligible(promotion, cartTotals.subtotal);
     const appliedPromotion = appliedPromotionsForTotals.find(
       (item) => appliedPromotionId(item) === id
     );
@@ -1348,6 +1345,20 @@ const Cart: React.FC = () => {
       ));
     },
   });
+
+  const isPricingRecalculating = Boolean(
+    promotionRows.length > 0 &&
+    (
+      mutation.isPending ||
+      moveToWishlist.isPending ||
+      promotionsV2Query.isFetching ||
+      (!promotionsV2Quote && automaticPromotionsQuery.isFetching) ||
+      applyPromotionMutation.isPending ||
+      removePromotionMutation.isPending ||
+      redeemVoucherMutation.isPending ||
+      (walletApplied && walletQuoteQuery.isFetching)
+    )
+  );
 
   return (
     <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
@@ -1543,18 +1554,33 @@ const Cart: React.FC = () => {
               <h2 className="text-lg font-bold text-[var(--color-text)]">Order Summary</h2>
               <div className="mt-4 space-y-3 text-sm">
                 <SummaryLine label="Items total" value={formatCurrency(cartTotals.subtotal)} />
-                <SummaryLine
-                  label="Shipping"
-                  value={effectiveShipping === 0 ? (!session ? "Free*" : "Free") : formatCurrency(effectiveShipping)}
-                  previousValue={shippingSavings > 0 ? formatCurrency(cartTotals.shipping) : undefined}
-                  highlight={shippingSavings > 0}
-                />
-                {promotionDiscount > 0 && <SummaryLine label={!session ? "Promotion*" : "Promotion"} value={`-${formatCurrency(promotionDiscount)}`} />}
-                {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
-                <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
-                  <span>Total</span>
-                  <strong>{formatCurrency(finalPayableTotal)}{!session && totalPromotionSavings > 0 ? "*" : ""}</strong>
-                </div>
+                {isPricingRecalculating ? (
+                  <div
+                    className="flex items-center gap-2 border-t border-[var(--color-border)] py-3 text-xs font-semibold text-[#68748a]"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#9a6b00]" />
+                    <span>Updating delivery, offers and final total…</span>
+                  </div>
+                ) : (
+                  <>
+                    <SummaryLine
+                      label="Shipping"
+                      value={effectiveShipping === 0 ? (!session ? "Free*" : "Free") : formatCurrency(effectiveShipping)}
+                      previousValue={shippingSavings > 0 ? formatCurrency(cartTotals.shipping) : undefined}
+                      highlight={shippingSavings > 0}
+                    />
+                    {promotionDiscount > 0 && (
+                      <SummaryLine label={!session ? "Promotion*" : "Promotion"} value={`-${formatCurrency(promotionDiscount)}`} />
+                    )}
+                    {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
+                    <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
+                      <span>Total</span>
+                      <strong>{formatCurrency(finalPayableTotal)}{!session && totalPromotionSavings > 0 ? "*" : ""}</strong>
+                    </div>
+                  </>
+                )}
               </div>
 
               {session && eligibleWalletBalance > 0 && (
@@ -1563,7 +1589,7 @@ const Cart: React.FC = () => {
                     <WalletCards className="h-5 w-5 shrink-0 text-[#485470]" />
                     <div className="min-w-0"><p className="text-sm font-bold text-[#172033]">Wallet balance {formatCurrency(eligibleWalletBalance)}</p><p className="text-[11px] text-[#68748a]">Available for this cart</p></div>
                   </div>
-                  <button type="button" onClick={toggleWallet} disabled={walletQuoteQuery.isFetching} className="shrink-0 rounded-lg bg-[#fbbc05] px-3 py-2 text-xs font-extrabold text-[#172033] disabled:opacity-50">{walletApplied ? "Remove" : "Apply"}</button>
+                  <button type="button" onClick={toggleWallet} disabled={walletQuoteQuery.isFetching || isPricingRecalculating} className="shrink-0 rounded-lg bg-[#fbbc05] px-3 py-2 text-xs font-extrabold text-[#172033] disabled:opacity-50">{walletApplied ? "Remove" : "Apply"}</button>
                 </div>
               )}
 
@@ -1579,7 +1605,7 @@ const Cart: React.FC = () => {
                         <p className="text-[11px] text-[#68748a]">Choose the best available benefit</p>
                       </div>
                     </div>
-                    {totalPromotionSavings > 0 && (
+                    {!isPricingRecalculating && totalPromotionSavings > 0 && (
                       <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
                         Saved {formatCurrency(totalPromotionSavings)}
                       </span>
@@ -1626,6 +1652,7 @@ const Cart: React.FC = () => {
                         spellCheck={false}
                         maxLength={100}
                         disabled={
+                          isPricingRecalculating ||
                           redeemVoucherMutation.isPending ||
                           !session ||
                           (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
@@ -1635,6 +1662,7 @@ const Cart: React.FC = () => {
                       <button
                         type="submit"
                         disabled={
+                          isPricingRecalculating ||
                           redeemVoucherMutation.isPending ||
                           !voucherCode.trim() ||
                           !session ||
@@ -1658,10 +1686,10 @@ const Cart: React.FC = () => {
                     )}
                   </form>
 
-                  {promotionOffersQuery.isLoading ? (
+                  {isPricingRecalculating ? null : promotionOffersQuery.isLoading || (promotionOffersQuery.isFetching && !promotionOffersQuery.data) ? (
                     <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-[var(--color-muted)]">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Checking offers
+                      Checking available offers…
                     </div>
                   ) : promotionOffersQuery.isError ? (
                     <p className="mt-3 text-xs font-semibold text-red-600">
@@ -1696,16 +1724,24 @@ const Cart: React.FC = () => {
               {session ? (
                 <Button
                   className="mt-5 w-full"
-                  disabled={checkoutValidationMutation.isPending || automaticPromotionsQuery.isFetching}
+                  disabled={checkoutValidationMutation.isPending || isPricingRecalculating}
                   onClick={() => checkoutValidationMutation.mutate()}
                 >
-                  {(checkoutValidationMutation.isPending || automaticPromotionsQuery.isFetching) && (
+                  {checkoutValidationMutation.isPending && (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   )}
                   Checkout
                 </Button>
               ) : (
-                <Link to="/login?redirect=/checkout" className="mt-5 block"><Button className="w-full">Login to Checkout</Button></Link>
+                <Link
+                  to="/login?redirect=/checkout"
+                  className={`mt-5 block ${isPricingRecalculating ? "pointer-events-none" : ""}`}
+                  aria-disabled={isPricingRecalculating}
+                >
+                  <Button className="w-full" disabled={isPricingRecalculating}>
+                    Login to Checkout
+                  </Button>
+                </Link>
               )}
             </aside>
           </div>
@@ -1934,4 +1970,3 @@ function EmptyState({ title }: { title: string }) {
 }
 
 export default Cart;
-

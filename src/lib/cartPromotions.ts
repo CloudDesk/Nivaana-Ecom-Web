@@ -236,10 +236,9 @@ export const getAppliedPromotionSummary = (
   fallbackDiscount = 0
 ): PromotionDiscountSummary => {
   const freeShippingPromotions = appliedPromotions.filter(
-    // Legacy `cart.total_value` conditions are evaluated by the API against
-    // merchandise + shipping + tax. Use the same pre-promotion cart total here
-    // so an API-applied shipping waiver is not incorrectly discarded by the UI.
-    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.total)
+    // Shipping is never part of promotion qualification. Otherwise the
+    // delivery fee could unlock the same promotion that removes that fee.
+    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.subtotal)
   );
   const normalPromotions = appliedPromotions.filter((promotion) => !isFreeShippingAppliedPromotion(promotion));
   const normalDiscountFromPromotions = normalPromotions.reduce(
