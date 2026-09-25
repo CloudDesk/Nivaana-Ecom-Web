@@ -7,11 +7,14 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Copy,
+  CopyCheck,
   Loader2,
   MapPin,
   PackageCheck,
   ReceiptText,
   ShoppingBag,
+  Truck,
 } from "lucide-react";
 import { paymentService, type PaymentResponseData } from "../services/paymentService";
 import { orderService } from "../services/orderService";
@@ -20,6 +23,7 @@ import { clearSelectedCartPromotion } from "../lib/cartPromotions";
 import { saveWalletApplied } from "../lib/walletSelection";
 
 const MAX_STATUS_CHECKS = 10;
+const CONFETTI_DURATION_MS = 6400;
 
 const normalizedStatus = (data?: PaymentResponseData) =>
   String(data?.status || data?.paymentData?.state || data?.message || "").toLowerCase();
@@ -57,6 +61,14 @@ const formatDateTime = (value?: number | string | null) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const formatEstimatedDelivery = (fromTimestamp?: number | string | null, addDays = 5) => {
+  const numeric = Number(fromTimestamp);
+  const base = Number.isFinite(numeric) && numeric > 0 ? new Date(numeric < 1_000_000_000_000 ? numeric * 1000 : numeric) : new Date();
+  const eta = new Date(base);
+  eta.setDate(eta.getDate() + addDays);
+  return eta.toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" });
 };
 
 const formatPaymentMode = (value?: string | null) => {
@@ -146,6 +158,7 @@ const CheckoutConfirmation: React.FC = () => {
   const paymentMode = formatPaymentMode(
     order?.mode || paymentStatus?.paymentMode || paymentStatus?.paymentData?.paymentInstrument?.type
   );
+  const estimatedDelivery = formatEstimatedDelivery(order?.createddate);
 
   const state = useMemo<"checking" | "success" | "failure" | "delayed">(() => {
     if (orderId && paymentSucceeded) return "success";
@@ -176,14 +189,14 @@ const CheckoutConfirmation: React.FC = () => {
     });
     celebrationRef.current = fire;
 
-    const duration = 15 * 1000;
+    const duration = CONFETTI_DURATION_MS;
     const animationEnd = Date.now() + duration;
     const defaults: confetti.Options = {
-      startVelocity: 30,
-      spread: 360,
-      ticks: 60,
+      startVelocity: 26,
+      spread: 300,
+      ticks: 55,
       zIndex: 0,
-      colors: ["#fbbc05", "#15803d", "#485470", "#ffffff"],
+      colors: ["#fbbc05", "#15803d", "#1e293b", "#ffffff"],
     };
     const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
 
@@ -194,18 +207,18 @@ const CheckoutConfirmation: React.FC = () => {
         return;
       }
 
-      const particleCount = 50 * (timeLeft / duration);
-      void fire({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
-      void fire({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+      const particleCount = 32 * (timeLeft / duration);
+      void fire({ ...defaults, particleCount, origin: { x: randomInRange(0.15, 0.35), y: Math.random() - 0.2 } });
+      void fire({ ...defaults, particleCount, origin: { x: randomInRange(0.65, 0.85), y: Math.random() - 0.2 } });
     };
 
     launch();
-    celebrationIntervalRef.current = window.setInterval(launch, 250);
+    celebrationIntervalRef.current = window.setInterval(launch, 350);
     return stopCelebration;
   }, [state, stopCelebration]);
 
   return (
-    <main className="relative isolate min-h-screen overflow-hidden bg-[var(--color-surface)] px-4 py-8 sm:py-12">
+    <main className="relative isolate min-h-screen overflow-hidden bg-[var(--color-surface)] px-4 py-8 pb-28 sm:py-12 sm:pb-12">
       <canvas ref={celebrationCanvasRef} className="pointer-events-none fixed inset-0 z-0 h-full w-full" aria-hidden="true" />
       <section className="relative z-10 mx-auto max-w-5xl">
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Checkout</p>
@@ -257,21 +270,29 @@ const CheckoutConfirmation: React.FC = () => {
         )}
 
         {state === "success" && (
-          <div className="mt-8 space-y-6" onClickCapture={stopCelebration}>
-            <section className="rounded-[var(--radius-lg)] border border-green-200 bg-white p-6 text-center shadow-[var(--shadow-card)] sm:p-9">
-              <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-green-100 text-green-700">
-                <CheckCircle2 className="h-12 w-12" />
+          <div className="mt-8 space-y-5" onClickCapture={stopCelebration}>
+            {/* Hero: compact, brand-accented, order id + delivery estimate up front */}
+            <section className="overflow-hidden rounded-[var(--radius-lg)] border border-green-200 bg-white shadow-[var(--shadow-card)]">
+              <div className="flex flex-col items-center gap-4 px-6 py-7 text-center sm:flex-row sm:items-center sm:gap-6 sm:px-8 sm:text-left">
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-green-100 text-green-700">
+                  <CheckCircle2 className="h-9 w-9" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-[var(--color-text)] sm:text-2xl">Order placed successfully</h2>
+                  <p className="mt-1 text-sm text-[var(--color-muted)]">
+                    Thank you for shopping with Nivaana — your payment and order are confirmed.
+                  </p>
+                </div>
               </div>
-              <h2 className="mt-5 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">Order placed successfully</h2>
-              <p className="mx-auto mt-2 max-w-2xl text-sm text-[var(--color-muted)]">
-                Thank you for shopping with Nivaana. Your payment and order have been confirmed.
-              </p>
-              {displayOrderNumber && (
-                <Link to={orderLink} className="mt-5 inline-flex items-center gap-2 rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-800 hover:bg-green-100">
-                  <PackageCheck className="h-4 w-4" />
-                  {displayOrderNumber}
-                </Link>
-              )}
+              <div className="flex flex-col gap-3 border-t border-green-100 bg-green-50/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+                {displayOrderNumber && (
+                  <CopyableChip icon={<PackageCheck className="h-4 w-4" />} label="Order" value={displayOrderNumber} />
+                )}
+                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+                  <Truck className="h-4 w-4 text-[var(--color-secondary)]" />
+                  Estimated delivery by <span className="text-green-700">{estimatedDelivery}</span>
+                </div>
+              </div>
             </section>
 
             <section className="rounded-[var(--radius-lg)] border border-green-200 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
@@ -285,9 +306,12 @@ const CheckoutConfirmation: React.FC = () => {
                 <Detail label="Payment method" value={paymentMode} />
                 <Detail label="Order date" value={formatDateTime(order?.createddate)} />
               </div>
-              <div className="mt-5 rounded-[var(--radius-sm)] bg-green-50 px-4 py-3">
-                <p className="text-xs font-semibold text-green-800">Transaction ID</p>
-                <p className="mt-1 break-all text-sm text-green-900">{transactionId}</p>
+              <div className="mt-5 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] bg-green-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-green-800">Transaction ID</p>
+                  <p className="mt-1 break-all text-sm text-green-900">{transactionId}</p>
+                </div>
+                {transactionId !== "Not available" && <CopyIconButton value={String(transactionId)} />}
               </div>
             </section>
 
@@ -298,16 +322,29 @@ const CheckoutConfirmation: React.FC = () => {
             )}
 
             {details && (
-              <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+              <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
                 <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
                   <div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-[var(--color-secondary)]" /><h2 className="font-bold text-[var(--color-text)]">Order items</h2></div>
                   <div className="mt-4 divide-y divide-[var(--color-border)]">
-                    {(details.orderlines || []).map((item, index) => (
-                      <div key={String(item.id || `${item.productid}-${index}`)} className="flex items-start justify-between gap-4 py-4">
-                        <div className="min-w-0"><p className="font-semibold text-[var(--color-text)]">{item.productname || "Product"}</p><p className="mt-1 text-xs text-[var(--color-muted)]">Quantity: {item.quantity || 1}</p></div>
-                        <p className="shrink-0 font-semibold text-[var(--color-text)]">{formatCurrency(item.orderamount ?? item.productamount)}</p>
-                      </div>
-                    ))}
+                    {(details.orderlines || []).map((item, index) => {
+                      const thumb = (item as { imageurl?: string; image?: string }).imageurl || (item as { imageurl?: string; image?: string }).image;
+                      return (
+                        <div key={String(item.id || `${item.productid}-${index}`)} className="flex items-center gap-4 py-4">
+                          <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+                            {thumb ? (
+                              <img src={thumb} alt={item.productname || "Product"} className="h-full w-full object-cover" />
+                            ) : (
+                              <ShoppingBag className="h-5 w-5 text-[var(--color-muted)]" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-[var(--color-text)]">{item.productname || "Product"}</p>
+                            <p className="mt-1 text-xs text-[var(--color-muted)]">Quantity: {item.quantity || 1}</p>
+                          </div>
+                          <p className="shrink-0 font-semibold text-[var(--color-text)]">{formatCurrency(item.orderamount ?? item.productamount)}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                   {order?.cost_breakdown && (
                     <div className="mt-3 space-y-2 border-t border-[var(--color-border)] pt-4 text-sm">
@@ -333,7 +370,14 @@ const CheckoutConfirmation: React.FC = () => {
               </div>
             )}
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-1 text-xs font-medium text-[var(--color-muted)]">
+              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Secure payment</span>
+              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Easy returns</span>
+              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Order tracking available</span>
+            </div>
+
+            {/* Desktop CTA row */}
+            <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:justify-center">
               <LinkButton to={orderLink} primary>View order</LinkButton>
               <LinkButton to="/products">Continue shopping</LinkButton>
               <LinkButton to="/payments">Payments</LinkButton>
@@ -341,6 +385,16 @@ const CheckoutConfirmation: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* Sticky mobile action bar so CTAs are always reachable without scrolling */}
+      {state === "success" && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-border)] bg-white/95 px-4 py-3 backdrop-blur sm:hidden">
+          <div className="flex gap-3">
+            <LinkButton to={orderLink} primary className="flex-1">View order</LinkButton>
+            <LinkButton to="/products" className="flex-1">Continue shopping</LinkButton>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
@@ -377,11 +431,56 @@ function SummaryRow({ label, value, green = false, strong = false }: { label: st
   return <div className={`flex justify-between gap-4 ${strong ? "border-t border-[var(--color-border)] pt-3 text-base font-bold" : ""}`}><span className="text-[var(--color-muted)]">{label}</span><span className={green ? "font-semibold text-green-700" : "font-semibold text-[var(--color-text)]"}>{value}</span></div>;
 }
 
-function LinkButton({ to, children, primary = false }: { to: string; children: React.ReactNode; primary?: boolean }) {
+function LinkButton({ to, children, primary = false, className = "" }: { to: string; children: React.ReactNode; primary?: boolean; className?: string }) {
   return (
-    <Link to={to} className={`inline-flex min-h-12 items-center justify-center rounded-[var(--radius-sm)] border px-6 text-sm font-semibold shadow-sm transition sm:min-w-[180px] ${primary ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-text)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)]" : "border-[var(--color-border)] bg-white text-[var(--color-secondary)] hover:-translate-y-0.5 hover:border-[var(--color-primary)] hover:shadow-[var(--shadow-card)]"}`}>
+    <Link to={to} className={`inline-flex min-h-12 items-center justify-center rounded-[var(--radius-sm)] border px-6 text-sm font-semibold shadow-sm transition sm:min-w-[180px] ${primary ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-text)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-hover)]" : "border-[var(--color-border)] bg-white text-[var(--color-secondary)] hover:-translate-y-0.5 hover:border-[var(--color-primary)] hover:shadow-[var(--shadow-card)]"} ${className}`}>
       {children}
     </Link>
+  );
+}
+
+function useCopy() {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable — silently ignore
+    }
+  }, []);
+  return { copied, copy };
+}
+
+function CopyableChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  const { copied, copy } = useCopy();
+  return (
+    <button
+      type="button"
+      onClick={() => copy(value)}
+      className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-white px-3.5 py-1.5 text-sm font-bold text-green-800 transition hover:bg-green-100"
+      aria-label={`Copy ${label.toLowerCase()} number`}
+    >
+      {icon}
+      <span className="text-[var(--color-muted)] font-semibold">{label}</span>
+      {value}
+      {copied ? <CopyCheck className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5 opacity-50" />}
+    </button>
+  );
+}
+
+function CopyIconButton({ value }: { value: string }) {
+  const { copied, copy } = useCopy();
+  return (
+    <button
+      type="button"
+      onClick={() => copy(value)}
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-green-200 bg-white text-green-700 transition hover:bg-green-100"
+      aria-label="Copy transaction ID"
+    >
+      {copied ? <CopyCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+    </button>
   );
 }
 

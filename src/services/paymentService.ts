@@ -16,6 +16,7 @@ export interface PaymentOrderItem {
 
 export interface PaymentRequest {
   mode: "phonepe";
+  payment_channel: "ecom";
   order: PaymentOrderItem[];
   returnUrl?: string;
   transaction: {

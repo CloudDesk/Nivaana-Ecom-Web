@@ -1344,6 +1344,7 @@ const Checkout: React.FC = () => {
 
       return paymentService.initiate({
         mode: "phonepe",
+        payment_channel: "ecom",
         returnUrl: `${window.location.origin}/checkout/confirmation`,
         order: orderItems,
         transaction: {
