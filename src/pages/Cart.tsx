@@ -342,6 +342,10 @@ const Cart: React.FC = () => {
   const useV2PromotionResult = Boolean(
     promotionsV2Quote
   );
+  const hasV2AppliedBenefit = Boolean(
+    promotionsV2Quote &&
+    (promotionsV2Quote.applied_promotions.length > 0 || promotionsV2Quote.adjustments.length > 0)
+  );
   const automaticPromotionsQueryKey = [
     "cart-automatic-promotions",
     session?.user.id,
@@ -359,7 +363,9 @@ const Cart: React.FC = () => {
         channel: "web",
         geo: "IN",
       }),
-    enabled: Boolean(session?.user.id && promotionRows.length > 0 && !mutation.isPending),
+    // V2 is the canonical quote and already includes legacy automatic offers.
+    // Only fall back to the legacy evaluator when V2 itself is unavailable.
+    enabled: Boolean(session?.user.id && promotionRows.length > 0 && !mutation.isPending && promotionsV2Query.isError),
     staleTime: 0,
     retry: false,
   });
@@ -586,7 +592,7 @@ const Cart: React.FC = () => {
     },
   );
   const appliedPromotionsForTotals =
-    hasSelectedV2Promotion && selectedPromotionApplies
+    useV2PromotionResult
       ? [
         ...(liveV2AppliedPromotions.length > 0
           ? liveV2AppliedPromotions
@@ -1313,6 +1319,9 @@ const Cart: React.FC = () => {
     mutationFn: async () => {
       if (!session?.user.id) return null;
       if (promotionsV2Quote?.evaluation_id) {
+        // A zero-benefit quote is useful for displaying the standard total but
+        // does not need to be validated or attached to the eventual order.
+        if (!hasV2AppliedBenefit) return null;
         const response = await promotionService.validateV2(promotionsV2Quote.evaluation_id);
         return { isValid: true, evaluationId: response.data.evaluation_id };
       }
@@ -1325,7 +1334,11 @@ const Cart: React.FC = () => {
     },
     onSuccess: async (response) => {
       if (!response || response.isValid) {
-        if (response?.evaluationId) sessionStorage.setItem('nivaana_promotions_v2_evaluation_id', response.evaluationId);
+        if (response?.evaluationId) {
+          sessionStorage.setItem('nivaana_promotions_v2_evaluation_id', response.evaluationId);
+        } else {
+          sessionStorage.removeItem('nivaana_promotions_v2_evaluation_id');
+        }
         navigate("/checkout");
         return;
       }

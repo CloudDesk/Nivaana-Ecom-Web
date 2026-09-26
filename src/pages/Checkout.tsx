@@ -330,7 +330,10 @@ const Checkout: React.FC = () => {
   const selectedPromotionUsesV2 = Boolean(
     selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
   );
-  const checkoutPromotionsV2QueryKey = ["checkout-promotions-v2", userId, cartSignature] as const;
+  // Share the cart quote cache across the route transition. Checkout still
+  // refetches immediately (staleTime: 0), but the last cart quote remains a
+  // display-only snapshot while the authoritative checkout quote is verified.
+  const checkoutPromotionsV2QueryKey = ["cart-promotions-v2", userId, cartSignature] as const;
   const promotionsV2Query = useQuery({
     queryKey: checkoutPromotionsV2QueryKey,
     queryFn: () => promotionService.quoteV2({
@@ -346,6 +349,10 @@ const Checkout: React.FC = () => {
     retry: false,
   });
   const promotionsV2Quote = promotionsV2Query.data?.data;
+  const hasV2AppliedBenefit = Boolean(
+    promotionsV2Quote &&
+    (promotionsV2Quote.applied_promotions.length > 0 || promotionsV2Quote.adjustments.length > 0)
+  );
   const mrpTotal = cartTotals.mrpTotal;
   const productDiscount = cartTotals.productDiscount;
 
@@ -360,7 +367,9 @@ const Checkout: React.FC = () => {
         channel: "web",
         geo: "IN",
       }),
-    enabled: Boolean(userId && promotionRows.length > 0),
+    // V2 is the canonical quote and already includes legacy automatic offers.
+    // Only fall back to the legacy evaluator when V2 itself is unavailable.
+    enabled: Boolean(userId && promotionRows.length > 0 && promotionsV2Query.isError),
     staleTime: 1000 * 15,
   });
 
@@ -500,7 +509,7 @@ const Checkout: React.FC = () => {
     },
   );
   const appliedPromotionsForTotals =
-    selectedPromotionUsesV2 && selectedPromotionApplies
+    promotionsV2Quote
       ? [
         ...(liveV2AppliedPromotions.length > 0
           ? liveV2AppliedPromotions
@@ -563,7 +572,7 @@ const Checkout: React.FC = () => {
     saveWalletApplied(userId, next);
   };
   const activeEvaluationId = useV2PromotionResult && promotionsV2Quote
-    ? promotionsV2Quote.evaluation_id
+    ? (hasV2AppliedBenefit ? promotionsV2Quote.evaluation_id : undefined)
     : backendEvaluation?.evaluation_id || (promotionEvaluationQuery.isError ? undefined : promotionEvaluation?.evaluation_id || selectedPromotion?.evaluationId);
   const promotionLabel =
     promotionSummary.normalPromotions[0]?.promotion_name ||
@@ -637,7 +646,48 @@ const Checkout: React.FC = () => {
           };
       });
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
-  const eligiblePromotionCandidates = promotionCandidates.filter(
+  // Recommended-offer responses can omit promotions that V2 has already
+  // applied (notably automatic stackable offers). Merge the authoritative
+  // applied set into the display collection so totals and offer cards cannot
+  // contradict each other.
+  const visiblePromotionCandidates = useMemo(() => {
+    const detailsById = new Map(
+      promotionCandidates.map((promotion) => [promotionId(promotion), promotion]),
+    );
+    const appliedCandidates = appliedPromotionsForTotals
+      .map((promotion): ApplicablePromotion | null => {
+        const id = appliedPromotionId(promotion);
+        if (id <= 0) return null;
+
+        const details = detailsById.get(id);
+        const discountAmount = Number(
+          promotion.discount_amount ?? details?.discountInfo?.discountAmount ?? 0,
+        );
+
+        return {
+          ...details,
+          promotion_id: id,
+          name: promotion.promotion_name || details?.name || `Promotion ${id}`,
+          type: promotion.promotion_type || details?.type || "UNKNOWN",
+          code: String(promotion.voucher_code || details?.code || "") || null,
+          is_free_shipping:
+            promotion.is_free_shipping === true || details?.is_free_shipping === true,
+          stackable:
+            promotion.stackable ??
+            (promotion.is_stacked === true ? true : details?.stackable ?? false),
+          promotionState: "applied",
+          applied_discount: discountAmount,
+          discountInfo: {
+            ...details?.discountInfo,
+            discountAmount,
+          },
+        };
+      })
+      .filter((promotion): promotion is ApplicablePromotion => promotion !== null);
+
+    return uniquePromotions([...appliedCandidates, ...promotionCandidates]);
+  }, [appliedPromotionsForTotals, promotionCandidates]);
+  const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
     (promotion) =>
       !isFreeShippingPromotion(promotion) ||
       isFreeShippingPromotionEligible(promotion, cartTotals.subtotal)
@@ -667,6 +717,10 @@ const Checkout: React.FC = () => {
     activeEvaluationsQuery.isLoading ||
     activeEvaluationsQuery.isFetching ||
     (selectedPromotion && (promotionEvaluationQuery.isLoading || promotionEvaluationQuery.isFetching))
+  );
+  const isInitialPromotionPricing = Boolean(
+    !promotionsV2Quote &&
+    (promotionsV2Query.isLoading || promotionsV2Query.isFetching)
   );
 
   const applyPromotionMutation = useMutation({
@@ -1361,12 +1415,7 @@ const Checkout: React.FC = () => {
       const data = response.data;
       const redirectUrl = data.redirectUrl || data.next_steps?.phonepe?.redirectUrl;
 
-      if (redirectUrl) {
-        window.location.replace(redirectUrl);
-        return;
-      }
-
-      if (data.mode === "wallet" && data.orderData?.order_created) {
+      if (data.status === "SUCCESS" && data.orderData?.order_created) {
         clearSelectedCartPromotion(userId);
         saveWalletApplied(userId, false);
         setWalletApplied(false);
@@ -1384,12 +1433,35 @@ const Checkout: React.FC = () => {
         return;
       }
 
+      if (redirectUrl) {
+        window.location.replace(redirectUrl);
+        return;
+      }
+
       paymentSubmissionRef.current = false;
       setStatusMessage(data.message || "Payment initiated.");
       setErrorMessage("");
     },
     onError: (error) => {
       paymentSubmissionRef.current = false;
+      const apiError = error as Error & {
+        data?: { error_code?: string; expected_amount?: number };
+        statusCode?: number;
+      };
+      if (apiError.data?.error_code === "CHECKOUT_TOTAL_CHANGED") {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["cart-promotions-v2"] }),
+          queryClient.invalidateQueries({ queryKey: ["checkout-active-promotion-evaluations"] }),
+          queryClient.invalidateQueries({ queryKey: ["checkout-promotion-offers"] }),
+          queryClient.invalidateQueries({ queryKey: ["checkout-promotion-eligibility"] }),
+          queryClient.invalidateQueries({ queryKey: ["checkout-promotion-evaluation"] }),
+          queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] }),
+          queryClient.invalidateQueries({ queryKey: ["cart"] }),
+        ]);
+        setErrorMessage("Your cart total changed while we verified the offers. Review the refreshed total and try again.");
+        setStatusMessage("");
+        return;
+      }
       const validationErrors = extractProductValidationErrors(error);
       if (Object.keys(validationErrors).length > 0) {
         setBackendStockErrors(validationErrors);
@@ -1723,26 +1795,33 @@ const Checkout: React.FC = () => {
             <div className="mt-5 space-y-2 border-t border-[var(--color-border)] pt-4 text-sm">
               <SummaryLine label="Items total" value={formatCurrency(mrpTotal)} />
               <SummaryLine label="Product discount" value={`-${formatCurrency(productDiscount)}`} />
-              <SummaryLine label="Shipping" value={shipping === 0 ? "Free" : formatCurrency(shipping)} />
+              <SummaryLine
+                label="Shipping"
+                value={isInitialPromotionPricing ? "Checking..." : shipping === 0 ? "Free" : formatCurrency(shipping)}
+              />
               {hasPromotionDiscount && (
                 <SummaryLine
                   label={promotionEvaluationQuery.isError && !manualAppliedPromotion ? "Promotion" : promotionLabel}
                   value={
                     promotionEvaluationQuery.isError && !manualAppliedPromotion
                       ? "Removed"
-                      : isPromotionResolving
-                        ? "Checking..."
-                        : promotionDiscount > 0
-                          ? `-${formatCurrency(promotionDiscount)}`
-                          : "Free gift"
+                      : promotionDiscount > 0
+                        ? `-${formatCurrency(promotionDiscount)}`
+                        : "Free gift"
                   }
                 />
               )}
               {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
               <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-semibold text-[var(--color-text)]">
                 <span>Total</span>
-                <span>{formatCurrency(finalCheckoutTotal)}</span>
+                <span>{isInitialPromotionPricing ? "Checking..." : formatCurrency(finalCheckoutTotal)}</span>
               </div>
+              {isPromotionResolving && (
+                <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-[#68748a]" role="status" aria-live="polite">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[#9a6b00]" />
+                  <span>Confirming your offers and final total…</span>
+                </div>
+              )}
             </div>
 
             {eligibleWalletBalance > 0 && (

@@ -26,6 +26,11 @@ export interface ApiError {
   error: string;
   message?: string;
   statusCode?: number;
+  error_code?: string;
+  action_required?: string;
+  submitted_amount?: number;
+  expected_amount?: number;
+  pricing?: unknown;
   validation_errors?: unknown[];
   errors?: unknown[];
 }
