@@ -1948,22 +1948,24 @@ const Checkout: React.FC = () => {
                 isPromotionResolving ||
                 checkoutStockIssues.length > 0 ||
                 Object.keys(backendStockErrors).length > 0 ||
-                (!walletCoversOrder && finalCheckoutTotal <= 0)
+                finalCheckoutTotal < 0
               }
               onClick={handlePaymentSubmission}
             >
               {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
               {paymentMutation.isPending
-                ? walletCoversOrder
+                ? walletCoversOrder || finalCheckoutTotal <= 0
                   ? "Placing order..."
                   : "Starting payment..."
                 : walletCoversOrder
                   ? "Place Order using Wallet"
-                  : `Pay ${formatCurrency(finalCheckoutTotal)} securely`}
+                  : finalCheckoutTotal <= 0
+                    ? "Place Order"
+                    : `Pay ${formatCurrency(finalCheckoutTotal)} securely`}
             </Button>
             <p className="mt-3 flex items-center justify-center gap-1 text-[11px] text-[var(--color-muted)]">
               <ShieldCheck className="h-3.5 w-3.5" />
-              {walletCoversOrder ? "No external payment required" : "256-bit SSL encrypted checkout"}
+              {walletCoversOrder || finalCheckoutTotal <= 0 ? "No external payment required" : "256-bit SSL encrypted checkout"}
             </p>
           </aside>
         </div>

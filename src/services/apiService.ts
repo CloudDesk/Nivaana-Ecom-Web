@@ -59,13 +59,14 @@ class ApiService {
    * Common API method that handles all HTTP requests
    * @param method - HTTP method (GET, POST, PUT, PATCH, DELETE)
    * @param url - API endpoint URL (relative to base URL)
-   * @param payload - Request payload (optional, for POST/PUT/PATCH requests)
+   * @param configOverrides - Optional Axios configuration overrides (e.g. timeout)
    * @returns Promise with API response data
    */
   async request<T = unknown>(
     method: HttpMethod,
     url: string,
-    payload?: unknown
+    payload?: unknown,
+    configOverrides?: Partial<AxiosRequestConfig>
   ): Promise<ApiResponse<T>> {
     try {
       const token = sessionService.getToken();
@@ -77,6 +78,7 @@ class ApiService {
         url: requestUrl,
         data: payload,
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        ...configOverrides,
       };
 
       const response = await this.client.request<ApiResponse<T>>(config);
@@ -92,17 +94,40 @@ class ApiService {
       console.error('API Request Error:', error);
 
       if (axios.isAxiosError(error)) {
-        const responseData = error.response?.data as Partial<ApiError> | undefined;
-        const message = responseData?.message || responseData?.error || error.message;
+        const responseData = error.response?.data as (Partial<ApiError> & { details?: string; retryAfter?: number }) | undefined;
+        const message = responseData?.details || responseData?.message || responseData?.error || error.message;
+
+        let retryAfter: number | undefined;
+        if (typeof responseData?.retryAfter === 'number' && responseData.retryAfter >= 0) {
+          retryAfter = Math.floor(responseData.retryAfter);
+        } else {
+          const retryHeader = error.response?.headers?.['retry-after'] ?? error.response?.headers?.['Retry-After'];
+          if (retryHeader) {
+            const parsed = Number(Array.isArray(retryHeader) ? retryHeader[0] : retryHeader);
+            if (Number.isFinite(parsed) && parsed >= 0) {
+              retryAfter = Math.floor(parsed);
+            }
+          }
+        }
+        if (retryAfter === undefined && typeof message === 'string') {
+          const match = message.match(/(\d+)\s*(second|seconds|minute|minutes)/i);
+          if (match) {
+            const val = Number(match[1]);
+            retryAfter = match[2].toLowerCase().startsWith('minute') ? val * 60 : val;
+          }
+        }
+
         if (error.response?.status === 401 && sessionService.getToken()) {
           sessionService.clearSession();
         }
         const apiError = new Error(message) as Error & {
           data?: Partial<ApiError>;
           statusCode?: number;
+          retryAfter?: number;
         };
         apiError.data = responseData;
         apiError.statusCode = error.response?.status;
+        apiError.retryAfter = retryAfter;
         throw apiError;
       }
 
@@ -115,8 +140,8 @@ class ApiService {
    * @param url - API endpoint URL
    * @returns Promise with API response data
    */
-  async get<T = unknown>(url: string): Promise<ApiResponse<T>> {
-    return this.request<T>('GET', url);
+  async get<T = unknown>(url: string, configOverrides?: Partial<AxiosRequestConfig>): Promise<ApiResponse<T>> {
+    return this.request<T>('GET', url, undefined, configOverrides);
   }
 
   /**
@@ -125,8 +150,8 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async post<T = unknown>(url: string, payload?: unknown): Promise<ApiResponse<T>> {
-    return this.request<T>('POST', url, payload);
+  async post<T = unknown>(url: string, payload?: unknown, configOverrides?: Partial<AxiosRequestConfig>): Promise<ApiResponse<T>> {
+    return this.request<T>('POST', url, payload, configOverrides);
   }
 
   /**
@@ -135,8 +160,8 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async put<T = unknown>(url: string, payload?: unknown): Promise<ApiResponse<T>> {
-    return this.request<T>('PUT', url, payload);
+  async put<T = unknown>(url: string, payload?: unknown, configOverrides?: Partial<AxiosRequestConfig>): Promise<ApiResponse<T>> {
+    return this.request<T>('PUT', url, payload, configOverrides);
   }
 
   /**
@@ -145,8 +170,8 @@ class ApiService {
    * @param payload - Request payload
    * @returns Promise with API response data
    */
-  async patch<T = unknown>(url: string, payload?: unknown): Promise<ApiResponse<T>> {
-    return this.request<T>('PATCH', url, payload);
+  async patch<T = unknown>(url: string, payload?: unknown, configOverrides?: Partial<AxiosRequestConfig>): Promise<ApiResponse<T>> {
+    return this.request<T>('PATCH', url, payload, configOverrides);
   }
 
   /**
@@ -154,8 +179,8 @@ class ApiService {
    * @param url - API endpoint URL
    * @returns Promise with API response data
    */
-  async delete<T = unknown>(url: string): Promise<ApiResponse<T>> {
-    return this.request<T>('DELETE', url);
+  async delete<T = unknown>(url: string, configOverrides?: Partial<AxiosRequestConfig>): Promise<ApiResponse<T>> {
+    return this.request<T>('DELETE', url, undefined, configOverrides);
   }
 }
 

@@ -120,7 +120,9 @@ export interface TransactionRecord {
 
 class PaymentService {
   initiate(payload: PaymentRequest): Promise<ApiResponse<PaymentResponseData>> {
-    return apiService.post<PaymentResponseData>("/phonepe/initiate", payload);
+    // Payment initiate performs stock locking, order creation, orderlines insertion,
+    // and promotion redemptions. Give it a resilient 120-second timeout.
+    return apiService.post<PaymentResponseData>("/phonepe/initiate", payload, { timeout: 120000 });
   }
 
   getStatus(merchantTransactionId: string): Promise<ApiResponse<PaymentResponseData>> {
