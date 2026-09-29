@@ -44,7 +44,17 @@ export interface PaymentResponseData {
   success?: boolean;
   orderId?: string;
   paymentMode?: string;
-  mode?: string;
+  mode?: "phonepe" | "wallet" | "promotion" | string;
+  wallet_discount_amount?: number;
+  pricing?: {
+    merchandise_subtotal: number;
+    merchandise_discount: number;
+    merchandise_payable: number;
+    shipping_amount: number;
+    shipping_discount: number;
+    shipping_payable: number;
+    payable_before_wallet: number;
+  };
   message?: string;
   orderCreation?: {
     status?: "success" | "already_exists" | "failed" | string;
@@ -72,6 +82,10 @@ export interface PaymentResponseData {
       redirectUrl?: string;
     } | null;
     wallet?: {
+      action?: "order_complete" | string;
+      instructions?: string;
+    } | null;
+    internal?: {
       action?: "order_complete" | string;
       instructions?: string;
     } | null;
@@ -106,7 +120,9 @@ export interface TransactionRecord {
 
 class PaymentService {
   initiate(payload: PaymentRequest): Promise<ApiResponse<PaymentResponseData>> {
-    return apiService.post<PaymentResponseData>("/phonepe/initiate", payload);
+    // Payment initiate performs stock locking, order creation, orderlines insertion,
+    // and promotion redemptions. Give it a resilient 120-second timeout.
+    return apiService.post<PaymentResponseData>("/phonepe/initiate", payload, { timeout: 120000 });
   }
 
   getStatus(merchantTransactionId: string): Promise<ApiResponse<PaymentResponseData>> {
