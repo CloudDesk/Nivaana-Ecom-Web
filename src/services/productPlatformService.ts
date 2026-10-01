@@ -8,6 +8,8 @@ interface ProductPicklistItem {
     controlledvalue: string | null;
     parent: string | null;
     sortorder: number | null;
+    imageUrl?: string | null;
+    thumbnailUrl?: string | null;
 }
 
 type ProductTaxonomyField = 'category' | 'subcategory' | 'subsubcategory';
@@ -114,6 +116,8 @@ export class PlatformProductService {
                 id: item.value,
                 label: item.label,
                 count: counted?.count ?? 0,
+                imageUrl: counted?.imageUrl ?? item.imageUrl ?? null,
+                thumbnailUrl: counted?.thumbnailUrl ?? item.thumbnailUrl ?? null,
                 sortOrder: item.sortorder,
                 subcategories: [],
             });
@@ -131,6 +135,8 @@ export class PlatformProductService {
                 id: item.value,
                 label: item.label,
                 count: counted?.count ?? 0,
+                imageUrl: counted?.imageUrl ?? item.imageUrl ?? null,
+                thumbnailUrl: counted?.thumbnailUrl ?? item.thumbnailUrl ?? null,
                 sortOrder: item.sortorder,
                 subsubcategories: [],
             });

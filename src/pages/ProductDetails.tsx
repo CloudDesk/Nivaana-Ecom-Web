@@ -264,8 +264,8 @@ const ProductDetails: React.FC = () => {
   );
   const categoryNavTopItems = useMemo(() => buildTopCategoryItems(categoryTree), [categoryTree]);
   const categoryNavChildItems = useMemo(
-    () => buildChildCategoryItems(categoryNavProducts, categoryTree, activeCategoryKey),
-    [activeCategoryKey, categoryNavProducts, categoryTree]
+    () => buildChildCategoryItems(categoryTree, activeCategoryKey),
+    [activeCategoryKey, categoryTree]
   );
   const activeCategoryChildKey = useMemo(
     () =>

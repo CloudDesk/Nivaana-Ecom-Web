@@ -226,8 +226,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const topCategoryItems = useMemo(() => buildTopCategoryItems(categoryTree), [categoryTree]);
 
   const childCategoryItems = useMemo(
-    () => buildChildCategoryItems(products, categoryTree, resolvedCategory),
-    [categoryTree, products, resolvedCategory]
+    () => buildChildCategoryItems(categoryTree, resolvedCategory),
+    [categoryTree, resolvedCategory]
   );
 
   const nestedCategoryItems = useMemo(
@@ -312,13 +312,6 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       .filter((item): item is Product => Boolean(item))
       .slice(0, 10);
   }, [products, recentlyViewedIds]);
-
-  const showAllProducts = () => {
-    const nextParams = new URLSearchParams();
-    if (priceRange) nextParams.set("price", priceRange);
-    if (sortParam && isProductSort(sortParam)) nextParams.set("sort", sortParam);
-    setSearchParams(nextParams);
-  };
 
   const selectTopCategory = (item: CategoryNavTopItem) => {
     const nextParams = new URLSearchParams();
@@ -425,15 +418,6 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
               onPriceRangeChange={(value) => updateProductFilter("price", value)}
               onClear={clearProductFilters}
             />
-            {(category || subcategory || subsubcategory || collection || search) && (
-              <button
-                type="button"
-                onClick={showAllProducts}
-                className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-4 text-sm font-semibold text-[var(--color-text)] transition hover:border-primary-gold"
-              >
-                All products
-              </button>
-            )}
           </div>
         </div>
         {/* Products Grid */}
