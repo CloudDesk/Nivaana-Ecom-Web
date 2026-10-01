@@ -12,6 +12,13 @@ interface ProductPicklistItem {
 
 type ProductTaxonomyField = 'category' | 'subcategory' | 'subsubcategory';
 
+export interface PlatformProductFilters {
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: 'price' | 'createddate' | 'averagerating' | 'name';
+    sortOrder?: 'asc' | 'desc';
+}
+
 const getActiveProductPicklists = async (
     fieldname: ProductTaxonomyField
 ): Promise<ProductPicklistItem[]> => {
@@ -55,12 +62,20 @@ export class PlatformProductService {
      * @param limit - Items per page (optional)
      * @returns Promise with products data
      */
-    async getProducts(page?: number, limit?: number): Promise<ApiResponse<Product[]>> {
+    async getProducts(
+        page?: number,
+        limit?: number,
+        filters: PlatformProductFilters = {}
+    ): Promise<ApiResponse<Product[]>> {
         let url = '/products/platform/nivapp';
         const params = new URLSearchParams();
 
         if (page) params.append('page', page.toString());
         if (limit) params.append('limit', limit.toString());
+        if (filters.minPrice !== undefined) params.append('minPrice', filters.minPrice.toString());
+        if (filters.maxPrice !== undefined) params.append('maxPrice', filters.maxPrice.toString());
+        if (filters.sortBy) params.append('sortBy', filters.sortBy);
+        if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
         if (params.toString()) {
             url += `?${params.toString()}`;
