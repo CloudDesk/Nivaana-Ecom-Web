@@ -295,7 +295,7 @@ const Cart: React.FC = () => {
   const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id, cartSignature] as const;
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
-    queryFn: () => promotionService.quoteV2({
+    queryFn: () => promotionService.calculatePromotions({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
@@ -781,7 +781,7 @@ const Cart: React.FC = () => {
       // Asking V2 first is safe for legacy promotions: if no published rule
       // mentions this ID, the request falls through to the legacy evaluator.
       try {
-        const v2Response = await promotionService.quoteV2({
+        const v2Response = await promotionService.calculatePromotions({
           cartItems: promotionRows.map((row) => ({
             cart_record_id: String(row.cartRecordId ?? row.productid),
             product_id: String(row.productid),
@@ -970,7 +970,7 @@ const Cart: React.FC = () => {
         selectedPromotion?.engine === "v2" &&
         selectedCartPromotionIds(selectedPromotion).includes(promotionIdToRemove)
       ) {
-        const response = await promotionService.removeSelectionV2(
+        const response = await promotionService.removePromotionFromEvaluation(
           selectedPromotion.evaluationId,
           promotionIdToRemove,
         );
@@ -1216,7 +1216,7 @@ const Cart: React.FC = () => {
         // A zero-benefit quote is useful for displaying the standard total but
         // does not need to be validated or attached to the eventual order.
         if (!hasV2AppliedBenefit) return null;
-        const response = await promotionService.validateV2(promotionsV2Quote.evaluation_id);
+        const response = await promotionService.validatePromotionEvaluation(promotionsV2Quote.evaluation_id);
         return { isValid: true, evaluationId: response.data.evaluation_id };
       }
       if (!backendEvaluation?.evaluation_id) return null;

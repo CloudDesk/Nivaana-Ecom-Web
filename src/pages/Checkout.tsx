@@ -385,7 +385,7 @@ const Checkout: React.FC = () => {
   const checkoutPromotionsV2QueryKey = ["cart-promotions-v2", userId, cartSignature] as const;
   const promotionsV2Query = useQuery({
     queryKey: checkoutPromotionsV2QueryKey,
-    queryFn: () => promotionService.quoteV2({
+    queryFn: () => promotionService.calculatePromotions({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
@@ -827,7 +827,7 @@ const Checkout: React.FC = () => {
         selectedId,
       ])];
       try {
-        const v2Response = await promotionService.quoteV2({
+        const v2Response = await promotionService.calculatePromotions({
           cartItems: promotionRows.map((row) => ({
             cart_record_id: String(row.cartRecordId ?? row.productid),
             product_id: String(row.productid),
@@ -1040,7 +1040,7 @@ const Checkout: React.FC = () => {
         selectedPromotion?.evaluationId &&
         selectedPromotionIds.includes(promotionIdToRemove)
       ) {
-        const response = await promotionService.removeSelectionV2(
+        const response = await promotionService.removePromotionFromEvaluation(
           selectedPromotion.evaluationId,
           promotionIdToRemove,
         );

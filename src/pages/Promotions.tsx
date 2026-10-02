@@ -171,7 +171,7 @@ const Promotions: React.FC = () => {
 
   const publicPromotionsQuery = useQuery({
     queryKey: ["my-promotions", userId],
-    queryFn: () => promotionService.mine("web"),
+    queryFn: () => promotionService.customerOffers("web"),
     enabled: Boolean(userId),
   });
 
