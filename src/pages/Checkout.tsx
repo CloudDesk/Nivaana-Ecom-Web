@@ -44,10 +44,12 @@ import {
   clearSelectedCartPromotion,
   getAppliedPromotionSummary,
   getPromotionCartTotals,
+  isRecoverablePromotionEvaluationError,
   isFreeShippingAppliedPromotion,
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   productUnitPrice,
+  promotionSelectionKey,
   readSelectedCartPromotion,
   saveSelectedCartPromotion,
   selectedCartPromotionIds,
@@ -139,6 +141,9 @@ const checkoutVoucherErrorMessage = (message?: string) => {
   if (normalized.includes("PROMOTION_PER_USER_LIMIT_REACHED")) return "You have already used this promotion.";
   if (normalized.includes("CHANNEL_NOT_ELIGIBLE")) return "This voucher cannot be used on the website.";
   if (normalized.includes("NOT ELIGIBLE FOR THIS CART")) return "This order does not currently meet this voucher's requirements.";
+  if (normalized.includes("CONFLICTED WITH BETTER OFFER") || normalized.includes("CONFLICTED_WITH_BETTER_OFFER")) {
+    return "Your current offers save more. This offer was not applied.";
+  }
   if (normalized.includes("ALREADY APPLIED")) return "This voucher is already applied to your order.";
   if (normalized.includes("ANOTHER_PROMOTION_ALREADY_APPLIED")) return "Remove the current offer before applying another.";
 
@@ -375,14 +380,21 @@ const Checkout: React.FC = () => {
   const cartSignature = useMemo(() => cartPromotionSignature(promotionRows), [promotionRows]);
   const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
   const selectedPromotionId = selectedPromotion?.promotionId ?? null;
-  const selectedPromotionIds = selectedCartPromotionIds(selectedPromotion);
+  const selectedPromotionIds = useMemo(
+    () => selectedCartPromotionIds(selectedPromotion),
+    [selectedPromotion],
+  );
   const selectedPromotionUsesV2 = Boolean(
     selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
   );
   // Share the cart quote cache across the route transition. Checkout still
   // refetches immediately (staleTime: 0), but the last cart quote remains a
   // display-only snapshot while the authoritative checkout quote is verified.
-  const checkoutPromotionsV2QueryKey = ["cart-promotions-v2", userId, cartSignature] as const;
+  const checkoutPromotionsV2QueryRoot = ["cart-promotions-v2", userId, cartSignature] as const;
+  const checkoutPromotionsV2QueryKey = [
+    ...checkoutPromotionsV2QueryRoot,
+    promotionSelectionKey(selectedPromotionUsesV2 ? selectedPromotionIds : []),
+  ] as const;
   const promotionsV2Query = useQuery({
     queryKey: checkoutPromotionsV2QueryKey,
     queryFn: () => promotionService.calculatePromotions({
@@ -821,6 +833,7 @@ const Checkout: React.FC = () => {
     .every((promotion) => promotion.stackable === true || promotion.is_stacked === true);
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
+      await queryClient.cancelQueries({ queryKey: checkoutPromotionsV2QueryRoot });
       const selectedId = promotionId(promotion);
       const requestedPromotionIds = [...new Set([
         ...(selectedPromotionUsesV2 ? selectedPromotionIds : []),
@@ -847,7 +860,7 @@ const Checkout: React.FC = () => {
           throw new Error(
             rejection
               ? rejection.reason_code.replaceAll("_", " ").toLowerCase()
-              : "A better incompatible offer is already applied to these items.",
+              : "Your current offers save more. This offer was not applied.",
           );
         }
         return { engine: "v2" as const, response: v2Response, requestedPromotionIds };
@@ -889,7 +902,10 @@ const Checkout: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
-        queryClient.setQueryData(checkoutPromotionsV2QueryKey, result.response);
+        queryClient.setQueryData(
+          [...checkoutPromotionsV2QueryRoot, promotionSelectionKey(result.requestedPromotionIds)],
+          result.response,
+        );
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -1035,17 +1051,40 @@ const Checkout: React.FC = () => {
 
   const removePromotionMutation = useMutation({
     mutationFn: async (promotionIdToRemove: number) => {
+      await queryClient.cancelQueries({ queryKey: checkoutPromotionsV2QueryRoot });
       if (
         selectedPromotionUsesV2 &&
         selectedPromotion?.evaluationId &&
         selectedPromotionIds.includes(promotionIdToRemove)
       ) {
-        const response = await promotionService.removePromotionFromEvaluation(
-          selectedPromotion.evaluationId,
-          promotionIdToRemove,
-        );
-        queryClient.setQueryData(checkoutPromotionsV2QueryKey, response);
-        return { engine: "v2" as const, response };
+        try {
+          const response = await promotionService.removePromotionFromEvaluation(
+            selectedPromotion.evaluationId,
+            promotionIdToRemove,
+          );
+          return { engine: "v2" as const, response };
+        } catch (error) {
+          if (!isRecoverablePromotionEvaluationError(error)) throw error;
+
+          const refreshed = await promotionService.calculatePromotions({
+            cartItems: promotionRows.map((row) => ({
+              cart_record_id: String(row.cartRecordId ?? row.productid),
+              product_id: String(row.productid),
+              quantity: row.quantity,
+            })),
+            shippingAmount: cartTotals.shipping,
+            channel: "web",
+            selectedPromotionIds,
+          });
+          if (!refreshed.data.applied_promotions.some((item) => item.promotion_id === promotionIdToRemove)) {
+            return { engine: "v2" as const, response: refreshed };
+          }
+          const response = await promotionService.removePromotionFromEvaluation(
+            refreshed.data.evaluation_id,
+            promotionIdToRemove,
+          );
+          return { engine: "v2" as const, response };
+        }
       }
       if (!backendEvaluation?.evaluation_id) return;
       await promotionService.removeEvaluation(backendEvaluation.evaluation_id, promotionIdToRemove);
@@ -1057,6 +1096,10 @@ const Checkout: React.FC = () => {
         const quote = result.response.data;
         const remainingPromotionIds = selectedCartPromotionIds(selectedPromotion).filter(
           (id) => id !== removedPromotionId && quote.applied_promotions.some((item) => item.promotion_id === id)
+        );
+        queryClient.setQueryData(
+          [...checkoutPromotionsV2QueryRoot, promotionSelectionKey(remainingPromotionIds)],
+          result.response,
         );
         if (remainingPromotionIds.length > 0) {
           const primaryId = remainingPromotionIds.at(-1)!;
@@ -1270,6 +1313,38 @@ const Checkout: React.FC = () => {
     manualAppliedPromotion,
     promotionDiscount,
     selectedPromotion,
+    selectedPromotionUsesV2,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !userId ||
+      !selectedPromotionUsesV2 ||
+      !selectedPromotion ||
+      selectedPromotionIds.length === 0 ||
+      !promotionsV2Quote
+    ) return;
+
+    const appliedIds = new Set(promotionsV2Quote.applied_promotions.map((promotion) => promotion.promotion_id));
+    if (!selectedPromotionIds.every((id) => appliedIds.has(id))) return;
+    if (
+      selectedPromotion.evaluationId === promotionsV2Quote.evaluation_id &&
+      selectedPromotion.expiresAt === promotionsV2Quote.expires_at
+    ) return;
+
+    const refreshedPromotion: SelectedCartPromotion = {
+      ...selectedPromotion,
+      evaluationId: promotionsV2Quote.evaluation_id,
+      expiresAt: promotionsV2Quote.expires_at,
+      savedAt: Date.now(),
+    };
+    saveSelectedCartPromotion(refreshedPromotion);
+    setSelectedPromotion(refreshedPromotion);
+  }, [
+    promotionsV2Quote,
+    selectedPromotion,
+    selectedPromotionIds,
     selectedPromotionUsesV2,
     userId,
   ]);

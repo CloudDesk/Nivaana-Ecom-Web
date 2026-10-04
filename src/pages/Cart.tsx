@@ -36,11 +36,13 @@ import {
   clearSelectedCartPromotion,
   getAppliedPromotionSummary,
   getPromotionCartTotals,
+  isRecoverablePromotionEvaluationError,
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   isFreeShippingAppliedPromotion,
   productUnitPrice,
   readSelectedCartPromotion,
+  promotionSelectionKey,
   saveSelectedCartPromotion,
   selectedCartPromotionIds,
   type SelectedCartPromotion,
@@ -88,7 +90,7 @@ const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) 
     MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
     MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
     GIFT_OUT_OF_STOCK: 'This promotional gift is currently unavailable.',
-    CONFLICTED_WITH_BETTER_OFFER: 'A better offer is already applied to these items.',
+    CONFLICTED_WITH_BETTER_OFFER: 'Your current offers save more. This offer was not applied.',
     CUSTOMER_NOT_ELIGIBLE: 'This offer is not available for this account.',
     CHANNEL_NOT_ELIGIBLE: 'This offer is not available on this shopping channel.',
     USAGE_LIMIT_REACHED: 'This offer has already been used.',
@@ -288,11 +290,18 @@ const Cart: React.FC = () => {
   const promotionEvaluationItems = useMemo(() => buildPromotionEvaluationCartItems(promotionRows), [promotionRows]);
   const cartSignature = useMemo(() => cartPromotionSignature(promotionRows), [promotionRows]);
   const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
-  const selectedV2PromotionIds =
-    selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
-      ? selectedCartPromotionIds(selectedPromotion)
-      : [];
-  const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id, cartSignature] as const;
+  const selectedV2PromotionIds = useMemo(
+    () =>
+      selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
+        ? selectedCartPromotionIds(selectedPromotion)
+        : [],
+    [cartSignature, selectedPromotion],
+  );
+  const promotionsV2QueryRoot = ["cart-promotions-v2", session?.user.id, cartSignature] as const;
+  const promotionsV2QueryKey = [
+    ...promotionsV2QueryRoot,
+    promotionSelectionKey(selectedV2PromotionIds),
+  ] as const;
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
     queryFn: () => promotionService.calculatePromotions({
@@ -768,8 +777,41 @@ const Cart: React.FC = () => {
     }
   }, [cartSignature, selectedPromotion, session?.user.id]);
 
+  useEffect(() => {
+    if (
+      !session?.user.id ||
+      selectedPromotion?.engine !== "v2" ||
+      selectedPromotion.cartSignature !== cartSignature ||
+      selectedV2PromotionIds.length === 0 ||
+      !promotionsV2Quote
+    ) return;
+
+    const appliedIds = new Set(promotionsV2Quote.applied_promotions.map((promotion) => promotion.promotion_id));
+    if (!selectedV2PromotionIds.every((id) => appliedIds.has(id))) return;
+    if (
+      selectedPromotion.evaluationId === promotionsV2Quote.evaluation_id &&
+      selectedPromotion.expiresAt === promotionsV2Quote.expires_at
+    ) return;
+
+    const refreshedPromotion: SelectedCartPromotion = {
+      ...selectedPromotion,
+      evaluationId: promotionsV2Quote.evaluation_id,
+      expiresAt: promotionsV2Quote.expires_at,
+      savedAt: Date.now(),
+    };
+    saveSelectedCartPromotion(refreshedPromotion);
+    setSelectedPromotion(refreshedPromotion);
+  }, [
+    cartSignature,
+    promotionsV2Quote,
+    selectedPromotion,
+    selectedV2PromotionIds,
+    session?.user.id,
+  ]);
+
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
+      await queryClient.cancelQueries({ queryKey: promotionsV2QueryRoot });
       const selectedId = promotionId(promotion);
       const requestedPromotionIds = [...new Set([
         ...(selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
@@ -849,7 +891,10 @@ const Cart: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
-        queryClient.setQueryData(promotionsV2QueryKey, result.response);
+        queryClient.setQueryData(
+          [...promotionsV2QueryRoot, promotionSelectionKey(result.requestedPromotionIds)],
+          result.response,
+        );
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -966,16 +1011,43 @@ const Cart: React.FC = () => {
     mutationFn: async (promotionIdToRemove: number) => {
       if (!session?.user.id || promotionIdToRemove <= 0) return { localOnly: true };
 
+      await queryClient.cancelQueries({ queryKey: promotionsV2QueryRoot });
+
       if (
         selectedPromotion?.engine === "v2" &&
         selectedCartPromotionIds(selectedPromotion).includes(promotionIdToRemove)
       ) {
-        const response = await promotionService.removePromotionFromEvaluation(
-          selectedPromotion.evaluationId,
-          promotionIdToRemove,
-        );
-        queryClient.setQueryData(promotionsV2QueryKey, response);
-        return { localOnly: false, engine: "v2" as const, response };
+        const selectedIds = selectedCartPromotionIds(selectedPromotion);
+        try {
+          const response = await promotionService.removePromotionFromEvaluation(
+            selectedPromotion.evaluationId,
+            promotionIdToRemove,
+          );
+          return { localOnly: false, engine: "v2" as const, response };
+        } catch (error) {
+          if (!isRecoverablePromotionEvaluationError(error)) throw error;
+
+          // Refresh an expired/stale evaluation once, then retry the requested
+          // removal against the newly issued evaluation ID.
+          const refreshed = await promotionService.calculatePromotions({
+            cartItems: promotionRows.map((row) => ({
+              cart_record_id: String(row.cartRecordId ?? row.productid),
+              product_id: String(row.productid),
+              quantity: row.quantity,
+            })),
+            shippingAmount: cartTotals.shipping,
+            channel: "web",
+            selectedPromotionIds: selectedIds,
+          });
+          if (!refreshed.data.applied_promotions.some((item) => item.promotion_id === promotionIdToRemove)) {
+            return { localOnly: false, engine: "v2" as const, response: refreshed };
+          }
+          const response = await promotionService.removePromotionFromEvaluation(
+            refreshed.data.evaluation_id,
+            promotionIdToRemove,
+          );
+          return { localOnly: false, engine: "v2" as const, response };
+        }
       }
 
       const backendContainsPromotion = Boolean(
@@ -1019,6 +1091,10 @@ const Cart: React.FC = () => {
         const quote = result.response.data;
         const remainingPromotionIds = selectedCartPromotionIds(selectedPromotion).filter(
           (id) => id !== removedPromotionId && quote.applied_promotions.some((item) => item.promotion_id === id)
+        );
+        queryClient.setQueryData(
+          [...promotionsV2QueryRoot, promotionSelectionKey(remainingPromotionIds)],
+          result.response,
         );
         if (remainingPromotionIds.length > 0) {
           const primaryId = remainingPromotionIds.at(-1)!;
@@ -1478,7 +1554,10 @@ const Cart: React.FC = () => {
                       highlight={shippingSavings > 0}
                     />
                     {promotionDiscount > 0 && (
-                      <SummaryLine label={!session ? "Promotion*" : "Promotion"} value={`-${formatCurrency(promotionDiscount)}`} />
+                      <SummaryLine
+                        label={!session ? "Automatic promotion" : "Promotion"}
+                        value={`-${formatCurrency(promotionDiscount)}${!session ? "*" : ""}`}
+                      />
                     )}
                     {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
                     <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
@@ -1563,11 +1642,15 @@ const Cart: React.FC = () => {
                 </div>
               )}
               {!session && promotionRows.length > 0 && (
-                <p className="mt-5 border-t border-[var(--color-border)] pt-4 text-xs leading-5 text-[var(--color-muted)]">
-                  {totalPromotionSavings > 0
-                    ? "* Estimated offer based on your cart. Sign in to confirm eligibility, availability and the final total."
-                    : "Sign in to check offers available for your cart. Eligibility and availability are confirmed at checkout."}
-                </p>
+                <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+                  <p className="text-sm font-bold text-[var(--color-text)]">Get your best available offer</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                    Sign in to view personalised offers and apply the one that saves you the most.
+                  </p>
+                  <p className="mt-3 text-[11px] leading-4 text-[var(--color-muted)]">
+                    * Estimated savings based on your cart. Final offers depend on eligibility and availability after sign-in.
+                  </p>
+                </div>
               )}
               {session ? (
                 <Button
