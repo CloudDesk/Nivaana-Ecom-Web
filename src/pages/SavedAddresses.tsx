@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Home, MapPin, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { addressService, type Address, type AddressPayload } from "../services/addressService";
 import { sessionService } from "../services/sessionService";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -11,6 +10,8 @@ import { AddressFormModal } from "../components/AddressFormModal";
 import { AddressForm } from "../components/AddressForm";
 import { toast } from "../components/toastApi";
 import { INVALID_MOBILE_MESSAGE, isValidIndianMobile } from "../lib/phone";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 
 const emptyAddressForm = (userId: number, mobileNumber: number, customerName = ""): AddressPayload => ({
@@ -174,7 +175,7 @@ const SavedAddresses: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login to manage addresses</h1>
@@ -187,14 +188,13 @@ const SavedAddresses: React.FC = () => {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-5xl">
-        <AccountBreadcrumb currentPage="Saved Addresses" />
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--color-text)]">Saved Addresses</h1>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">Add, edit, and delete your delivery addresses.</p>
-          </div>
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader
+          currentPage="Saved Addresses"
+          title="Saved Addresses"
+          subtitle="Add, edit, and delete your delivery addresses."
+          action={
           <Button
             className="gap-2"
             onClick={() => {
@@ -205,7 +205,8 @@ const SavedAddresses: React.FC = () => {
             <Plus className="h-4 w-4" />
             Add Address
           </Button>
-        </div>
+          }
+        />
 
 
         <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">

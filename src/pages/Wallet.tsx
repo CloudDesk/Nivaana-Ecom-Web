@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, CheckCircle2, Gift, History, LockKeyhole, ShieldCheck, Ticket, WalletCards, X } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, CheckCircle2, Gift, History, LockKeyhole, ShieldCheck, Ticket, X } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { toast } from "../components/toastApi";
 import { couponWalletService, type CouponPreview, type CustomerWallet, type WalletActivityResponse, type WalletCoupon } from "../services/couponWalletService";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 const formatCurrency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
 
@@ -152,13 +153,9 @@ export default function Wallet() {
   };
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-5xl">
-        <AccountBreadcrumb currentPage="My Wallet" />
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-[var(--color-primary)]/25 text-[var(--color-secondary)]"><WalletCards className="h-6 w-6" /></span>
-          <div><h1 className="text-3xl font-bold text-[var(--color-text)]">My Wallet</h1><p className="mt-1 text-sm text-[var(--color-muted)]">Add personalized Nivaana coupons and use the credit on eligible orders.</p></div>
-        </div>
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader currentPage="My Wallet" title="My Wallet" subtitle="Add personalized Nivaana coupons and use the credit on eligible orders." />
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1.35fr]">
           <div className="space-y-6">

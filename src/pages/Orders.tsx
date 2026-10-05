@@ -26,7 +26,6 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { cn } from "../lib/utils";
 import {
@@ -41,6 +40,8 @@ import {
   type TrackingDetails,
 } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 import {
   returnSourceService,
   type AllowedReturnReason,
@@ -650,7 +651,7 @@ const Orders: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login to view orders</h1>
@@ -672,18 +673,12 @@ const Orders: React.FC = () => {
           onSubmit={handleRequestSubmit}
         />
       )}
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
-      <section className="mx-auto max-w-5xl">
-        <div className="mb-8">
-          <AccountBreadcrumb currentPage="Orders" />
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--color-text)]">Orders</h1>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">Manage order history, tracking, and purchased items.</p>
-          </div>
-        </div>
+      <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader currentPage="Orders" title="Orders" subtitle="Manage order history, tracking, and purchased items." />
 
         {(summaryData?.total_orders ?? 0) > 0 && (
-          <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
             <SummaryStat label="Total orders" value={String(orderSummary.total)} />
             <SummaryStat label="Total spent" value={formatCurrency(orderSummary.totalSpent)} />
             <SummaryStat label="Active" value={String(orderSummary.active)} />
@@ -691,7 +686,7 @@ const Orders: React.FC = () => {
           </div>
         )}
 
-        <section>
+        <section className="mt-8">
           {statusMessage && (
             <div className="mb-5 rounded-[var(--radius-sm)] border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
               {statusMessage}

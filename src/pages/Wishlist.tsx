@@ -15,6 +15,8 @@ import { getProductDisplayName } from "../lib/productDisplay";
 import { isOutOfStock } from "../lib/stock";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
 import { RichTextContent } from "../components/RichTextContent";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 const imageFor = (product?: { medium: string[] | null; small: string[] | null; large: string[] | null }) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
@@ -125,14 +127,15 @@ const Wishlist: React.FC = () => {
   }));
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-6xl">
-        <h1 className="text-3xl font-bold text-[var(--color-text)]">Wishlist</h1>
-        <p className="mt-2 text-sm text-[var(--color-muted)]">
-          {items.length} saved items{session ? "" : " as guest"}
-        </p>
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader
+          currentPage="Wishlist"
+          title="Wishlist"
+          subtitle={`${items.length} saved ${items.length === 1 ? "item" : "items"}${session ? "" : " as guest"}`}
+        />
         {!session && items.length > 0 && (
-          <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
+          <div className="mt-8 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
             Login to move these saved products into your account wishlist.
             <Link to="/login?redirect=/wishlist" className="ml-2 font-bold text-[var(--color-secondary)]">Login</Link>
           </div>
