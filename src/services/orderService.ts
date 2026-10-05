@@ -161,6 +161,14 @@ export interface TrackingDetails {
   [key: string]: unknown;
 }
 
+export interface OrderHistorySummary {
+  total_orders: number;
+  active_orders: number;
+  cancelled_orders: number;
+  /** Paid amount on non-cancelled orders minus completed return refunds (rupees). */
+  total_spent: number;
+}
+
 class OrderService {
   list(userId: number): Promise<ApiResponse<OrderSummary[]>> {
     return apiService.get<OrderSummary[]>(`/orders?userid=${userId}`);
@@ -170,8 +178,14 @@ class OrderService {
     return apiService.get<OrderDetails>(`/orders/${orderId}/details`);
   }
 
-  listUserDetails(userId: number): Promise<ApiResponse<OrderDetails[]>> {
-    return apiService.get<OrderDetails[]>(`/orders/user/${userId}/details`);
+  /** One page of the customer's order history (newest first). */
+  listUserDetails(userId: number, page = 1, limit = 10): Promise<ApiResponse<OrderDetails[]>> {
+    return apiService.get<OrderDetails[]>(`/orders/user/${userId}/details?page=${page}&limit=${limit}`);
+  }
+
+  /** Totals across the customer's whole order history (not just loaded pages). */
+  summary(userId: number): Promise<ApiResponse<OrderHistorySummary>> {
+    return apiService.get<OrderHistorySummary>(`/orders/user/${userId}/summary`);
   }
 
   track(orderId: number | string): Promise<ApiResponse<TrackingDetails>> {
