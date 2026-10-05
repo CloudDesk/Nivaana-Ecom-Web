@@ -53,8 +53,10 @@ import {
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   offerCombinationNote,
+  offerNoticeClassName,
   offerPendingLabel,
   preserveAppliedStacking,
+  promotionDiscountLabel,
   productUnitPrice,
   PromotionOfferMessageError,
   promotionSelectionKey,
@@ -62,6 +64,7 @@ import {
   resolveAppliedStackable,
   saveSelectedCartPromotion,
   selectedCartPromotionIds,
+  type OfferNotice,
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
@@ -256,6 +259,9 @@ const Checkout: React.FC = () => {
   const [voucherCode, setVoucherCode] = useState("");
   const [appliedDirectCouponCode, setAppliedDirectCouponCode] = useState<string | null>(null);
   const [offerActionError, setOfferActionError] = useState("");
+  // Offer apply/remove feedback lives on the offer's own card inside the pop-up;
+  // offerActionError is kept for the coupon-code box only.
+  const [offerNotice, setOfferNotice] = useState<OfferNotice | null>(null);
   const [offersModalOpen, setOffersModalOpen] = useState(false);
   const [alreadyUsedPromotionIds, setAlreadyUsedPromotionIds] = useState<Set<number>>(
     () => new Set()
@@ -267,6 +273,11 @@ const Checkout: React.FC = () => {
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(user?.id)
   );
+
+  useEffect(() => {
+    // Closing the offers pop-up (X, Escape or backdrop) resets its feedback.
+    if (!offersModalOpen) setOfferNotice(null);
+  }, [offersModalOpen]);
 
   useEffect(() => {
     if (!offersModalOpen) return;
@@ -774,11 +785,8 @@ const Checkout: React.FC = () => {
   const activeEvaluationId = useV2PromotionResult && promotionsV2Quote
     ? (hasV2AppliedBenefit ? promotionsV2Quote.evaluation_id : undefined)
     : backendEvaluation?.evaluation_id || (promotionEvaluationQuery.isError ? undefined : promotionEvaluation?.evaluation_id || selectedPromotion?.evaluationId);
-  const promotionLabel =
-    promotionSummary.normalPromotions[0]?.promotion_name ||
-    manualAppliedPromotion?.promotion_name ||
-    selectedPromotion?.promotionName ||
-    "Promotion";
+  // Generic label: several offers can make up this discount.
+  const promotionLabel = promotionDiscountLabel(appliedPromotionsForTotals);
   const hasPromotionDiscount = promotionDiscount > 0 || v2GiftAdjustments.length > 0 || promotionSummary.normalPromotions.length > 0 || Boolean(manualAppliedPromotion);
   const appliedPromotionIds = new Set(
     appliedPromotionsForTotals.map(appliedPromotionId).filter((id) => id > 0)
@@ -832,14 +840,6 @@ const Checkout: React.FC = () => {
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => appliedPromotionIds.has(promotionId(promotion)),
   );
-  const summaryPromotions = [
-    // Applied benefits are part of the payable quote and must never be hidden
-    // merely because the compact preview normally shows two offer cards.
-    ...appliedSummaryPromotions,
-    ...eligiblePromotionCandidates
-      .filter((promotion) => !appliedPromotionIds.has(promotionId(promotion)))
-      .slice(0, Math.max(0, 2 - appliedSummaryPromotions.length)),
-  ];
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
       const previousApplied = promotionsV2Quote?.applied_promotions ?? [];
@@ -866,7 +866,6 @@ const Checkout: React.FC = () => {
         if (!applied) {
           throw new PromotionOfferMessageError(
             describeOfferNotApplied(
-              promotion.name,
               selectedId,
               v2Response.data,
               Math.round(Number(promotion.applied_discount || promotion.discountInfo?.discountAmount || 0) * 100),
@@ -906,7 +905,7 @@ const Checkout: React.FC = () => {
       });
       return { engine: "legacy" as const, response };
     },
-    onMutate: () => setOfferActionError(""),
+    onMutate: () => setOfferNotice(null),
     onSuccess: async (result, promotion) => {
       if (!userId) return;
 
@@ -1015,13 +1014,11 @@ const Checkout: React.FC = () => {
       }
 
       if (error instanceof PromotionOfferMessageError) {
-        setOfferActionError(message);
+        setOfferNotice({ promotionId: promotionId(promotion), message, tone: "info" });
         return;
       }
 
-      setOfferActionError(
-        checkoutVoucherErrorMessage(message)
-      );
+      setOfferNotice({ promotionId: promotionId(promotion), message: checkoutVoucherErrorMessage(message), tone: "error" });
     },
   });
 
@@ -1106,7 +1103,7 @@ const Checkout: React.FC = () => {
       await promotionService.removeEvaluation(backendEvaluation.evaluation_id, promotionIdToRemove);
       return { engine: "legacy" as const };
     },
-    onMutate: () => setOfferActionError(""),
+    onMutate: () => setOfferNotice(null),
     onSuccess: async (result, removedPromotionId) => {
       if (result?.engine === "v2" && selectedPromotion) {
         const quote = result.response.data;
@@ -1168,12 +1165,14 @@ const Checkout: React.FC = () => {
       setStatusMessage("Offer removed from your order.");
       setErrorMessage("");
     },
-    onError: (error) => {
-      setOfferActionError(
-        checkoutVoucherErrorMessage(
+    onError: (error, promotionIdToRemove) => {
+      setOfferNotice({
+        promotionId: promotionIdToRemove,
+        message: checkoutVoucherErrorMessage(
           error instanceof Error ? error.message : "Could not remove this offer."
-        )
-      );
+        ),
+        tone: "error",
+      });
     },
   });
 
@@ -1218,7 +1217,15 @@ const Checkout: React.FC = () => {
     const busyButtonClass = action.busy && !pendingLabel ? "cursor-wait" : "";
 
     return (
-      <div key={id} className={`rounded-xl border border-[#dce3ec] p-3 ${isAlreadyUsed ? "bg-[#f5f7fa]" : "bg-white"}`}>
+      <div
+        key={id}
+        className={`rounded-xl border p-3 ${isApplied
+            ? "border-emerald-200 bg-emerald-50/60"
+            : isAlreadyUsed
+              ? "border-[#dce3ec] bg-[#f5f7fa]"
+              : "border-[#dce3ec] bg-white"
+          }`}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-extrabold leading-5 text-[#172033]">{promotion.name}</p>
@@ -1250,25 +1257,28 @@ const Checkout: React.FC = () => {
               Already Used
             </button>
           ) : action.kind === "remove" || action.kind === "applied" ? (
-            action.kind === "remove" ? (
-              <button
-                type="button"
-                disabled={action.disabled}
-                aria-disabled={action.busy}
-                aria-busy={Boolean(pendingLabel)}
-                onClick={() => {
-                  if (!action.busy) removePromotionMutation.mutate(id);
-                }}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-2 text-[11px] font-extrabold text-emerald-700 disabled:opacity-50 ${busyButtonClass}`}
-              >
-                {pendingLabel && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {pendingLabel ?? "Remove"}
-              </button>
-            ) : (
-              <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1.5 text-[10px] font-extrabold text-emerald-700">
+            // Applied offers read as applied; removing is a quiet secondary action.
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1.5 text-[10px] font-extrabold text-emerald-700">
+                <CheckCircle2 className="h-3 w-3" />
                 Applied
               </span>
-            )
+              {action.kind === "remove" && (
+                <button
+                  type="button"
+                  disabled={action.disabled}
+                  aria-disabled={action.busy}
+                  aria-busy={Boolean(pendingLabel)}
+                  onClick={() => {
+                    if (!action.busy) removePromotionMutation.mutate(id);
+                  }}
+                  className={`inline-flex items-center gap-1 bg-transparent px-1 py-0.5 text-[11px] font-semibold text-[#68748a] underline-offset-2 hover:text-[#172033] hover:underline disabled:opacity-50 ${busyButtonClass}`}
+                >
+                  {pendingLabel && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {pendingLabel ?? "Remove"}
+                </button>
+              )}
+            </div>
           ) : action.kind === "automatic" ? (
             <span className="shrink-0 rounded-full bg-[#fff2bd] px-2.5 py-1.5 text-[10px] font-extrabold text-[#856000]">
               Automatic
@@ -1293,6 +1303,14 @@ const Checkout: React.FC = () => {
             </button>
           )}
         </div>
+        {offerNotice?.promotionId === id && (
+          <p
+            className={`mt-3 rounded-lg border px-3 py-2 text-[11px] font-semibold leading-4 ${offerNoticeClassName(offerNotice.tone)}`}
+            role={offerNotice.tone === "error" ? "alert" : "status"}
+          >
+            {offerNotice.message}
+          </p>
+        )}
       </div>
     );
   };
@@ -2004,7 +2022,12 @@ const Checkout: React.FC = () => {
                 <SummaryLine label="Coupon" value={`-${formatCurrency(directCouponDiscount)}`} />
               )}
               {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
-              <SummaryLine label="Shipping" value={shipping === 0 ? "Free" : formatCurrency(shipping)} />
+              <SummaryLine
+                label="Shipping"
+                value={shipping === 0 ? "Free" : formatCurrency(shipping)}
+                previousValue={shippingSavings > 0 ? formatCurrency(cartTotals.shipping) : undefined}
+                highlight={shippingSavings > 0}
+              />
               <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-semibold text-[var(--color-text)]">
                 <span>Total</span>
                 <span>{formatCurrency(finalCheckoutTotal)}</span>
@@ -2115,10 +2138,33 @@ const Checkout: React.FC = () => {
                   </p>
                 ) : eligiblePromotionCandidates.length > 0 ? (
                   <div className="mt-3 space-y-3">
-                    {summaryPromotions.map(renderCheckoutPromotionOffer)}
-                    {eligiblePromotionCandidates.length > 2 && (
-                      <button type="button" onClick={() => setOffersModalOpen(true)} className="w-full rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-center text-xs font-extrabold text-[#26344f] transition hover:border-[#fbbc05] hover:bg-[#fffaf0]">View all offers ({eligiblePromotionCandidates.length})</button>
+                    {appliedSummaryPromotions.length > 0 ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                        <p className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          {appliedSummaryPromotions.length} {appliedSummaryPromotions.length === 1 ? "offer" : "offers"} applied
+                          {promotionDiscount + shippingSavings > 0 && (
+                            <span className="font-semibold text-emerald-700">
+                              · You save {formatCurrency(promotionDiscount + shippingSavings)}
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-1 line-clamp-2 pl-[22px] text-[11px] leading-4 text-[#46536b]">
+                          {appliedSummaryPromotions.map((promotion) => promotion.name).join(" · ")}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#46536b]">
+                        {eligiblePromotionCandidates.length} {eligiblePromotionCandidates.length === 1 ? "offer is" : "offers are"} available for this order.
+                      </p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setOffersModalOpen(true)}
+                      className="w-full rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-center text-xs font-extrabold text-[#26344f] transition hover:border-[#fbbc05] hover:bg-[#fffaf0]"
+                    >
+                      {appliedSummaryPromotions.length > 0 ? "View / change offers" : "View offers"} ({eligiblePromotionCandidates.length})
+                    </button>
                   </div>
                 ) : (
                   <p className="mt-3 text-xs text-[var(--color-muted)]">
@@ -2167,7 +2213,6 @@ const Checkout: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#111827]/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={() => setOffersModalOpen(false)}>
           <section role="dialog" aria-modal="true" aria-labelledby="checkout-offers-title" className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b border-[#e5e9f0] px-5 py-4"><div><h2 id="checkout-offers-title" className="text-lg font-extrabold text-[#172033]">Offers</h2><p className="mt-1 text-xs text-[#68748a]">Apply or remove an offer for this order.</p>{(applyPromotionMutation.isPending || removePromotionMutation.isPending || isPromotionResolving) && <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[#9a6b00]" role="status"><Loader2 className="h-3 w-3 animate-spin" />Updating total...</p>}</div><button type="button" onClick={() => setOffersModalOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1f3f7] text-[#26344f] transition hover:bg-[#e3e7ee]" aria-label="Close eligible offers"><X className="h-5 w-5" /></button></header>
-            {offerActionError && <p className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-semibold text-red-700" role="alert">{offerActionError}</p>}
             <div className="overflow-y-auto px-5 py-4"><div className="space-y-2.5">{eligiblePromotionCandidates.map(renderCheckoutPromotionOffer)}</div></div>
           </section>
         </div>
@@ -2509,11 +2554,26 @@ function CheckoutStep({
   );
 }
 
-function SummaryLine({ label, value }: { label: string; value: string }) {
+function SummaryLine({
+  label,
+  value,
+  previousValue,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  previousValue?: string;
+  highlight?: boolean;
+}) {
   return (
     <div className="flex justify-between gap-4 text-[13px] text-[var(--color-muted)]">
       <span>{label}</span>
-      <span className="font-semibold text-[var(--color-text)]">{value}</span>
+      <span className={`font-semibold ${highlight ? "text-emerald-700" : "text-[var(--color-text)]"}`}>
+        {previousValue && (
+          <span className="mr-2 font-normal text-[var(--color-muted)] line-through">{previousValue}</span>
+        )}
+        {value}
+      </span>
     </div>
   );
 }

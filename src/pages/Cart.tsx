@@ -45,8 +45,10 @@ import {
   isFreeShippingPromotionEligible,
   isFreeShippingAppliedPromotion,
   offerCombinationNote,
+  offerNoticeClassName,
   offerPendingLabel,
   preserveAppliedStacking,
+  promotionDiscountLabel,
   productUnitPrice,
   PromotionOfferMessageError,
   readSelectedCartPromotion,
@@ -55,6 +57,7 @@ import {
   saveSelectedCartPromotion,
   selectedCartPromotionIds,
   type OfferActionState,
+  type OfferNotice,
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
@@ -102,6 +105,13 @@ const Cart: React.FC = () => {
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
   const [offersModalOpen, setOffersModalOpen] = useState(false);
   const [offerActionError, setOfferActionError] = useState<string | null>(null);
+  // "Not applied" feedback sits on the offer's own card, not in an error banner.
+  const [offerNotice, setOfferNotice] = useState<OfferNotice | null>(null);
+
+  useEffect(() => {
+    // Closing the offers pop-up resets its feedback.
+    if (!offersModalOpen) setOfferNotice(null);
+  }, [offersModalOpen]);
   const [alreadyUsedPromotionIds, setAlreadyUsedPromotionIds] = useState<Set<number>>(
     () => new Set()
   );
@@ -825,7 +835,6 @@ const Cart: React.FC = () => {
         if (!v2Applied) {
           throw new PromotionOfferMessageError(
             describeOfferNotApplied(
-              promotion.name,
               selectedId,
               v2Quote,
               Math.round(Number(promotion.applied_discount || promotion.discountInfo?.discountAmount || 0) * 100),
@@ -870,7 +879,10 @@ const Cart: React.FC = () => {
       });
       return { engine: "legacy" as const, response };
     },
-    onMutate: () => setOfferActionError(null),
+    onMutate: () => {
+      setOfferActionError(null);
+      setOfferNotice(null);
+    },
     onSuccess: async (result, promotion) => {
       if (!session?.user.id) return;
 
@@ -981,8 +993,7 @@ const Cart: React.FC = () => {
       }
 
       if (error instanceof PromotionOfferMessageError) {
-        setOfferActionError(message);
-        toast.warning(message);
+        setOfferNotice({ promotionId: promotionId(promotion), message, tone: "info" });
         return;
       }
 
@@ -1000,6 +1011,7 @@ const Cart: React.FC = () => {
   });
 
   const removePromotionMutation = useMutation({
+    onMutate: () => setOfferNotice(null),
     mutationFn: async (promotionIdToRemove: number) => {
       if (!session?.user.id || promotionIdToRemove <= 0) return { localOnly: true };
 
@@ -1248,6 +1260,7 @@ const Cart: React.FC = () => {
         }
         isApplied={state.isApplied}
         isAlreadyUsed={alreadyUsedPromotionIds.has(state.id)}
+        notice={offerNotice?.promotionId === state.id ? offerNotice : null}
         action={getOfferActionState({
           promotion,
           isApplied: state.isApplied,
@@ -1551,7 +1564,7 @@ const Cart: React.FC = () => {
                     />
                     {promotionDiscount > 0 && (
                       <SummaryLine
-                        label={!session ? "Automatic promotion" : "Promotion"}
+                        label={!session ? "Automatic promotion" : promotionDiscountLabel(appliedPromotionsForTotals)}
                         value={`-${formatCurrency(promotionDiscount)}${!session ? "*" : ""}`}
                       />
                     )}
@@ -1750,6 +1763,7 @@ function PromotionOffer({
   isAlreadyUsed,
   action,
   combinationNote,
+  notice,
   shippingSavings,
   onApply,
   onRemove,
@@ -1761,6 +1775,7 @@ function PromotionOffer({
   isAlreadyUsed: boolean;
   action: OfferActionState;
   combinationNote: string | null;
+  notice: OfferNotice | null;
   shippingSavings: number;
   onApply: () => void;
   onRemove: () => void;
@@ -1834,6 +1849,29 @@ function PromotionOffer({
               >
                 {action.kind === "automatic" ? "Automatic" : "Use code"}
               </span>
+            ) : action.kind === "remove" || action.kind === "applied" ? (
+              // Same as Checkout: applied offers read as applied; Remove is a quiet link.
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1.5 text-[10px] font-extrabold text-emerald-700">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Applied
+                </span>
+                {action.kind === "remove" && (
+                  <button
+                    type="button"
+                    disabled={action.disabled}
+                    aria-disabled={action.busy}
+                    aria-busy={isRemoving}
+                    onClick={() => {
+                      if (!action.busy) onRemove();
+                    }}
+                    className={`inline-flex items-center gap-1 bg-transparent px-1 py-0.5 text-[11px] font-semibold text-[#68748a] underline-offset-2 hover:text-[#172033] hover:underline disabled:opacity-50 ${action.busy && !isRemoving ? "cursor-wait" : ""}`}
+                  >
+                    {isRemoving && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {isRemoving ? offerPendingLabel("remove") : "Remove"}
+                  </button>
+                )}
+              </div>
             ) : (
               <Button
                 className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${isApplied
@@ -1864,16 +1902,6 @@ function PromotionOffer({
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     Already Used
                   </>
-                ) : action.kind === "remove" ? (
-                  <>
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Remove
-                  </>
-                ) : action.kind === "applied" ? (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Applied
-                  </>
                 ) : (
                   "Apply"
                 )}
@@ -1887,6 +1915,14 @@ function PromotionOffer({
           )}
           {combinationNote && (
             <p className="mt-2 text-[11px] leading-4 text-[#68748a]">{combinationNote}</p>
+          )}
+          {notice && (
+            <p
+              className={`mt-2 rounded-lg border px-2.5 py-2 text-[11px] font-semibold leading-4 ${offerNoticeClassName(notice.tone)}`}
+              role={notice.tone === "error" ? "alert" : "status"}
+            >
+              {notice.message}
+            </p>
           )}
         </div>
       </div>

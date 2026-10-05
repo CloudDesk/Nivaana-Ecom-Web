@@ -462,9 +462,11 @@ export const promotionReasonCopy = (reason: string, details?: Record<string, unk
 const quoteSaving = (promotions: Array<{ saving: number }>) =>
   promotions.reduce((sum, promotion) => sum + Number(promotion.saving || 0), 0);
 
-/** Message when V2 did not apply the requested offer. */
+/**
+ * Note shown on the offer's own card when V2 did not apply it. Not an error:
+ * the engine compared the offers and kept the set that saves more.
+ */
 export const describeOfferNotApplied = (
-  promotionName: string,
   promotionIdToApply: number,
   quote: PromotionV2Quote,
   fallbackOfferSavingPaise = 0,
@@ -479,10 +481,18 @@ export const describeOfferNotApplied = (
     fallbackOfferSavingPaise;
   const currentSaving = quoteSaving(quote.applied_promotions);
   if (offerSaving > 0 && currentSaving > 0) {
-    return `${promotionName} saves ${formatPaise(offerSaving)}, but your current offers save ${formatPaise(currentSaving)}. Remove them to use this offer instead.`;
+    return `Not applied. Your current offers save you ${formatPaise(currentSaving)}, more than the ${formatPaise(offerSaving)} from this offer. To use this one instead, remove your other offers first.`;
   }
-  return "Your current offers save more. Remove them to use this offer instead.";
+  return "Not applied. Your current offers save you more. To use this one instead, remove your other offers first.";
 };
+
+/** Short-lived note attached to one offer card (cleared when the offers view closes). */
+export type OfferNotice = { promotionId: number; message: string; tone: "info" | "error" };
+
+export const offerNoticeClassName = (tone: OfferNotice["tone"]) =>
+  tone === "info"
+    ? "border-amber-200 bg-amber-50 text-[#7a5700]"
+    : "border-red-200 bg-red-50 text-red-700";
 
 /** Success message; names the offers that were replaced because the new set saves more. */
 export const describeOfferApplied = (
@@ -502,4 +512,12 @@ export const describeOfferApplied = (
   return `${promotionName} applied. It replaces ${joinNames(replaced.map((item) => item.name))}${
     extraSaving > 0 ? ` because it saves you ${formatPaise(extraSaving)} more` : ""
   }.`;
+};
+
+/** Summary label for the promotion discount line: one offer vs several. */
+export const promotionDiscountLabel = (appliedPromotions: AppliedPromotion[]) => {
+  const discountOffers = appliedPromotions.filter(
+    (promotion) => !isFreeShippingAppliedPromotion(promotion) && Number(promotion.discount_amount || 0) > 0,
+  );
+  return discountOffers.length > 1 ? "Promotions" : "Promotion";
 };
