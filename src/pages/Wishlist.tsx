@@ -14,6 +14,7 @@ import type { Product } from "../types";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { isOutOfStock } from "../lib/stock";
 import { friendlyNotificationMessage } from "../lib/notificationMessages";
+import { RichTextContent } from "../components/RichTextContent";
 
 const imageFor = (product?: { medium: string[] | null; small: string[] | null; large: string[] | null }) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
@@ -151,6 +152,7 @@ const Wishlist: React.FC = () => {
             {wishlistProducts.map(({ apiId, item, product }) => {
               const displayName = getProductDisplayName(product, `Product #${item.productid}`);
               const price = product ? Math.max(product.price - product.discount, 0) : 0;
+              const hasDiscount = Boolean(product && product.discount > 0);
               const productMissing = !productsQuery.isLoading && !product;
               const outOfStock = Boolean(product) && isOutOfStock(product);
               const cannotAddToCart = productsQuery.isLoading || productMissing || outOfStock;
@@ -174,7 +176,7 @@ const Wishlist: React.FC = () => {
                       }}
                     />
                   </Link>
-                  <div className="min-w-0 flex-1 pr-16">
+                  <div className="flex min-w-0 flex-1 flex-col">
                     <Link
                       to={`/products/${item.productid}`}
                       className="line-clamp-2 text-base font-bold text-[var(--color-text)] hover:text-[var(--color-secondary)]"
@@ -182,7 +184,12 @@ const Wishlist: React.FC = () => {
                       {displayName}
                     </Link>
                     {product?.shortdescription && (
-                      <p className="mt-2 line-clamp-2 text-sm text-[var(--color-muted)]">{product.shortdescription}</p>
+                      // Same sanitised HTML rendering as Product Details; capped at two
+                      // lines (clamp + max height) so the card never grows.
+                      <RichTextContent
+                        content={product.shortdescription}
+                        className="mt-2 line-clamp-2 max-h-12 overflow-hidden text-sm leading-6 text-[var(--color-muted)] [&_blockquote]:my-0 [&_h2]:my-0 [&_h2]:text-sm [&_h3]:my-0 [&_h3]:text-sm [&_li]:my-0 [&_ol]:my-0 [&_p]:my-0 [&_ul]:my-0"
+                      />
                     )}
                     {outOfStock && (
                       <p className="mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
@@ -190,29 +197,39 @@ const Wishlist: React.FC = () => {
                         <span className="hidden sm:inline">This item is currently out of stock.</span>
                       </p>
                     )}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Button
-                        className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-[var(--color-text)] hover:!border-[var(--color-primary)] hover:!bg-[var(--color-primary)]/15 sm:w-auto sm:px-4"
-                        disabled={moveToCart.isPending || cannotAddToCart}
-                        onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
-                        aria-label={`Add ${displayName} to cart`}
-                      >
-                        <ShoppingBag className="h-4 w-4 sm:mr-2" />
-                        <span className="hidden sm:inline">Add to Cart</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-9 w-9 !border !border-[var(--color-border)] !bg-white px-0 !text-red-600 hover:!border-red-200 hover:!bg-red-50 sm:px-3"
-                        disabled={remove.isPending}
-                        onClick={() => remove.mutate(apiId ?? item.productid)}
-                        aria-label="Remove from wishlist"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    {/* Price on the left, actions on the right, pinned to the card bottom. */}
+                    <div className="mt-auto flex flex-wrap items-end justify-between gap-3 pt-3">
+                      <div className="min-w-0">
+                        <p className="text-base font-bold text-[var(--color-text)]">Rs. {price.toLocaleString("en-IN")}</p>
+                        {hasDiscount && product && (
+                          <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-[var(--color-muted)]">
+                            <span className="line-through">Rs. {product.price.toLocaleString("en-IN")}</span>
+                            <span className="font-semibold text-[var(--color-danger)]">Save Rs. {product.discount.toLocaleString("en-IN")}</span>
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          className="h-10 gap-2 px-3 shadow-none hover:translate-y-0 hover:shadow-none sm:px-4"
+                          disabled={moveToCart.isPending || cannotAddToCart}
+                          onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
+                          aria-label={`Add ${displayName} to cart`}
+                        >
+                          <ShoppingBag className="h-4 w-4" />
+                          <span className="hidden sm:inline">Add to Cart</span>
+                        </Button>
+                        <button
+                          type="button"
+                          className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white text-[var(--color-muted)] transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                          disabled={remove.isPending}
+                          onClick={() => remove.mutate(apiId ?? item.productid)}
+                          aria-label={`Remove ${displayName} from wishlist`}
+                          title="Remove from wishlist"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="absolute right-4 top-4 text-right text-sm font-bold text-[var(--color-secondary)]">
-                    Rs. {price.toLocaleString("en-IN")}
                   </div>
                 </article>
               );
