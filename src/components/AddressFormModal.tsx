@@ -84,7 +84,8 @@ export function AddressFormModal({
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto px-6 py-5 flex-1">
+        {/* No bottom padding: the form's sticky action bar sits flush at the bottom. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5">
           {children}
         </div>
       </div>
