@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import CategoryNavigationRail from "../components/CategoryNavigationRail";
@@ -7,8 +7,6 @@ import {
   buildNestedCategoryItems,
   buildTopCategoryItems,
   isKnownCategoryChildValue,
-  matchesProductCategory,
-  matchesProductChildCategory,
   resolveActiveCategory,
   resolveActiveChildKey,
   type CategoryNavChildItem,
@@ -37,9 +35,10 @@ const PRICE_RANGES: Record<ProductPriceRange, { minPrice?: number; maxPrice?: nu
 
 const SORT_OPTIONS: Record<
   ProductSort,
-  { sortBy: "price" | "createddate" | "averagerating" | "name"; sortOrder: "asc" | "desc" }
+  { sortBy: "price" | "createddate" | "averagerating" | "name" | "bestselling"; sortOrder: "asc" | "desc" }
 > = {
   newest: { sortBy: "createddate", sortOrder: "desc" },
+  bestselling: { sortBy: "bestselling", sortOrder: "desc" },
   "price-asc": { sortBy: "price", sortOrder: "asc" },
   "price-desc": { sortBy: "price", sortOrder: "desc" },
   "rating-desc": { sortBy: "averagerating", sortOrder: "desc" },
@@ -53,34 +52,6 @@ const isProductSort = (value: string | null): value is ProductSort =>
 const isProductPriceRange = (value: string | null): value is ProductPriceRange =>
   Boolean(value && value in PRICE_RANGES);
 
-const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
-
-const normalizeFilterKey = (value?: string | null) =>
-  normalize(value)
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "_");
-
-const filterKeyVariants = (value?: string | null) => {
-  const key = normalizeFilterKey(value);
-  if (!key) return new Set<string>();
-
-  return new Set([key, key.replace(/(^|_)and(_|$)/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_")]);
-};
-
-const filterValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
-  Boolean(filterValue) &&
-  [...filterKeyVariants(productValue)].some((productKey) => filterKeyVariants(filterValue).has(productKey));
-
-const listValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
-  Boolean(filterValue) &&
-  normalize(productValue)
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .some((value) => filterValueMatches(value, filterValue));
-
 const formatFilterLabel = (value: string) =>
   value.replace(/_/g, " ").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
@@ -91,9 +62,11 @@ interface ProductsProps {
 const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  // Scroll marker kept in state so the observer re-attaches whenever the marker mounts or remounts.
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   const category = searchParams.get("category");
+  const excludeCategory = searchParams.get("excludeCategory");
   const subcategory = searchParams.get("subcategory");
   const subsubcategory = searchParams.get("subsubcategory");
   const collection = searchParams.get("collection") || defaultCollection;
@@ -102,16 +75,41 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const search = searchParams.get("search");
   const sortParam = searchParams.get("sort");
   const priceParam = searchParams.get("price");
-  const sort: ProductSort = isProductSort(sortParam) ? sortParam : "newest";
+  // Best Sellers page defaults to the backend best-selling rank (same as Home Best Sellers).
+  const defaultSort: ProductSort = collection === "best-sellers" ? "bestselling" : "newest";
+  const sort: ProductSort = isProductSort(sortParam) ? sortParam : defaultSort;
   const priceRange: ProductPriceRange | "" = isProductPriceRange(priceParam) ? priceParam : "";
-  const apiFilters = useMemo(
-    () => ({
+  const categoryTreeQuery = useQuery({
+    queryKey: ["product-category-tree", "sortorder-v3"],
+    queryFn: () => platformProductService.getCategoryTree(),
+    staleTime: 1000 * 60,
+  });
+  const categoryTree = categoryTreeQuery.data?.data;
+
+  // Subcategory values that are known children in the category tree match taxonomy
+  // fields only; other values (for example flavour links) also match fragrance type.
+  const waitForCategoryTree = Boolean(subcategory || subsubcategory) && categoryTreeQuery.isPending;
+
+  // Filtering, sorting and paging happen on the backend (filterMode=storefront),
+  // so only the pages the shopper scrolls to are downloaded.
+  const apiFilters = useMemo(() => {
+    const childMatch = (value: string | null): "taxonomy" | "loose" | undefined =>
+      value ? (isKnownCategoryChildValue(categoryTree, value, category) ? "taxonomy" : "loose") : undefined;
+
+    return {
       ...SORT_OPTIONS[sort],
       ...(priceRange ? PRICE_RANGES[priceRange] : {}),
-    }),
-    [priceRange, sort]
-  );
-  const hasActiveFilter = Boolean(category || subcategory || subsubcategory || collection || offerId || search);
+      filterMode: "storefront" as const,
+      category: category || undefined,
+      excludeCategory: excludeCategory || undefined,
+      subcategory: subcategory || undefined,
+      subcategoryMatch: childMatch(subcategory),
+      subsubcategory: subsubcategory || undefined,
+      subsubcategoryMatch: childMatch(subsubcategory),
+      collection: collection || undefined,
+      search: search || undefined,
+    };
+  }, [categoryTree, category, collection, excludeCategory, priceRange, search, sort, subcategory, subsubcategory]);
   const currentCategoryRoute = useMemo(() => {
     const nextParams = new URLSearchParams(searchParams);
     const queryString = nextParams.toString();
@@ -123,6 +121,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     initialPageParam: 1,
     queryFn: async ({ pageParam }) =>
       platformProductService.getProducts(pageParam, PRODUCTS_PAGE_SIZE, apiFilters),
+    enabled: !waitForCategoryTree,
     getNextPageParam: (lastPage) =>
       lastPage.pagination?.hasNext && lastPage.pagination.page < lastPage.pagination.totalPages
         ? lastPage.pagination.page + 1
@@ -130,86 +129,14 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     staleTime: 1000 * 60,
   });
 
-  const categoryTreeQuery = useQuery({
-    queryKey: ["product-category-tree", "sortorder-v3"],
-    queryFn: () => platformProductService.getCategoryTree(),
-    staleTime: 1000 * 60,
-  });
-  const categoryTree = categoryTreeQuery.data?.data;
-
   const products = useMemo(
     () => (productsQuery.data?.pages ?? []).flatMap((page) => page.data ?? []),
     [productsQuery.data?.pages]
   );
 
-  const filteredProducts = useMemo(() => {
-    let result = products;
-
-    if (category) {
-      result = result.filter((product) => matchesProductCategory(product, category));
-    }
-
-    if (subcategory) {
-      result = result.filter((product) =>
-        isKnownCategoryChildValue(categoryTree, subcategory, category)
-          ? matchesProductChildCategory(product, subcategory, category)
-          : filterValueMatches(product.subcategory, subcategory) ||
-            filterValueMatches(product.subsubcategory, subcategory) ||
-            filterValueMatches(product.fragnancetype, subcategory) ||
-            listValueMatches(product.fragnancetype, subcategory)
-      );
-    }
-
-    if (subsubcategory) {
-      result = result.filter(
-        (product) =>
-          (isKnownCategoryChildValue(categoryTree, subsubcategory, category)
-            ? matchesProductChildCategory(product, subsubcategory, category)
-            : filterValueMatches(product.subsubcategory, subsubcategory) ||
-              filterValueMatches(product.fragnancetype, subsubcategory) ||
-              listValueMatches(product.fragnancetype, subsubcategory))
-      );
-    }
-
-    if (collection === "deals") {
-      result = result.filter((product) => product.isdealoftheday || product.discount > 0);
-    }
-
-    if (collection === "best-sellers" && !sortParam) {
-      result = [...result].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0));
-    }
-
-    if (collection === "new-arrivals" && !sortParam) {
-      result = [...result].sort((a, b) => b.createddate - a.createddate);
-    }
-
-    if (collection === "gift-sets") {
-      result = result.filter((product) => product.pack?.includes("pack") || product.name.toLowerCase().includes("combo"));
-    }
-
-    if (search) {
-      const query = normalize(search);
-      result = result.filter((product) =>
-        [
-          product.name,
-          product.shortname,
-          product.shortdescription,
-          product.fulldescription,
-          product.category,
-          product.subcategory,
-          product.subsubcategory,
-          product.fragnancetype,
-          product.brand,
-          product.pack,
-          product.puc,
-        ]
-          .filter(Boolean)
-          .some((value) => normalize(value).includes(query))
-      );
-    }
-
-    return result;
-  }, [category, categoryTree, collection, products, search, sortParam, subcategory, subsubcategory]);
+  // Products already arrive filtered and sorted by the backend.
+  const filteredProducts = products;
+  const totalProducts = productsQuery.data?.pages[0]?.pagination?.total;
 
   const resolvedCategory = useMemo(
     () =>
@@ -347,7 +274,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   }, [category, collection, search, subcategory, subsubcategory]);
 
   useEffect(() => {
-    const node = loadMoreRef.current;
+    const node = loadMoreNode;
     if (!node || !productsQuery.hasNextPage) return;
 
     const observer = new IntersectionObserver(
@@ -363,26 +290,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [productsQuery.fetchNextPage, productsQuery.hasNextPage, productsQuery.isFetchingNextPage]);
+  }, [loadMoreNode, productsQuery.fetchNextPage, productsQuery.hasNextPage, productsQuery.isFetchingNextPage]);
 
-  useEffect(() => {
-    if (
-      !hasActiveFilter ||
-      productsQuery.isLoading ||
-      productsQuery.isFetchingNextPage ||
-      !productsQuery.hasNextPage
-    ) {
-      return;
-    }
-
-    productsQuery.fetchNextPage();
-  }, [
-    hasActiveFilter,
-    productsQuery.fetchNextPage,
-    productsQuery.hasNextPage,
-    productsQuery.isFetchingNextPage,
-    productsQuery.isLoading,
-  ]);
 
   return (
     <div className="min-h-screen bg-secondary-extra-light-gray">
@@ -406,7 +315,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
           <div>
             <h1 className="text-2xl font-bold text-secondary-dark-gray sm:text-3xl">{pageTitle}</h1>
             <p className="mt-2 text-secondary-medium-gray">
-              Showing {filteredProducts.length}{productsQuery.hasNextPage ? "+" : ""} products
+              Showing {totalProducts ?? filteredProducts.length} products
               {search ? ` matching "${search}"` : ""}
             </p>
           </div>
@@ -421,7 +330,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
           </div>
         </div>
         {/* Products Grid */}
-        {productsQuery.isLoading ? (
+        {productsQuery.isPending ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-gold mx-auto mb-4"></div>
             <p className="text-secondary-medium-gray">Loading products...</p>
@@ -478,7 +387,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
               </>
             )}
 
-            <div ref={loadMoreRef} className="h-4 w-full" />
+            <div ref={setLoadMoreNode} className="h-4 w-full" />
 
             {productsQuery.isFetchingNextPage && (
               <div className="py-8 text-center">

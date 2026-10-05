@@ -2,6 +2,7 @@ import { ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
 
 export type ProductSort =
   | "newest"
+  | "bestselling"
   | "price-asc"
   | "price-desc"
   | "rating-desc"
@@ -62,6 +63,7 @@ export default function ProductFilters({
               className={controlClassName}
             >
               <option value="newest">Newest first</option>
+              <option value="bestselling">Best selling</option>
               <option value="price-asc">Price: Low to High</option>
               <option value="price-desc">Price: High to Low</option>
               <option value="rating-desc">Ratings: High to Low</option>
