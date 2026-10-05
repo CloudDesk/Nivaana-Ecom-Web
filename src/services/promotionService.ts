@@ -298,7 +298,7 @@ class PromotionService {
     shippingAmount: number;
     channel?: "web" | "mobile";
   }): Promise<ApiResponse<PromotionEligibilityResult>> {
-    return apiService.post<PromotionEligibilityResult>('/v2/promotions/eligibility', {
+    return apiService.post<PromotionEligibilityResult>('/v2/promotions/check-eligibility', {
       schema_version: 2,
       promotion_ids: payload.promotionIds,
       cart_items: payload.cartItems,
@@ -307,7 +307,7 @@ class PromotionService {
     });
   }
 
-  quoteV2(payload: {
+  calculatePromotions(payload: {
     cartItems: Array<{ cart_record_id?: string; product_id: string; quantity: number }>;
     shippingAmount: number;
     channel?: "web" | "mobile";
@@ -316,7 +316,7 @@ class PromotionService {
     rewardSelections?: Record<string, string>;
     previewOnly?: boolean;
   }): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>('/v2/promotions/quote', {
+    return apiService.post<PromotionV2Quote>('/v2/promotions/calculate', {
       schema_version: 2,
       cart_items: payload.cartItems,
       shipping_amount: Math.round(payload.shippingAmount * 100),
@@ -328,20 +328,20 @@ class PromotionService {
     });
   }
 
-  selectV2(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/select`, { schema_version: 2, promotion_id: promotionId });
+  applyPromotionToEvaluation(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/promotions`, { schema_version: 2, promotion_id: promotionId });
   }
 
-  removeSelectionV2(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.delete<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/selection/${promotionId}`);
+  removePromotionFromEvaluation(evaluationId: string, promotionId: number): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.delete<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/promotions/${promotionId}`);
   }
 
-  selectGiftV2(evaluationId: string, promotionId: number, productId: string): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/select-gift`, { schema_version: 2, promotion_id: promotionId, product_id: productId });
+  chooseGiftForEvaluation(evaluationId: string, promotionId: number, productId: string): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/gifts`, { schema_version: 2, promotion_id: promotionId, product_id: productId });
   }
 
-  validateV2(evaluationId: string): Promise<ApiResponse<PromotionV2Quote>> {
-    return apiService.post<PromotionV2Quote>(`/v2/promotions/quote/${evaluationId}/validate`, { schema_version: 2 });
+  validatePromotionEvaluation(evaluationId: string): Promise<ApiResponse<PromotionV2Quote>> {
+    return apiService.post<PromotionV2Quote>(`/v2/promotions/evaluations/${evaluationId}/validate`, { schema_version: 2 });
   }
 
   list(params: PromotionListParams = {}): Promise<ApiResponse<Promotion[]>> {
@@ -359,8 +359,8 @@ class PromotionService {
     return apiService.get<Promotion[]>(`/promotions?${queryParams.toString()}`);
   }
 
-  mine(channel: string = "web"): Promise<ApiResponse<Promotion[]>> {
-    return apiService.get<Promotion[]>(`/promotions/mine?channel=${encodeURIComponent(channel)}`);
+  customerOffers(channel: string = "web"): Promise<ApiResponse<Promotion[]>> {
+    return apiService.get<Promotion[]>(`/promotions/customer-offers?channel=${encodeURIComponent(channel)}`);
   }
 
   public(channel: string = "web", geo: string = "IN", limit: number = 10): Promise<ApiResponse<Promotion[]>> {
@@ -374,7 +374,7 @@ class PromotionService {
   }
 
   getRecommendedOffers(payload: RecommendationRequest): Promise<ApiResponse<RecommendationData>> {
-    return apiService.post<RecommendationData>("/promotions/offers", {
+    return apiService.post<RecommendationData>("/promotions/available-offers", {
       user_id: payload.userId,
       userId: payload.userId,
       cartItems: payload.cartItems,

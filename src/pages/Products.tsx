@@ -16,12 +16,42 @@ import {
 } from "../components/categoryNavigationData";
 import CategoryShowcaseBanner from "../components/CategoryShowcaseBanner";
 import ProductCard from "../components/ProductCard";
+import ProductFilters, {
+  type ProductPriceRange,
+  type ProductSort,
+} from "../components/ProductFilters";
 import RecentProductRail from "../components/RecentProductRail";
 import { readRecentlyViewedProductIds } from "../lib/recentlyViewed";
 import type { Product } from "../types";
 import { platformProductService } from "../services/productPlatformService";
 
 const PRODUCTS_PAGE_SIZE = 40;
+
+const PRICE_RANGES: Record<ProductPriceRange, { minPrice?: number; maxPrice?: number }> = {
+  "under-100": { maxPrice: 99.99 },
+  "100-250": { minPrice: 100, maxPrice: 249.99 },
+  "250-500": { minPrice: 250, maxPrice: 499.99 },
+  "500-1000": { minPrice: 500, maxPrice: 1000 },
+  "above-1000": { minPrice: 1000.01 },
+};
+
+const SORT_OPTIONS: Record<
+  ProductSort,
+  { sortBy: "price" | "createddate" | "averagerating" | "name"; sortOrder: "asc" | "desc" }
+> = {
+  newest: { sortBy: "createddate", sortOrder: "desc" },
+  "price-asc": { sortBy: "price", sortOrder: "asc" },
+  "price-desc": { sortBy: "price", sortOrder: "desc" },
+  "rating-desc": { sortBy: "averagerating", sortOrder: "desc" },
+  "name-asc": { sortBy: "name", sortOrder: "asc" },
+  "name-desc": { sortBy: "name", sortOrder: "desc" },
+};
+
+const isProductSort = (value: string | null): value is ProductSort =>
+  Boolean(value && value in SORT_OPTIONS);
+
+const isProductPriceRange = (value: string | null): value is ProductPriceRange =>
+  Boolean(value && value in PRICE_RANGES);
 
 const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
 
@@ -70,6 +100,17 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const offerId = searchParams.get("offerId");
   const routeTitle = searchParams.get("title");
   const search = searchParams.get("search");
+  const sortParam = searchParams.get("sort");
+  const priceParam = searchParams.get("price");
+  const sort: ProductSort = isProductSort(sortParam) ? sortParam : "newest";
+  const priceRange: ProductPriceRange | "" = isProductPriceRange(priceParam) ? priceParam : "";
+  const apiFilters = useMemo(
+    () => ({
+      ...SORT_OPTIONS[sort],
+      ...(priceRange ? PRICE_RANGES[priceRange] : {}),
+    }),
+    [priceRange, sort]
+  );
   const hasActiveFilter = Boolean(category || subcategory || subsubcategory || collection || offerId || search);
   const currentCategoryRoute = useMemo(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -78,9 +119,10 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   }, [searchParams]);
 
   const productsQuery = useInfiniteQuery({
-    queryKey: ["platform-products-list"],
+    queryKey: ["platform-products-list", apiFilters],
     initialPageParam: 1,
-    queryFn: async ({ pageParam }) => platformProductService.getProducts(pageParam, PRODUCTS_PAGE_SIZE),
+    queryFn: async ({ pageParam }) =>
+      platformProductService.getProducts(pageParam, PRODUCTS_PAGE_SIZE, apiFilters),
     getNextPageParam: (lastPage) =>
       lastPage.pagination?.hasNext && lastPage.pagination.page < lastPage.pagination.totalPages
         ? lastPage.pagination.page + 1
@@ -133,11 +175,11 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       result = result.filter((product) => product.isdealoftheday || product.discount > 0);
     }
 
-    if (collection === "best-sellers") {
+    if (collection === "best-sellers" && !sortParam) {
       result = [...result].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0));
     }
 
-    if (collection === "new-arrivals") {
+    if (collection === "new-arrivals" && !sortParam) {
       result = [...result].sort((a, b) => b.createddate - a.createddate);
     }
 
@@ -167,7 +209,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
     }
 
     return result;
-  }, [category, categoryTree, collection, products, search, subcategory, subsubcategory]);
+  }, [category, categoryTree, collection, products, search, sortParam, subcategory, subsubcategory]);
 
   const resolvedCategory = useMemo(
     () =>
@@ -184,8 +226,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const topCategoryItems = useMemo(() => buildTopCategoryItems(categoryTree), [categoryTree]);
 
   const childCategoryItems = useMemo(
-    () => buildChildCategoryItems(products, categoryTree, resolvedCategory),
-    [categoryTree, products, resolvedCategory]
+    () => buildChildCategoryItems(categoryTree, resolvedCategory),
+    [categoryTree, resolvedCategory]
   );
 
   const nestedCategoryItems = useMemo(
@@ -271,16 +313,33 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       .slice(0, 10);
   }, [products, recentlyViewedIds]);
 
-  const showAllProducts = () => {
-    setSearchParams({});
-  };
-
   const selectTopCategory = (item: CategoryNavTopItem) => {
-    setSearchParams({ category: item.value });
+    const nextParams = new URLSearchParams();
+    nextParams.set("category", item.value);
+    if (priceRange) nextParams.set("price", priceRange);
+    if (sortParam && isProductSort(sortParam)) nextParams.set("sort", sortParam);
+    setSearchParams(nextParams);
   };
 
   const selectChildCategory = (item: CategoryNavChildItem) => {
-    setSearchParams(item.queryParams);
+    const nextParams = new URLSearchParams(item.queryParams);
+    if (priceRange) nextParams.set("price", priceRange);
+    if (sortParam && isProductSort(sortParam)) nextParams.set("sort", sortParam);
+    setSearchParams(nextParams);
+  };
+
+  const updateProductFilter = (key: "price" | "sort", value: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (value) nextParams.set(key, value);
+    else nextParams.delete(key);
+    setSearchParams(nextParams);
+  };
+
+  const clearProductFilters = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("price");
+    nextParams.delete("sort");
+    setSearchParams(nextParams);
   };
 
   useEffect(() => {
@@ -343,7 +402,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
       <div id="category-results" className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
         {/* Results Header */}
-        <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-secondary-dark-gray sm:text-3xl">{pageTitle}</h1>
             <p className="mt-2 text-secondary-medium-gray">
@@ -351,15 +410,15 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
               {search ? ` matching "${search}"` : ""}
             </p>
           </div>
-          {(category || subcategory || subsubcategory || collection || search) && (
-            <button
-              type="button"
-              onClick={showAllProducts}
-              className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--color-text)] transition hover:border-primary-gold"
-            >
-              All products
-            </button>
-          )}
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+            <ProductFilters
+              sort={sort}
+              priceRange={priceRange}
+              onSortChange={(value) => updateProductFilter("sort", value)}
+              onPriceRangeChange={(value) => updateProductFilter("price", value)}
+              onClear={clearProductFilters}
+            />
+          </div>
         </div>
         {/* Products Grid */}
         {productsQuery.isLoading ? (

@@ -46,6 +46,28 @@ export interface CouponPreview {
 export interface WalletDiscountQuote {
   eligible_balance: number;
   discount_amount: number;
+  merchandise_discount_amount?: number;
+  shipping_discount_amount?: number;
+  allocations?: Array<{
+    wallet_credit_id: number;
+    source_type: string;
+    amount: number;
+    merchandise_amount: number;
+    shipping_amount: number;
+  }>;
+}
+
+export interface DirectCouponCheckoutQuote {
+  assignment_id: number;
+  promotion_id: number;
+  code: string;
+  name: string;
+  face_value: number;
+  discount_amount: number;
+  minimum_cart_amount: number;
+  merchandise_subtotal: number;
+  merchandise_remaining_before: number;
+  merchandise_remaining_after: number;
 }
 
 export interface WalletActivityItem {
@@ -75,9 +97,26 @@ export const couponWalletService = {
   },
   preview: (code: string) => apiService.post<CouponPreview>("/coupon-wallet/preview", { code, channel: "web" }),
   claim: (code: string) => apiService.post<WalletCoupon>("/coupon-wallet/claim", { code, channel: "web" }),
-  quoteDiscount: (eligibilityBase: number, payableAmount: number) =>
+  quoteDiscount: (
+    eligibilityBase: number,
+    payableAmount: number,
+    capacity?: { merchandisePayable: number; shippingPayable: number },
+  ) =>
     apiService.post<WalletDiscountQuote>("/coupon-wallet/discount/quote", {
       eligibility_base: eligibilityBase,
       payable_amount: payableAmount,
+      ...(capacity
+        ? {
+            merchandise_payable: capacity.merchandisePayable,
+            shipping_payable: capacity.shippingPayable,
+          }
+        : {}),
+    }),
+  quoteDirectCoupon: (code: string, merchandiseSubtotal: number, merchandiseRemaining: number) =>
+    apiService.post<DirectCouponCheckoutQuote>("/coupon-wallet/checkout/quote", {
+      code,
+      channel: "web",
+      merchandise_subtotal: merchandiseSubtotal,
+      merchandise_remaining: merchandiseRemaining,
     }),
 };

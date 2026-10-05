@@ -28,6 +28,7 @@ const couponErrorMessage = (error: unknown) => {
   const message = error instanceof Error ? error.message : "Coupon could not be checked.";
   if (message.includes("ASSIGNED_TO_ANOTHER")) return "This personalized coupon is not available for this account.";
   if (message.includes("ALREADY_CLAIMED") || message.includes("COUPON_CLAIMED")) return "This coupon has already been added to a wallet.";
+  if (message.includes("ALREADY_REDEEMED")) return "This coupon has already been used.";
   if (message.includes("COUPON_INACTIVE")) return "This coupon is temporarily inactive.";
   if (message.includes("COUPON_REVOKED")) return "This coupon has been revoked.";
   if (message.includes("COUPON_EXPIRED")) return "This coupon has expired.";

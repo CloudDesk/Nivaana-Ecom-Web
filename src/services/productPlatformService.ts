@@ -8,9 +8,18 @@ interface ProductPicklistItem {
     controlledvalue: string | null;
     parent: string | null;
     sortorder: number | null;
+    imageUrl?: string | null;
+    thumbnailUrl?: string | null;
 }
 
 type ProductTaxonomyField = 'category' | 'subcategory' | 'subsubcategory';
+
+export interface PlatformProductFilters {
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: 'price' | 'createddate' | 'averagerating' | 'name';
+    sortOrder?: 'asc' | 'desc';
+}
 
 const getActiveProductPicklists = async (
     fieldname: ProductTaxonomyField
@@ -55,12 +64,20 @@ export class PlatformProductService {
      * @param limit - Items per page (optional)
      * @returns Promise with products data
      */
-    async getProducts(page?: number, limit?: number): Promise<ApiResponse<Product[]>> {
+    async getProducts(
+        page?: number,
+        limit?: number,
+        filters: PlatformProductFilters = {}
+    ): Promise<ApiResponse<Product[]>> {
         let url = '/products/platform/nivapp';
         const params = new URLSearchParams();
 
         if (page) params.append('page', page.toString());
         if (limit) params.append('limit', limit.toString());
+        if (filters.minPrice !== undefined) params.append('minPrice', filters.minPrice.toString());
+        if (filters.maxPrice !== undefined) params.append('maxPrice', filters.maxPrice.toString());
+        if (filters.sortBy) params.append('sortBy', filters.sortBy);
+        if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
         if (params.toString()) {
             url += `?${params.toString()}`;
@@ -99,6 +116,8 @@ export class PlatformProductService {
                 id: item.value,
                 label: item.label,
                 count: counted?.count ?? 0,
+                imageUrl: counted?.imageUrl ?? item.imageUrl ?? null,
+                thumbnailUrl: counted?.thumbnailUrl ?? item.thumbnailUrl ?? null,
                 sortOrder: item.sortorder,
                 subcategories: [],
             });
@@ -116,6 +135,8 @@ export class PlatformProductService {
                 id: item.value,
                 label: item.label,
                 count: counted?.count ?? 0,
+                imageUrl: counted?.imageUrl ?? item.imageUrl ?? null,
+                thumbnailUrl: counted?.thumbnailUrl ?? item.thumbnailUrl ?? null,
                 sortOrder: item.sortorder,
                 subsubcategories: [],
             });

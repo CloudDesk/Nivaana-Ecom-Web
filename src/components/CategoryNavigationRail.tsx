@@ -2,7 +2,7 @@ import {
   AnimatePresence,
   motion,
 } from "framer-motion";
-import { productFallback as fallbackProduct } from "../assets/config.js";
+import { taxonomyFallbackImage } from "../assets/config.js";
 import type {
   CategoryNavChildItem,
   CategoryNavTopItem,
@@ -144,7 +144,7 @@ export default function CategoryNavigationRail({
                           alt=""
                           className="h-full w-full object-cover"
                           onError={(event) => {
-                            event.currentTarget.src = fallbackProduct;
+                            event.currentTarget.src = taxonomyFallbackImage;
                           }}
                         />
                       </span>
@@ -192,7 +192,7 @@ export default function CategoryNavigationRail({
                             alt=""
                             className="h-full w-full object-cover"
                             onError={(event) => {
-                              event.currentTarget.src = fallbackProduct;
+                              event.currentTarget.src = taxonomyFallbackImage;
                             }}
                           />
                         </span>

@@ -2,6 +2,7 @@ export const mediaAssets: {
   heroPrimaryPoster: string;
   heroSecondaryPoster: string;
   productFallback: string;
+  taxonomyFallbackImage: string;
   homeFallbackProduct: string;
   carFreshenerCategoryDesktop: string;
   carFreshenerCategoryMobile: string;
@@ -16,6 +17,7 @@ export const mediaAssets: {
 export const heroPrimaryPoster: string;
 export const heroSecondaryPoster: string;
 export const productFallback: string;
+export const taxonomyFallbackImage: string;
 export const homeFallbackProduct: string;
 export const carFreshenerCategoryDesktop: string;
 export const carFreshenerCategoryMobile: string;

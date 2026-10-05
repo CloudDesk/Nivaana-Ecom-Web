@@ -289,6 +289,34 @@ export const selectedCartPromotionIds = (
   promotion?.promotionId,
 ].map(Number).filter((id) => Number.isFinite(id) && id > 0))];
 
+export const promotionSelectionKey = (promotionIds: number[]) =>
+  [...new Set(promotionIds)]
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .sort((left, right) => left - right)
+    .join(",") || "automatic";
+
+export const isRecoverablePromotionEvaluationError = (error: unknown) => {
+  const candidate = error as {
+    message?: string;
+    statusCode?: number;
+    data?: { message?: string; details?: string; code?: string; error_code?: string };
+  };
+  const code = String(candidate?.data?.code ?? candidate?.data?.error_code ?? "").toUpperCase();
+  const message = [candidate?.message, candidate?.data?.message, candidate?.data?.details]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    code === "PROMOTION_EVALUATION_EXPIRED" ||
+    code === "PROMOTION_EVALUATION_INACTIVE" ||
+    message.includes("promotion evaluation has expired") ||
+    message.includes("promotion evaluation is no longer active") ||
+    message.includes("evaluation not found") ||
+    message.includes("requested record does not exist")
+  );
+};
+
 export const saveSelectedCartPromotion = (promotion: SelectedCartPromotion) => {
   localStorage.setItem(`${SELECTED_PROMOTION_KEY}:${promotion.userId}`, JSON.stringify(promotion));
 };

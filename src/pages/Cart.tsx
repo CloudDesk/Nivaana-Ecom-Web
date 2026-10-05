@@ -36,11 +36,13 @@ import {
   clearSelectedCartPromotion,
   getAppliedPromotionSummary,
   getPromotionCartTotals,
+  isRecoverablePromotionEvaluationError,
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   isFreeShippingAppliedPromotion,
   productUnitPrice,
   readSelectedCartPromotion,
+  promotionSelectionKey,
   saveSelectedCartPromotion,
   selectedCartPromotionIds,
   type SelectedCartPromotion,
@@ -88,7 +90,7 @@ const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) 
     MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
     MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
     GIFT_OUT_OF_STOCK: 'This promotional gift is currently unavailable.',
-    CONFLICTED_WITH_BETTER_OFFER: 'A better offer is already applied to these items.',
+    CONFLICTED_WITH_BETTER_OFFER: 'Your current offers save more. This offer was not applied.',
     CUSTOMER_NOT_ELIGIBLE: 'This offer is not available for this account.',
     CHANNEL_NOT_ELIGIBLE: 'This offer is not available on this shopping channel.',
     USAGE_LIMIT_REACHED: 'This offer has already been used.',
@@ -97,38 +99,12 @@ const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) 
   return messages[reason] ?? reason.replaceAll('_', ' ').toLowerCase();
 };
 
-const voucherErrorMessage = (message?: string) => {
-  const normalized = String(message || "").toUpperCase();
-
-  if (
-    normalized.includes("PROMOTION_NOT_FOUND") ||
-    normalized.includes("PROMOTION NOT FOUND")
-  ) {
-    return "This voucher code is not valid.";
-  }
-  if (normalized.includes("PROMOTION_NOT_ASSIGNED_TO_CUSTOMER")) return "This voucher was issued to a different customer.";
-  if (normalized.includes("CUSTOMER_GROUP_NOT_ELIGIBLE")) return "This voucher is not available for your customer group.";
-  if (normalized.includes("VOUCHER_NOT_ACTIVE")) return "This voucher is currently inactive.";
-  if (normalized.includes("VOUCHER_NOT_STARTED")) return "This voucher is not active yet.";
-  if (normalized.includes("VOUCHER_EXPIRED")) return "This voucher has expired.";
-  if (normalized.includes("VOUCHER_USAGE_LIMIT_REACHED")) return "This voucher has already reached its usage limit.";
-  if (normalized.includes("PROMOTION_MAX_REDEMPTIONS_REACHED")) return "This promotion has reached its redemption limit.";
-  if (normalized.includes("PROMOTION_PER_USER_LIMIT_REACHED")) return "You have already used this promotion.";
-  if (normalized.includes("CHANNEL_NOT_ELIGIBLE")) return "This voucher cannot be used on the website.";
-  if (normalized.includes("NOT ELIGIBLE FOR THIS CART")) return "Your cart does not currently meet this voucher's requirements.";
-  if (normalized.includes("ALREADY APPLIED")) return "This voucher is already applied to your cart.";
-  if (normalized.includes("ANOTHER_PROMOTION_ALREADY_APPLIED")) return "Remove the current offer before applying another.";
-
-  return friendlyNotificationMessage(message || "The voucher could not be redeemed.");
-};
-
 const Cart: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const session = sessionService.getSession();
   const [, setGuestVersion] = useState(0);
   const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
-  const [voucherCode, setVoucherCode] = useState("");
   const [offersModalOpen, setOffersModalOpen] = useState(false);
   const [offerActionError, setOfferActionError] = useState<string | null>(null);
   const [alreadyUsedPromotionIds, setAlreadyUsedPromotionIds] = useState<Set<number>>(
@@ -314,14 +290,21 @@ const Cart: React.FC = () => {
   const promotionEvaluationItems = useMemo(() => buildPromotionEvaluationCartItems(promotionRows), [promotionRows]);
   const cartSignature = useMemo(() => cartPromotionSignature(promotionRows), [promotionRows]);
   const cartTotals = useMemo(() => getPromotionCartTotals(promotionRows), [promotionRows]);
-  const selectedV2PromotionIds =
-    selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
-      ? selectedCartPromotionIds(selectedPromotion)
-      : [];
-  const promotionsV2QueryKey = ["cart-promotions-v2", session?.user.id, cartSignature] as const;
+  const selectedV2PromotionIds = useMemo(
+    () =>
+      selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
+        ? selectedCartPromotionIds(selectedPromotion)
+        : [],
+    [cartSignature, selectedPromotion],
+  );
+  const promotionsV2QueryRoot = ["cart-promotions-v2", session?.user.id, cartSignature] as const;
+  const promotionsV2QueryKey = [
+    ...promotionsV2QueryRoot,
+    promotionSelectionKey(selectedV2PromotionIds),
+  ] as const;
   const promotionsV2Query = useQuery({
     queryKey: promotionsV2QueryKey,
-    queryFn: () => promotionService.quoteV2({
+    queryFn: () => promotionService.calculatePromotions({
       cartItems: promotionRows.map((row) => ({ cart_record_id: String(row.cartRecordId ?? row.productid), product_id: String(row.productid), quantity: row.quantity })),
       shippingAmount: cartTotals.shipping,
       channel: "web",
@@ -647,26 +630,37 @@ const Cart: React.FC = () => {
     ? Math.max(0, promotionsV2Quote!.payable_total / 100)
     : promotionSummary.payableTotal;
   const effectiveShipping = Math.max(0, cartTotals.shipping - shippingSavings);
+  const merchandisePayableBeforeWallet = Math.max(0, cartTotals.subtotal - promotionDiscount);
   const v2GiftAdjustments = useV2PromotionResult ? (promotionsV2Quote?.adjustments ?? []).filter((adjustment) => adjustment.type === "FREE_ITEM" && adjustment.metadata.fulfilment === "AUTO_ADD") : [];
   const walletQuoteQuery = useQuery({
-    queryKey: ["wallet-discount-quote", session?.user.id, cartTotals.subtotal, payableTotal],
-    queryFn: () => couponWalletService.quoteDiscount(cartTotals.subtotal, payableTotal),
+    queryKey: [
+      "wallet-discount-quote",
+      session?.user.id,
+      cartTotals.subtotal,
+      payableTotal,
+      merchandisePayableBeforeWallet,
+      effectiveShipping,
+    ],
+    queryFn: () => couponWalletService.quoteDiscount(
+      cartTotals.subtotal,
+      payableTotal,
+      {
+        merchandisePayable: merchandisePayableBeforeWallet,
+        shippingPayable: effectiveShipping,
+      },
+    ),
     enabled: Boolean(session?.user.id && promotionRows.length > 0 && payableTotal > 0),
     staleTime: 1000 * 15,
   });
   const eligibleWalletBalance = Number(walletQuoteQuery.data?.data.eligible_balance || 0);
-  const walletDiscount = walletApplied ? Number(walletQuoteQuery.data?.data.discount_amount || 0) : 0;
+  const walletApplicableDiscount = Number(walletQuoteQuery.data?.data.discount_amount || 0);
+  const walletDiscount = walletApplied ? walletApplicableDiscount : 0;
   const finalPayableTotal = Math.max(payableTotal - walletDiscount, 0);
   const toggleWallet = () => {
     const next = !walletApplied;
     setWalletApplied(next);
     saveWalletApplied(session?.user.id, next);
   };
-  const hasManualPromotionApplied = appliedPromotionsForTotals.some(
-    (promotion) =>
-      !promotion.is_auto &&
-      !isFreeShippingAppliedPromotion(promotion)
-  );
   const appliedManualPromotions = appliedPromotionsForTotals.filter(
     (promotion) =>
       !promotion.is_auto &&
@@ -783,8 +777,41 @@ const Cart: React.FC = () => {
     }
   }, [cartSignature, selectedPromotion, session?.user.id]);
 
+  useEffect(() => {
+    if (
+      !session?.user.id ||
+      selectedPromotion?.engine !== "v2" ||
+      selectedPromotion.cartSignature !== cartSignature ||
+      selectedV2PromotionIds.length === 0 ||
+      !promotionsV2Quote
+    ) return;
+
+    const appliedIds = new Set(promotionsV2Quote.applied_promotions.map((promotion) => promotion.promotion_id));
+    if (!selectedV2PromotionIds.every((id) => appliedIds.has(id))) return;
+    if (
+      selectedPromotion.evaluationId === promotionsV2Quote.evaluation_id &&
+      selectedPromotion.expiresAt === promotionsV2Quote.expires_at
+    ) return;
+
+    const refreshedPromotion: SelectedCartPromotion = {
+      ...selectedPromotion,
+      evaluationId: promotionsV2Quote.evaluation_id,
+      expiresAt: promotionsV2Quote.expires_at,
+      savedAt: Date.now(),
+    };
+    saveSelectedCartPromotion(refreshedPromotion);
+    setSelectedPromotion(refreshedPromotion);
+  }, [
+    cartSignature,
+    promotionsV2Quote,
+    selectedPromotion,
+    selectedV2PromotionIds,
+    session?.user.id,
+  ]);
+
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
+      await queryClient.cancelQueries({ queryKey: promotionsV2QueryRoot });
       const selectedId = promotionId(promotion);
       const requestedPromotionIds = [...new Set([
         ...(selectedPromotion?.engine === "v2" && selectedPromotion.cartSignature === cartSignature
@@ -796,7 +823,7 @@ const Cart: React.FC = () => {
       // Asking V2 first is safe for legacy promotions: if no published rule
       // mentions this ID, the request falls through to the legacy evaluator.
       try {
-        const v2Response = await promotionService.quoteV2({
+        const v2Response = await promotionService.calculatePromotions({
           cartItems: promotionRows.map((row) => ({
             cart_record_id: String(row.cartRecordId ?? row.productid),
             product_id: String(row.productid),
@@ -864,7 +891,10 @@ const Cart: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
-        queryClient.setQueryData(promotionsV2QueryKey, result.response);
+        queryClient.setQueryData(
+          [...promotionsV2QueryRoot, promotionSelectionKey(result.requestedPromotionIds)],
+          result.response,
+        );
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -977,111 +1007,47 @@ const Cart: React.FC = () => {
     },
   });
 
-  const redeemVoucherMutation = useMutation({
-    mutationFn: async (code: string) => {
-      if (!session?.user.id) {
-        throw new Error("Please log in to redeem a customer voucher.");
-      }
-      if (promotionEvaluationItems.length === 0) {
-        throw new Error("Add an item to your cart before redeeming a voucher.");
-      }
-      let evaluationId = backendEvaluation?.evaluation_id;
-      if (!evaluationId) {
-        const automaticEvaluation = await promotionService.evaluateAutomatic({
-          userId: String(session.user.id),
-          cartItems: promotionEvaluationItems,
-          currentTotal: cartTotals.subtotal,
-          mode: "phonepe",
-          channel: "web",
-          geo: "IN",
-        });
-        evaluationId = automaticEvaluation.data.evaluation_id;
-      }
-
-      return promotionService.evaluate({
-        cartId: `cart-${session.user.id}`,
-        userId: String(session.user.id),
-        evaluationId,
-        code,
-        cartData: promotionCartData,
-        cartItems: promotionEvaluationItems,
-        mode: "phonepe",
-        channel: "web",
-        geo: "IN",
-      });
-    },
-    onMutate: () => setOfferActionError(null),
-    onSuccess: async (response) => {
-      if (!session?.user.id) return;
-
-      const evaluation = response.data;
-      queryClient.setQueryData(automaticPromotionsQueryKey, response);
-      const appliedPromotions = evaluation.applied_promotions ?? [];
-      const evaluationSummary = getAppliedPromotionSummary(
-        cartTotals,
-        appliedPromotions,
-        Number(evaluation.total_discount || 0)
-      );
-      const enteredCode = voucherCode.trim().toUpperCase();
-      const redeemedPromotion =
-        appliedPromotions.find(
-          (promotion) =>
-            String(promotion.voucher_code || "").toUpperCase() === enteredCode
-        ) ||
-        [...appliedPromotions].reverse().find((promotion) => !promotion.is_auto);
-
-      if (redeemedPromotion && appliedPromotionId(redeemedPromotion) > 0) {
-        const nextPromotion: SelectedCartPromotion = {
-          userId: session.user.id,
-          promotionId: appliedPromotionId(redeemedPromotion),
-          promotionName: redeemedPromotion.promotion_name || "Voucher promotion",
-          evaluationId: evaluation.evaluation_id,
-          cartSignature,
-          totalDiscount: evaluationSummary.normalDiscount,
-          discountedTotal: evaluationSummary.payableTotal,
-          appliedPromotions,
-          expiresAt: evaluation.expires_at,
-          savedAt: Date.now(),
-        };
-        saveSelectedCartPromotion(nextPromotion);
-        setSelectedPromotion(nextPromotion);
-      }
-
-      setVoucherCode("");
-      setOfferActionError(null);
-      void Promise.all([
-        promotionOffersQuery.refetch(),
-        activeEvaluationsQuery.refetch(),
-      ]);
-      toast.success(
-        redeemedPromotion?.promotion_name
-          ? `${redeemedPromotion.promotion_name} applied to your cart.`
-          : "Offer applied to your cart."
-      );
-    },
-    onError: (error) => {
-      const message = voucherErrorMessage(
-        error instanceof Error ? error.message : "The voucher could not be redeemed."
-      );
-      setOfferActionError(message);
-      toast.error(message);
-    },
-  });
-
   const removePromotionMutation = useMutation({
     mutationFn: async (promotionIdToRemove: number) => {
       if (!session?.user.id || promotionIdToRemove <= 0) return { localOnly: true };
+
+      await queryClient.cancelQueries({ queryKey: promotionsV2QueryRoot });
 
       if (
         selectedPromotion?.engine === "v2" &&
         selectedCartPromotionIds(selectedPromotion).includes(promotionIdToRemove)
       ) {
-        const response = await promotionService.removeSelectionV2(
-          selectedPromotion.evaluationId,
-          promotionIdToRemove,
-        );
-        queryClient.setQueryData(promotionsV2QueryKey, response);
-        return { localOnly: false, engine: "v2" as const, response };
+        const selectedIds = selectedCartPromotionIds(selectedPromotion);
+        try {
+          const response = await promotionService.removePromotionFromEvaluation(
+            selectedPromotion.evaluationId,
+            promotionIdToRemove,
+          );
+          return { localOnly: false, engine: "v2" as const, response };
+        } catch (error) {
+          if (!isRecoverablePromotionEvaluationError(error)) throw error;
+
+          // Refresh an expired/stale evaluation once, then retry the requested
+          // removal against the newly issued evaluation ID.
+          const refreshed = await promotionService.calculatePromotions({
+            cartItems: promotionRows.map((row) => ({
+              cart_record_id: String(row.cartRecordId ?? row.productid),
+              product_id: String(row.productid),
+              quantity: row.quantity,
+            })),
+            shippingAmount: cartTotals.shipping,
+            channel: "web",
+            selectedPromotionIds: selectedIds,
+          });
+          if (!refreshed.data.applied_promotions.some((item) => item.promotion_id === promotionIdToRemove)) {
+            return { localOnly: false, engine: "v2" as const, response: refreshed };
+          }
+          const response = await promotionService.removePromotionFromEvaluation(
+            refreshed.data.evaluation_id,
+            promotionIdToRemove,
+          );
+          return { localOnly: false, engine: "v2" as const, response };
+        }
       }
 
       const backendContainsPromotion = Boolean(
@@ -1125,6 +1091,10 @@ const Cart: React.FC = () => {
         const quote = result.response.data;
         const remainingPromotionIds = selectedCartPromotionIds(selectedPromotion).filter(
           (id) => id !== removedPromotionId && quote.applied_promotions.some((item) => item.promotion_id === id)
+        );
+        queryClient.setQueryData(
+          [...promotionsV2QueryRoot, promotionSelectionKey(remainingPromotionIds)],
+          result.response,
         );
         if (remainingPromotionIds.length > 0) {
           const primaryId = remainingPromotionIds.at(-1)!;
@@ -1322,7 +1292,7 @@ const Cart: React.FC = () => {
         // A zero-benefit quote is useful for displaying the standard total but
         // does not need to be validated or attached to the eventual order.
         if (!hasV2AppliedBenefit) return null;
-        const response = await promotionService.validateV2(promotionsV2Quote.evaluation_id);
+        const response = await promotionService.validatePromotionEvaluation(promotionsV2Quote.evaluation_id);
         return { isValid: true, evaluationId: response.data.evaluation_id };
       }
       if (!backendEvaluation?.evaluation_id) return null;
@@ -1368,7 +1338,6 @@ const Cart: React.FC = () => {
       (!promotionsV2Quote && automaticPromotionsQuery.isFetching) ||
       applyPromotionMutation.isPending ||
       removePromotionMutation.isPending ||
-      redeemVoucherMutation.isPending ||
       (walletApplied && walletQuoteQuery.isFetching)
     )
   );
@@ -1585,7 +1554,10 @@ const Cart: React.FC = () => {
                       highlight={shippingSavings > 0}
                     />
                     {promotionDiscount > 0 && (
-                      <SummaryLine label={!session ? "Promotion*" : "Promotion"} value={`-${formatCurrency(promotionDiscount)}`} />
+                      <SummaryLine
+                        label={!session ? "Automatic promotion" : "Promotion"}
+                        value={`-${formatCurrency(promotionDiscount)}${!session ? "*" : ""}`}
+                      />
                     )}
                     {walletDiscount > 0 && <SummaryLine label="Wallet credit" value={`-${formatCurrency(walletDiscount)}`} />}
                     <div className="flex justify-between border-t border-[var(--color-border)] pt-3 text-base font-bold text-[var(--color-text)]">
@@ -1600,9 +1572,9 @@ const Cart: React.FC = () => {
                 <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-5">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <WalletCards className="h-5 w-5 shrink-0 text-[#485470]" />
-                    <div className="min-w-0"><p className="text-sm font-bold text-[#172033]">Wallet balance {formatCurrency(eligibleWalletBalance)}</p><p className="text-[11px] text-[#68748a]">Available for this cart</p></div>
+                    <div className="min-w-0"><p className="text-sm font-bold text-[#172033]">Wallet balance {formatCurrency(eligibleWalletBalance)}</p><p className="text-[11px] text-[#68748a]">{walletApplicableDiscount > 0 ? `${formatCurrency(walletApplicableDiscount)} available for this cart` : "Promotional wallet credit cannot be used for shipping"}</p></div>
                   </div>
-                  <button type="button" onClick={toggleWallet} disabled={walletQuoteQuery.isFetching || isPricingRecalculating} className="shrink-0 rounded-lg bg-[#fbbc05] px-3 py-2 text-xs font-extrabold text-[#172033] disabled:opacity-50">{walletApplied ? "Remove" : "Apply"}</button>
+                  {walletApplicableDiscount > 0 && <button type="button" onClick={toggleWallet} disabled={walletQuoteQuery.isFetching || isPricingRecalculating} className="shrink-0 rounded-lg bg-[#fbbc05] px-3 py-2 text-xs font-extrabold text-[#172033] disabled:opacity-50">{walletApplied ? "Remove" : "Apply"}</button>}
                 </div>
               )}
 
@@ -1632,72 +1604,14 @@ const Cart: React.FC = () => {
                     </div>
                   )}
 
-                  <form
-                    className="mt-3 rounded-2xl border border-[#dfe4ee] bg-[#f7f8fb] p-3"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const normalizedCode = voucherCode.trim().toUpperCase();
-                      if (!normalizedCode) {
-                        toast.warning("Enter your voucher code.");
-                        return;
-                      }
-                      redeemVoucherMutation.mutate(normalizedCode);
-                    }}
-                  >
-                    <label
-                      htmlFor="cart-voucher-code"
-                      className="flex items-center gap-2 text-xs font-extrabold text-[#26344f]"
-                    >
-                      <TicketPercent className="h-4 w-4 text-[#9a6b00]" />
-                      Have a voucher code?
-                    </label>
-                    <div className="mt-2 flex gap-2">
-                      <input
-                        id="cart-voucher-code"
-                        type="text"
-                        value={voucherCode}
-                        onChange={(event) =>
-                          setVoucherCode(event.target.value.toUpperCase())
-                        }
-                        placeholder="Enter Code"
-                        autoComplete="off"
-                        autoCapitalize="characters"
-                        spellCheck={false}
-                        maxLength={100}
-                        disabled={
-                          isPricingRecalculating ||
-                          redeemVoucherMutation.isPending ||
-                          !session ||
-                          (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
-                        }
-                        className="min-w-0 flex-1 rounded-xl border border-[#cbd2df] bg-white px-3 py-2.5 font-mono text-xs font-bold uppercase tracking-[0.04em] text-[#172033] outline-none transition placeholder:font-sans placeholder:font-normal placeholder:normal-case placeholder:tracking-normal placeholder:text-[#929bad] focus:border-[#fbbc05] focus:ring-2 focus:ring-[#fbbc05]/20 disabled:cursor-not-allowed disabled:bg-[#edf0f5]"
-                      />
-                      <button
-                        type="submit"
-                        disabled={
-                          isPricingRecalculating ||
-                          redeemVoucherMutation.isPending ||
-                          !voucherCode.trim() ||
-                          !session ||
-                          (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)
-                        }
-                        className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-[#26344f] px-4 text-xs font-extrabold text-white transition hover:bg-[#364765] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {redeemVoucherMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          "Redeem"
-                        )}
-                      </button>
-                    </div>
-                    {(!session || (hasManualPromotionApplied && !allAppliedManualPromotionsAreStackable)) && (
-                      <p className="mt-2 text-[11px] leading-4 text-[#68748a]">
-                        {!session
-                          ? "Log in with the mobile number that received the voucher."
-                          : "Remove the current offer before applying another code."}
-                      </p>
-                    )}
-                  </form>
+                  <div className="mt-3 flex items-start gap-2 rounded-2xl border border-[#dfe4ee] bg-[#f7f8fb] p-3 text-[11px] leading-4 text-[#68748a]">
+                    <TicketPercent className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />
+                    <p>
+                      {session
+                        ? "Have a coupon code? Apply it securely at checkout."
+                        : "Have a coupon code? Sign in and apply it securely at checkout."}
+                    </p>
+                  </div>
 
                   {isPricingRecalculating ? null : promotionOffersQuery.isLoading || (promotionOffersQuery.isFetching && !promotionOffersQuery.data) ? (
                     <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-[var(--color-muted)]">
@@ -1728,11 +1642,15 @@ const Cart: React.FC = () => {
                 </div>
               )}
               {!session && promotionRows.length > 0 && (
-                <p className="mt-5 border-t border-[var(--color-border)] pt-4 text-xs leading-5 text-[var(--color-muted)]">
-                  {totalPromotionSavings > 0
-                    ? "* Estimated offer based on your cart. Sign in to confirm eligibility, availability and the final total."
-                    : "Sign in to check offers available for your cart. Eligibility and availability are confirmed at checkout."}
-                </p>
+                <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+                  <p className="text-sm font-bold text-[var(--color-text)]">Get your best available offer</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                    Sign in to view personalised offers and apply the one that saves you the most.
+                  </p>
+                  <p className="mt-3 text-[11px] leading-4 text-[var(--color-muted)]">
+                    * Estimated savings based on your cart. Final offers depend on eligibility and availability after sign-in.
+                  </p>
+                </div>
               )}
               {session ? (
                 <Button

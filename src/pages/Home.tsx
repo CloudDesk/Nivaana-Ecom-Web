@@ -374,7 +374,7 @@ const Home: React.FC = () => {
 
   const assignedPromotionsQuery = useQuery({
     queryKey: ["home-assigned-promotion-deals", homeSession?.user.id],
-    queryFn: () => promotionService.mine("web"),
+    queryFn: () => promotionService.customerOffers("web"),
     enabled: Boolean(homeSession),
   });
 

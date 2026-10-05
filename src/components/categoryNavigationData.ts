@@ -7,7 +7,10 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { productFallback as fallbackProduct } from "../assets/config.js";
+import {
+  productFallback as fallbackProduct,
+  taxonomyFallbackImage,
+} from "../assets/config.js";
 import type {
   Product,
   ProductCategoryCount,
@@ -29,6 +32,11 @@ const valuesMatch = (left?: string | null, right?: string | null) =>
 
 const firstProductImage = (product?: Product) =>
   product?.large?.[0] || product?.medium?.[0] || product?.small?.[0] || fallbackProduct;
+
+const managedTaxonomyImage = (item: {
+  thumbnailUrl?: string | null;
+  imageUrl?: string | null;
+}) => item.thumbnailUrl || item.imageUrl || taxonomyFallbackImage;
 
 const categoryIcons: LucideIcon[] = [Flame, Home, Sparkles, Flower2, HeartHandshake, Gift];
 
@@ -157,7 +165,6 @@ export const resolveActiveCategory = ({
 };
 
 const childItem = (
-  products: Product[],
   category: ProductCategoryCount,
   subcategory: ProductSubcategoryCount
 ): CategoryNavChildItem => ({
@@ -166,11 +173,10 @@ const childItem = (
   value: subcategory.id,
   param: "subcategory",
   queryParams: { category: category.id, subcategory: subcategory.id },
-  imageSrc: firstProductImage(productForTaxonomy(products, category.id, subcategory.id)),
+  imageSrc: managedTaxonomyImage(subcategory),
 });
 
 export const buildChildCategoryItems = (
-  products: Product[],
   tree?: ProductCategoryTree | null,
   activeCategory?: string | null
 ): CategoryNavChildItem[] => {
@@ -179,7 +185,7 @@ export const buildChildCategoryItems = (
 
   return category.subcategories
     .filter((subcategory) => subcategory.id && subcategory.label)
-    .map((subcategory) => childItem(products, category, subcategory));
+    .map((subcategory) => childItem(category, subcategory));
 };
 
 export const buildNestedCategoryItems = (

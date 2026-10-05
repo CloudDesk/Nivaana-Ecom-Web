@@ -41,6 +41,8 @@ export interface ProductCategoryCount {
   id: string;
   label: string;
   count: number;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
   sortOrder?: number | null;
   subcategories: ProductSubcategoryCount[];
 }
@@ -49,6 +51,8 @@ export interface ProductSubcategoryCount {
   id: string;
   label: string;
   count: number;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
   sortOrder?: number | null;
   subsubcategories: ProductSubsubcategoryCount[];
 }

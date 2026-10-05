@@ -30,6 +30,9 @@ export interface PaymentRequest {
   shippingCost?: number;
   taxAmount?: number;
   evaluation_ids?: string[];
+  direct_coupon?: {
+    code: string;
+  };
   wallet?: {
     apply: boolean;
     eligibility_base: number;
@@ -49,6 +52,7 @@ export interface PaymentResponseData {
   pricing?: {
     merchandise_subtotal: number;
     merchandise_discount: number;
+    direct_coupon_discount?: number;
     merchandise_payable: number;
     shipping_amount: number;
     shipping_discount: number;
