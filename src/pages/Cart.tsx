@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { hashKey, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
@@ -34,17 +34,27 @@ import {
   buildPromotionEvaluationCartItems,
   cartPromotionSignature,
   clearSelectedCartPromotion,
+  createSeededQuoteTracker,
   getAppliedPromotionSummary,
   getPromotionCartTotals,
+  describeOfferApplied,
+  describeOfferNotApplied,
+  getOfferActionState,
   isRecoverablePromotionEvaluationError,
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   isFreeShippingAppliedPromotion,
+  offerCombinationNote,
+  offerPendingLabel,
+  preserveAppliedStacking,
   productUnitPrice,
+  PromotionOfferMessageError,
   readSelectedCartPromotion,
+  resolveAppliedStackable,
   promotionSelectionKey,
   saveSelectedCartPromotion,
   selectedCartPromotionIds,
+  type OfferActionState,
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
@@ -82,22 +92,7 @@ const uniquePromotions = (promotions: ApplicablePromotion[]) => {
 const appliedPromotionId = (promotion: AppliedPromotion) => Number(promotion.promotion_id || 0);
 
 const isFreeShippingOffer = (promotion: ApplicablePromotion) => isFreeShippingPromotion(promotion);
-const isStackablePromotion = (promotion: Pick<ApplicablePromotion, "stackable">) =>
-  promotion.stackable === true;
 const showPromotionCalculationBreakdown = false;
-const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
-  const messages: Record<string, string> = {
-    MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
-    MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
-    GIFT_OUT_OF_STOCK: 'This promotional gift is currently unavailable.',
-    CONFLICTED_WITH_BETTER_OFFER: 'Your current offers save more. This offer was not applied.',
-    CUSTOMER_NOT_ELIGIBLE: 'This offer is not available for this account.',
-    CHANNEL_NOT_ELIGIBLE: 'This offer is not available on this shopping channel.',
-    USAGE_LIMIT_REACHED: 'This offer has already been used.',
-    BUDGET_EXHAUSTED: 'This offer is no longer available.',
-  };
-  return messages[reason] ?? reason.replaceAll('_', ' ').toLowerCase();
-};
 
 const Cart: React.FC = () => {
   const queryClient = useQueryClient();
@@ -111,6 +106,7 @@ const Cart: React.FC = () => {
     () => new Set()
   );
   const [walletApplied, setWalletApplied] = useState(() => readWalletApplied(session?.user.id));
+  const seededQuotes = useRef(createSeededQuoteTracker()).current;
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(session?.user.id)
   );
@@ -315,7 +311,8 @@ const Cart: React.FC = () => {
       promotionRows.length > 0 &&
       !mutation.isPending,
     ),
-    staleTime: 0,
+    // A quote just returned by Apply/Remove is not fetched again straight away.
+    staleTime: (query) => seededQuotes.staleTime(query.queryHash),
     retry: false,
   });
   const promotionsV2Quote = promotionsV2Query.data?.data;
@@ -561,7 +558,7 @@ const Cart: React.FC = () => {
       const adjustmentType = promotionsV2Quote?.adjustments.find(
         (adjustment) => adjustment.promotion_id === promotion.promotion_id,
       )?.type;
-      const stackable = details?.stackable === true || savedPromotion?.stackable === true || savedPromotion?.is_stacked === true;
+      const stackable = resolveAppliedStackable(details, savedPromotion);
       return {
         promotion_id: promotion.promotion_id,
         promotion_name: promotion.name,
@@ -661,19 +658,6 @@ const Cart: React.FC = () => {
     setWalletApplied(next);
     saveWalletApplied(session?.user.id, next);
   };
-  const appliedManualPromotions = appliedPromotionsForTotals.filter(
-    (promotion) =>
-      !promotion.is_auto &&
-      !isFreeShippingAppliedPromotion(promotion)
-  );
-  const allAppliedManualPromotionsAreStackable =
-    appliedManualPromotions.length > 0 &&
-    appliedManualPromotions.every(
-      (promotion) => promotion.stackable === true || promotion.is_stacked === true
-    );
-  const canCombineWithAppliedPromotions = (promotion: ApplicablePromotion) =>
-    appliedManualPromotions.length === 0 ||
-    (allAppliedManualPromotionsAreStackable && isStackablePromotion(promotion));
 
   // Private/assigned promotions may be present in the active evaluation but
   // intentionally absent from the public/recommended offer collections. Add
@@ -811,6 +795,7 @@ const Cart: React.FC = () => {
 
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
+      const previousApplied = promotionsV2Quote?.applied_promotions ?? [];
       await queryClient.cancelQueries({ queryKey: promotionsV2QueryRoot });
       const selectedId = promotionId(promotion);
       const requestedPromotionIds = [...new Set([
@@ -837,17 +822,17 @@ const Cart: React.FC = () => {
         const v2Applied = v2Quote.applied_promotions.some(
           (item) => item.promotion_id === selectedId,
         );
-        const v2Rejection = v2Quote.rejected_candidates.find(
-          (item) => item.promotion_id === selectedId,
-        );
         if (!v2Applied) {
-          throw new Error(
-            v2Rejection
-              ? promotionReasonCopy(v2Rejection.reason_code, v2Rejection.details)
-              : "A better incompatible offer is already applied to these items.",
+          throw new PromotionOfferMessageError(
+            describeOfferNotApplied(
+              promotion.name,
+              selectedId,
+              v2Quote,
+              Math.round(Number(promotion.applied_discount || promotion.discountInfo?.discountAmount || 0) * 100),
+            ),
           );
         }
-        return { engine: "v2" as const, response: v2Response, requestedPromotionIds };
+        return { engine: "v2" as const, response: v2Response, requestedPromotionIds, previousApplied };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!message.includes("PROMOTION_V2_RULE_NOT_FOUND")) throw error;
@@ -891,10 +876,9 @@ const Cart: React.FC = () => {
 
       if (result.engine === "v2") {
         const quote = result.response.data;
-        queryClient.setQueryData(
-          [...promotionsV2QueryRoot, promotionSelectionKey(result.requestedPromotionIds)],
-          result.response,
-        );
+        const appliedQuoteKey = [...promotionsV2QueryRoot, promotionSelectionKey(result.requestedPromotionIds)];
+        queryClient.setQueryData(appliedQuoteKey, result.response);
+        seededQuotes.mark(hashKey(appliedQuoteKey));
         const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map(
           (item) => {
             const details = promotionCandidates.find(
@@ -912,8 +896,8 @@ const Cart: React.FC = () => {
               discount_amount: item.saving / 100,
               is_auto: isAutomatic,
               is_free_shipping: adjustmentType === "FREE_SHIPPING",
-              stackable: details?.stackable === true,
-              is_stacked: details?.stackable === true,
+              stackable: resolveAppliedStackable(details),
+              is_stacked: resolveAppliedStackable(details),
             };
           },
         );
@@ -945,7 +929,9 @@ const Cart: React.FC = () => {
         setSelectedPromotion(nextPromotion);
         setOfferActionError(null);
         void promotionOffersQuery.refetch();
-        toast.success(`${promotion.name} applied to your cart.`);
+        toast.success(
+          describeOfferApplied(promotion.name, promotionId(promotion), quote, result.previousApplied, "cart"),
+        );
         return;
       }
 
@@ -991,6 +977,12 @@ const Cart: React.FC = () => {
         setOfferActionError(null);
         toast.warning("This offer has already been used.");
         void promotionOffersQuery.refetch();
+        return;
+      }
+
+      if (error instanceof PromotionOfferMessageError) {
+        setOfferActionError(message);
+        toast.warning(message);
         return;
       }
 
@@ -1092,25 +1084,28 @@ const Cart: React.FC = () => {
         const remainingPromotionIds = selectedCartPromotionIds(selectedPromotion).filter(
           (id) => id !== removedPromotionId && quote.applied_promotions.some((item) => item.promotion_id === id)
         );
-        queryClient.setQueryData(
-          [...promotionsV2QueryRoot, promotionSelectionKey(remainingPromotionIds)],
-          result.response,
-        );
+        const remainingQuoteKey = [...promotionsV2QueryRoot, promotionSelectionKey(remainingPromotionIds)];
+        queryClient.setQueryData(remainingQuoteKey, result.response);
+        seededQuotes.mark(hashKey(remainingQuoteKey));
         if (remainingPromotionIds.length > 0) {
           const primaryId = remainingPromotionIds.at(-1)!;
-          const appliedPromotions: AppliedPromotion[] = quote.applied_promotions.map((item) => {
-            const adjustmentType = quote.adjustments.find(
-              (adjustment) => adjustment.promotion_id === item.promotion_id,
-            )?.type;
-            return {
-              promotion_id: item.promotion_id,
-              promotion_name: item.name,
-              promotion_type: adjustmentType ?? "V2",
-              discount_amount: item.saving / 100,
-              is_auto: !remainingPromotionIds.includes(item.promotion_id),
-              is_free_shipping: adjustmentType === "FREE_SHIPPING",
-            };
-          });
+          const appliedPromotions: AppliedPromotion[] = preserveAppliedStacking(
+            quote.applied_promotions.map((item) => {
+              const adjustmentType = quote.adjustments.find(
+                (adjustment) => adjustment.promotion_id === item.promotion_id,
+              )?.type;
+              return {
+                promotion_id: item.promotion_id,
+                promotion_name: item.name,
+                promotion_type: adjustmentType ?? "V2",
+                discount_amount: item.saving / 100,
+                is_auto: !remainingPromotionIds.includes(item.promotion_id),
+                is_free_shipping: adjustmentType === "FREE_SHIPPING",
+              };
+            }),
+            selectedPromotion.appliedPromotions ?? [],
+            promotionDetailsById,
+          );
           const nextPromotion: SelectedCartPromotion = {
             ...selectedPromotion,
             promotionId: primaryId,
@@ -1131,7 +1126,8 @@ const Cart: React.FC = () => {
           clearSelectedCartPromotion(session?.user.id);
           setSelectedPromotion(null);
         }
-        void Promise.all([promotionOffersQuery.refetch(), activeEvaluationsQuery.refetch()]);
+        // V2 already returned the new quote; the legacy evaluation list is not needed.
+        void promotionOffersQuery.refetch();
         toast.success("Offer removed from your cart.");
         return;
       }
@@ -1252,20 +1248,20 @@ const Cart: React.FC = () => {
         }
         isApplied={state.isApplied}
         isAlreadyUsed={alreadyUsedPromotionIds.has(state.id)}
-        isDisabled={
-          !session ||
-          !state.freeShippingEligible ||
-          (!state.isApplied &&
-            !state.freeShippingOffer &&
-            !canCombineWithAppliedPromotions(promotion))
-        }
+        action={getOfferActionState({
+          promotion,
+          isApplied: state.isApplied,
+          canRemove: state.canRemove,
+          isAlreadyUsed: alreadyUsedPromotionIds.has(state.id),
+          isLoggedIn: Boolean(session),
+          freeShippingEligible: state.freeShippingEligible,
+          anyOfferActionPending: applyPromotionMutation.isPending || removePromotionMutation.isPending,
+          pricingResolving: isPricingRecalculating,
+        })}
+        combinationNote={state.isApplied ? null : offerCombinationNote(promotion)}
         shippingSavings={state.freeShippingApplied ? shippingSavings : 0}
         onApply={() => applyPromotionMutation.mutate(promotion)}
-        onRemove={
-          state.canRemove
-            ? () => removePromotionMutation.mutate(state.id)
-            : undefined
-        }
+        onRemove={() => removePromotionMutation.mutate(state.id)}
       />
     );
   };
@@ -1699,6 +1695,12 @@ const Cart: React.FC = () => {
                 <p className="mt-1 text-xs text-[#68748a]">
                   Apply or remove an offer for this cart.
                 </p>
+                {isPricingRecalculating && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[#9a6b00]" role="status">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Updating total...
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -1746,7 +1748,8 @@ function PromotionOffer({
   isRemoving,
   isApplied,
   isAlreadyUsed,
-  isDisabled,
+  action,
+  combinationNote,
   shippingSavings,
   onApply,
   onRemove,
@@ -1756,10 +1759,11 @@ function PromotionOffer({
   isRemoving: boolean;
   isApplied: boolean;
   isAlreadyUsed: boolean;
-  isDisabled: boolean;
+  action: OfferActionState;
+  combinationNote: string | null;
   shippingSavings: number;
   onApply: () => void;
-  onRemove?: () => void;
+  onRemove: () => void;
 }) {
   const appliedSavings = Number(promotion.applied_discount || 0);
   const discountValue = Number(
@@ -1821,43 +1825,68 @@ function PromotionOffer({
                 {benefitLabel}
               </p>
             </div>
-            <Button
-              className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${isApplied
-                  ? "!border !border-emerald-200 !bg-white !text-emerald-700 hover:!bg-white"
-                  : isAlreadyUsed
-                    ? "!bg-[#e3e7ee] !text-[#68748a] hover:!bg-[#e3e7ee]"
-                    : "!bg-[#fbbc05] !text-[#172033] hover:!bg-[#ffd042]"
-                }`}
-              disabled={isPending || isRemoving || isAlreadyUsed || (isApplied ? !onRemove : isDisabled)}
-              variant={isApplied ? "secondary" : "primary"}
-              onClick={isApplied && onRemove ? onRemove : onApply}
-            >
-              {isPending || isRemoving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : isAlreadyUsed ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Already Used
-                </>
-              ) : isApplied && onRemove ? (
-                <>
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Remove
-                </>
-              ) : isApplied ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Applied
-                </>
-              ) : (
-                "Apply"
-              )}
-            </Button>
+            {action.kind === "automatic" || action.kind === "use-code" ? (
+              <span
+                className={`shrink-0 rounded-full px-2.5 py-1.5 text-[10px] font-extrabold ${action.kind === "automatic"
+                    ? "bg-[#fff2bd] text-[#856000]"
+                    : "bg-[#eef1f6] text-[#58657a]"
+                  }`}
+              >
+                {action.kind === "automatic" ? "Automatic" : "Use code"}
+              </span>
+            ) : (
+              <Button
+                className={`h-9 min-h-9 shrink-0 gap-1.5 rounded-xl px-3 text-xs shadow-none ${isApplied
+                    ? "!border !border-emerald-200 !bg-white !text-emerald-700 hover:!bg-white"
+                    : isAlreadyUsed
+                      ? "!bg-[#e3e7ee] !text-[#68748a] hover:!bg-[#e3e7ee]"
+                      : "!bg-[#fbbc05] !text-[#172033] hover:!bg-[#ffd042]"
+                  }`}
+                disabled={action.disabled}
+                aria-disabled={action.busy}
+                aria-busy={isPending || isRemoving}
+                variant={isApplied ? "secondary" : "primary"}
+                onClick={() => {
+                  // Busy: another offer action or a price re-check is running.
+                  if (action.busy) return;
+                  if (action.kind === "remove") onRemove();
+                  else onApply();
+                }}
+              >
+                {isPending || isRemoving ? (
+                  // The label follows the running action, not the card's current state.
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {offerPendingLabel(isPending ? "apply" : "remove")}
+                  </>
+                ) : action.kind === "already-used" ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Already Used
+                  </>
+                ) : action.kind === "remove" ? (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </>
+                ) : action.kind === "applied" ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Applied
+                  </>
+                ) : (
+                  "Apply"
+                )}
+              </Button>
+            )}
           </div>
           {promotion.code && (
             <div className="mt-2 inline-flex max-w-full rounded-lg bg-[#eef1f6] px-2.5 py-1 font-mono text-[11px] font-bold text-[#485470]">
               <span className="truncate">{promotion.code}</span>
             </div>
+          )}
+          {combinationNote && (
+            <p className="mt-2 text-[11px] leading-4 text-[#68748a]">{combinationNote}</p>
           )}
         </div>
       </div>
