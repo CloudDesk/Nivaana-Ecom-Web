@@ -19,6 +19,8 @@ import ProductFilters, {
   type ProductSort,
 } from "../components/ProductFilters";
 import RecentProductRail from "../components/RecentProductRail";
+import { ProductCardSkeleton, ProductGridSkeleton } from "../components/ProductCardSkeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import { readRecentlyViewedProductIds } from "../lib/recentlyViewed";
 import type { Product } from "../types";
 import { platformProductService } from "../services/productPlatformService";
@@ -314,10 +316,15 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-secondary-dark-gray sm:text-3xl">{pageTitle}</h1>
-            <p className="mt-2 text-secondary-medium-gray">
-              Showing {totalProducts ?? filteredProducts.length} products
-              {search ? ` matching "${search}"` : ""}
-            </p>
+            {productsQuery.isPending ? (
+              // Count is unknown while a new filter loads; avoid flashing "Showing 0 products".
+              <Skeleton className="mt-3 h-5 w-40 rounded-full" />
+            ) : (
+              <p className="mt-2 text-secondary-medium-gray">
+                Showing {totalProducts ?? filteredProducts.length} products
+                {search ? ` matching "${search}"` : ""}
+              </p>
+            )}
           </div>
           <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
             <ProductFilters
@@ -331,10 +338,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
         </div>
         {/* Products Grid */}
         {productsQuery.isPending ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-gold mx-auto mb-4"></div>
-            <p className="text-secondary-medium-gray">Loading products...</p>
-          </div>
+          <ProductGridSkeleton count={10} />
         ) : productsQuery.isError ? (
           <div className="text-center py-12">
             <svg
@@ -363,10 +367,13 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
           </div>
         ) : filteredProducts.length > 0 ? (
           <>
-            <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
+            <div className="listing-fade-in grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
               {filteredProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
+              {/* Next page: placeholder cards continue the grid instead of a spinner. */}
+              {productsQuery.isFetchingNextPage &&
+                Array.from({ length: 5 }).map((_, index) => <ProductCardSkeleton key={`next-${index}`} index={index} />)}
             </div>
 
             {recentlyViewedProducts.length > 0 && (
@@ -389,12 +396,6 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
             <div ref={setLoadMoreNode} className="h-4 w-full" />
 
-            {productsQuery.isFetchingNextPage && (
-              <div className="py-8 text-center">
-                <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-b-2 border-primary-gold" />
-                <p className="text-secondary-medium-gray">Loading more products...</p>
-              </div>
-            )}
 
           </>
         ) : (
