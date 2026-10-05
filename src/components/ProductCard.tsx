@@ -105,7 +105,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, compact = false, ima
       }
 
       const existingItem = mode === "cart" ? cartItem ?? wishlistItem : wishlistItem ?? cartItem;
-      const nextQuantity = Math.max(cartQuantity || existingItem?.quantity || 1, 1);
+      const nextQuantity = mode === "cart"
+        ? Math.max(Number(cartQuantity) + 1, 1)
+        : Math.max(cartQuantity || existingItem?.quantity || 1, 1);
 
       if (mode === "wishlist" && isInWishlist) {
         if (!existingItem) return Promise.resolve();
