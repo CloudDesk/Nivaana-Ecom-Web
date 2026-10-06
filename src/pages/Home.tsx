@@ -22,7 +22,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { theme } from "../config/theme.config";
 import { getProductDisplayName } from "../lib/productDisplay";
 import { cn } from "../lib/utils";
-import { platformProductService } from "../services/productPlatformService";
+import { platformProductService, type HomeCatalog } from "../services/productPlatformService";
 import { promotionService, type Promotion } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
 import { ratingService } from "../services/ratingService";
@@ -39,6 +39,7 @@ import {
   heroVideoPrimary,
   homeFallbackProduct,
   kitchenAccessoriesCategory,
+  taxonomyFallbackImage,
 } from "../assets/config.js";
 
 type HeroSlide = {
@@ -124,25 +125,19 @@ type CustomerReview = {
   image: string;
 };
 
+// Shown only when the ratings API returns no reviews with comments.
+// Nine cards = three desktop pages of three; every name and text is unique; ratings 4 or 5 only.
 const customerReviewFallbacks: CustomerReview[] = [
   {
     id: 1,
-    name: "Ananya R.",
+    name: "Priya Kumar",
     rating: 5,
     review:
-      "From the first spray, I knew this would be a favorite. The scent is elegant, warm, and makes my room feel like a high-end boutique.",
+      "Honestly didn't expect much from incense ordered online, but these surprised me. Gentle smoke, no headache, and the room smells lovely for hours.",
     image: heroPrimaryPoster,
   },
   {
     id: 2,
-    name: "Frieda T.",
-    rating: 5,
-    review:
-      "This perfume is the perfect blend of freshness and warmth. I wear it every day, and people always ask what I am wearing.",
-    image: fragranceBlendsCategory,
-  },
-  {
-    id: 3,
     name: "Julene G.",
     rating: 5,
     review:
@@ -150,8 +145,16 @@ const customerReviewFallbacks: CustomerReview[] = [
     image: heroSecondaryPoster,
   },
   {
+    id: 3,
+    name: "Arjun",
+    rating: 5,
+    review:
+      "I light a dhoop cone every morning before pooja. It burns slow and even, and my mother keeps asking me to order more.",
+    image: taxonomyFallbackImage,
+  },
+  {
     id: 4,
-    name: "Meera S.",
+    name: "Meera Subramanian",
     rating: 5,
     review:
       "The incense has such a clean, calming aroma. It instantly changes the mood of the space and feels perfect for evening rituals.",
@@ -159,11 +162,43 @@ const customerReviewFallbacks: CustomerReview[] = [
   },
   {
     id: 5,
+    name: "Kavya Nair",
+    rating: 4,
+    review:
+      "The car freshener is lovely, subtle and not sickly sweet like the ones you pick up at petrol pumps. Wish it lasted a bit longer, but I'd still buy it again.",
+    image: carFreshenerCategoryDesktop,
+  },
+  {
+    id: 6,
+    name: "Lakshmi",
+    rating: 5,
+    review:
+      "Tucked the wardrobe sachets between my silk sarees and now the whole cupboard smells fresh. Such a small thing, but it makes me smile every time.",
+    image: fragranceBlendsCategory,
+  },
+  {
+    id: 7,
     name: "Rohan M.",
     rating: 4,
     review:
       "Nivaana has become my go-to for gifting. The packaging feels premium, and the fragrances are refined without being too strong.",
     image: kitchenAccessoriesCategory,
+  },
+  {
+    id: 8,
+    name: "Farhan Ahmed",
+    rating: 4,
+    review:
+      "Delivery took a couple of days longer than I hoped, but the reed diffuser was worth the wait. My living room smells calm and clean all day.",
+    image: heroPrimaryPoster,
+  },
+  {
+    id: 9,
+    name: "Sneha D.",
+    rating: 5,
+    review:
+      "Gifted a combo to my sister for her housewarming and she loved it. The box looks so pretty she still hasn't wanted to open the last pack.",
+    image: heroSecondaryPoster,
   },
 ];
 
@@ -203,10 +238,40 @@ const formatLabel = (value?: string | null) =>
 const usableImage = (images?: string[] | null) =>
   images?.find((image) => image && !/example|placeholder/i.test(image));
 
-const productImage = (product?: Product) =>
+const productImage = (product?: Pick<Product, "large" | "medium" | "small">) =>
   usableImage(product?.large) || usableImage(product?.medium) || usableImage(product?.small) || homeFallbackProduct;
 
+const isValidHomeCatalog = (catalog: HomeCatalog | undefined): catalog is HomeCatalog =>
+  Boolean(catalog) &&
+  Array.isArray(catalog?.bestSellers) &&
+  Array.isArray(catalog?.newArrivals) &&
+  Array.isArray(catalog?.bestOfNivaana) &&
+  Array.isArray(catalog?.flavours) &&
+  Array.isArray(catalog?.categories);
+
 const flavorListingQuery = (flavor: string) => `/products?subsubcategory=${encodeURIComponent(flavor)}`;
+
+// Daily Rituals subcategories shown first in the Flavours rail, in this order.
+// Values must match the product subcategory picklist values.
+const DAILY_RITUALS_CATEGORY = "daily_rituals";
+const dailyRitualFlavorSubcategories = [
+  { value: "fresh_mornings", name: "Fresh Mornings" },
+  { value: "relaxation_calm", name: "Relaxation & Calm" },
+  { value: "dusky_evenings", name: "Dusky Evenings" },
+  { value: "peaceful_nights", name: "Peaceful Nights" },
+];
+
+const dailyRitualListingQuery = (subcategory: string) =>
+  `/products?${new URLSearchParams({ category: DAILY_RITUALS_CATEGORY, subcategory }).toString()}`;
+
+// Flavours rail after the Daily Rituals cards:
+// false = every fragrance card (current behaviour); true = one "Others" card that
+// opens all products outside Daily Rituals.
+const SHOW_FLAVOUR_OTHERS_CARD = true;
+const flavourOthersListingQuery = `/products?${new URLSearchParams({
+  excludeCategory: DAILY_RITUALS_CATEGORY,
+  title: "Others",
+}).toString()}`;
 
 const toDateTimestamp = (value?: number | string | null) => {
   if (!value) return "";
@@ -314,6 +379,10 @@ const wrapIndex = (index: number, length: number) => (index + length) % length;
 
 const reviewAuthor = (review: Rating) => review.usermail || (review.userid ? `Customer #${review.userid}` : "Verified Customer");
 
+const reviewPagerButtonClass =
+  "grid h-12 w-12 place-items-center bg-white text-[#777777] transition enabled:hover:bg-[var(--color-surface)] enabled:hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:text-[#d4d4d4]";
+const reviewMobileButtonClass =
+  "grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)] disabled:cursor-not-allowed disabled:text-[#d4d4d4]";
 const carouselArrowClass =
   "h-11 w-11 place-items-center rounded-full border border-[#dedede] bg-white text-[#7a7a7a] shadow-[0_8px_22px_rgba(17,24,39,0.08)] transition duration-200 hover:border-[#cfcfcf] hover:bg-white hover:text-[#565656] hover:shadow-[0_10px_26px_rgba(17,24,39,0.12)]";
 const homeContainer = "mx-auto w-full max-w-[1600px] px-2 sm:px-4 lg:px-6";
@@ -324,6 +393,7 @@ const fiveCardRailItem =
 const fiveCardFeatureRailItem =
   "h-[360px] w-[82vw] min-w-[260px] max-w-[360px] flex-none snap-start sm:w-[48vw] sm:max-w-[420px] md:w-[38vw] lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[calc((100%_-_4rem)/5)]";
 const heroSlideIntervalMs = 8000;
+const REVIEWS_PER_PAGE = 3;
 const categorySlideIntervalMs = 4500;
 const heroTimerRadius = 10;
 const heroTimerCircumference = 2 * Math.PI * heroTimerRadius;
@@ -341,7 +411,10 @@ const Home: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeCategory, setActiveCategory] = useState(0);
   const [activeDeal, setActiveDeal] = useState(0);
-  const [activeReview, setActiveReview] = useState(0);
+  // Reviews page in fixed steps (3 cards per desktop page, 1 card on mobile) without wrapping,
+  // so no card repeats across pages.
+  const [reviewPage, setReviewPage] = useState(0);
+  const [mobileReviewIndex, setMobileReviewIndex] = useState(0);
   const flavorsScrollerRef = useRef<HTMLDivElement | null>(null);
   const bestSellersScrollerRef = useRef<HTMLDivElement | null>(null);
   const newArrivalsScrollerRef = useRef<HTMLDivElement | null>(null);
@@ -356,10 +429,29 @@ const Home: React.FC = () => {
   const newArrivalsDragRef = useRef({ startX: 0, startY: 0, scrollLeft: 0, dragging: false, horizontal: false });
   const newArrivalsDragDistanceRef = useRef(0);
 
-  const { data, isLoading } = useQuery({
+  // Home sections are ranked by the backend across the full catalogue.
+  const homeCatalogQuery = useQuery({
+    queryKey: ["home-catalog"],
+    queryFn: async () => {
+      const response = await platformProductService.getHomeCatalog();
+      if (!isValidHomeCatalog(response.data)) {
+        throw new Error("Invalid home catalog response");
+      }
+      return response.data;
+    },
+    retry: 1,
+  });
+  const homeCatalog = homeCatalogQuery.data;
+
+  // Safety fallback: only if the Home catalog request fails, use the previous
+  // first-100-products behaviour so the page never renders empty.
+  const useLegacyHomeProducts = homeCatalogQuery.isError;
+  const { data, isLoading: legacyProductsLoading } = useQuery({
     queryKey: ["home-products"],
     queryFn: () => platformProductService.getProducts(1, 100),
+    enabled: useLegacyHomeProducts,
   });
+  const isLoading = homeCatalogQuery.isLoading || (useLegacyHomeProducts && legacyProductsLoading);
 
   const ratingsQuery = useQuery({
     queryKey: ["home-ratings"],
@@ -374,7 +466,7 @@ const Home: React.FC = () => {
 
   const assignedPromotionsQuery = useQuery({
     queryKey: ["home-assigned-promotion-deals", homeSession?.user.id],
-    queryFn: () => promotionService.mine("web"),
+    queryFn: () => promotionService.customerOffers("web"),
     enabled: Boolean(homeSession),
   });
 
@@ -385,6 +477,11 @@ const Home: React.FC = () => {
   });
 
   const products = useMemo(() => data?.data ?? [], [data?.data]);
+  // Products available on this page for review-image lookups.
+  const homeProducts = useMemo(
+    () => (homeCatalog ? [...homeCatalog.bestSellers, ...homeCatalog.newArrivals, ...homeCatalog.bestOfNivaana] : products),
+    [homeCatalog, products]
+  );
   const dealPromotions = useMemo(() => {
     const promotionsById = new Map<number, Promotion>();
 
@@ -441,45 +538,68 @@ const Home: React.FC = () => {
   const apiCustomerReviews = useMemo<CustomerReview[]>(
     () =>
       (ratingsQuery.data?.data ?? [])
-        .filter((review) => review.comments?.trim())
+        // Only 4 and 5 star reviews with a comment are shown on Home.
+        .filter((review) => review.comments?.trim() && (review.starrating ?? 0) >= 4)
         .sort((a, b) => (b.createddate ?? 0) - (a.createddate ?? 0))
         .map((review) => ({
           id: review.id,
           name: reviewAuthor(review),
           rating: review.starrating || 5,
           review: review.comments?.trim() || "",
-          image: review.url?.find(Boolean) || productImage(products.find((product) => product.id === review.productid)),
+          image: review.url?.find(Boolean) || productImage(homeProducts.find((product) => product.id === review.productid)),
         })),
-    [products, ratingsQuery.data?.data]
+    [homeProducts, ratingsQuery.data?.data]
   );
-  const customerReviews = apiCustomerReviews.length ? apiCustomerReviews : customerReviewFallbacks;
+  // Fallback cards use distinct Home product images when available, else their static image.
+  const fallbackCustomerReviews = useMemo<CustomerReview[]>(() => {
+    const productImages = Array.from(
+      new Set(homeProducts.map((product) => productImage(product)).filter((image) => image !== homeFallbackProduct))
+    );
+    return customerReviewFallbacks.map((review, index) => ({
+      ...review,
+      image: productImages[index] || review.image,
+    }));
+  }, [homeProducts]);
+  const customerReviews = apiCustomerReviews.length ? apiCustomerReviews : fallbackCustomerReviews;
 
   const bestSellers = useMemo(
-    () => [...products].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0)).slice(0, bestSellerConfig.display_limit || bestSellerConfig.product_filter?.limit || 8),
-    [bestSellerConfig.display_limit, bestSellerConfig.product_filter?.limit, products]
+    () =>
+      (homeCatalog
+        ? homeCatalog.bestSellers
+        : [...products].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0))
+      ).slice(0, bestSellerConfig.display_limit || bestSellerConfig.product_filter?.limit || 10),
+    [bestSellerConfig.display_limit, bestSellerConfig.product_filter?.limit, homeCatalog, products]
   );
 
   const newArrivals = useMemo(
-    () => [...products].sort((a, b) => b.createddate - a.createddate).slice(0, newArrivalConfig.display_limit || newArrivalConfig.product_filter?.limit || 10),
-    [newArrivalConfig.display_limit, newArrivalConfig.product_filter?.limit, products]
+    () =>
+      (homeCatalog
+        ? homeCatalog.newArrivals
+        : [...products].sort((a, b) => b.createddate - a.createddate)
+      ).slice(0, newArrivalConfig.display_limit || newArrivalConfig.product_filter?.limit || 10),
+    [homeCatalog, newArrivalConfig.display_limit, newArrivalConfig.product_filter?.limit, products]
   );
 
   const bestOfNivaanaProducts = useMemo(
     () =>
-      [...products]
-        .sort((a, b) => {
+      (homeCatalog
+        ? homeCatalog.bestOfNivaana
+        : [...products].sort((a, b) => {
           const aScore = (a.soldquantity ?? 0) + (a.averagerating ?? 0) * 10 + (a.discount > 0 ? 8 : 0);
           const bScore = (b.soldquantity ?? 0) + (b.averagerating ?? 0) * 10 + (b.discount > 0 ? 8 : 0);
           return bScore - aScore;
         })
-        .slice(0, 8),
-    [products]
+      ).slice(0, 8),
+    [homeCatalog, products]
   );
 
   const flavors = useMemo<FlavorSlide[]>(() => {
     const flavorMap = new Map<string, FlavorSlide>();
+    const flavorSources: Array<Pick<Product, "fragnancetype" | "large" | "medium" | "small">> = homeCatalog
+      ? homeCatalog.flavours.map((flavour) => ({ ...flavour, fragnancetype: flavour.value }))
+      : products;
 
-    products.forEach((product) => {
+    flavorSources.forEach((product) => {
       product.fragnancetype
         ?.split(",")
         .map((value) => value.trim())
@@ -497,14 +617,54 @@ const Home: React.FC = () => {
         });
     });
 
-    return Array.from(flavorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [products]);
+    // Daily Rituals subcategory cards first; image from the first product of that subcategory.
+    const subcategorySources: Array<{
+      category: string | null;
+      subcategory: string | null;
+    } & Pick<Product, "large" | "medium" | "small">> = homeCatalog ? homeCatalog.categories : products;
+    const dailyRitualSlides = dailyRitualFlavorSubcategories.map(({ value, name }) => ({
+      id: `${DAILY_RITUALS_CATEGORY}:${value}`,
+      name,
+      image: productImage(
+        subcategorySources.find(
+          (source) =>
+            normalizeCategoryKey(source.category) === DAILY_RITUALS_CATEGORY &&
+            normalizeCategoryKey(source.subcategory) === value
+        )
+      ),
+      to: dailyRitualListingQuery(value),
+    }));
+
+    if (SHOW_FLAVOUR_OTHERS_CARD) {
+      const othersSlide: FlavorSlide = {
+        id: "others",
+        name: "Others",
+        image: productImage(
+          subcategorySources.find(
+            (source) =>
+              source.category?.trim() &&
+              normalizeCategoryKey(source.category) !== DAILY_RITUALS_CATEGORY &&
+              productImage(source) !== homeFallbackProduct
+          )
+        ),
+        to: flavourOthersListingQuery,
+      };
+      return [...dailyRitualSlides, othersSlide];
+    }
+
+    const fragranceSlides = Array.from(flavorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return [...dailyRitualSlides, ...fragranceSlides];
+  }, [homeCatalog, products]);
 
   const categories = useMemo(() => {
     const limit = categoryConfig.display_limit || categoryConfig.product_filter?.limit || 6;
     const categoryMap = new Map<string, CategorySlide>();
+    const categorySources: Array<{
+      category: string | null;
+      subcategory: string | null;
+    } & Pick<Product, "large" | "medium" | "small">> = homeCatalog ? homeCatalog.categories : products;
 
-    products.forEach((product) => {
+    categorySources.forEach((product) => {
       const category = product.category?.trim();
       const subcategory = product.subcategory?.trim();
       if (!category && !subcategory) return;
@@ -540,7 +700,7 @@ const Home: React.FC = () => {
       })
       .slice(0, limit);
     return fromApi;
-  }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, products]);
+  }, [categoryConfig.display_limit, categoryConfig.product_filter?.limit, homeCatalog, products]);
 
   const showcaseSlides = useMemo<CategorySlide[]>(() => {
     const items = orderedBySort(showcaseSection?.attributes.items || [])
@@ -607,10 +767,31 @@ const Home: React.FC = () => {
     setActiveSlide((current) => wrapIndex(current + direction, visibleHeroSlides.length));
   };
 
-  const moveReview = (direction: number) => {
-    if (!customerReviews.length) return;
-    setActiveReview((current) => wrapIndex(current + direction, customerReviews.length));
+  const reviewPageCount = Math.ceil(customerReviews.length / REVIEWS_PER_PAGE);
+  const currentReviewPage = Math.min(reviewPage, Math.max(reviewPageCount - 1, 0));
+  const currentMobileReview = Math.min(mobileReviewIndex, Math.max(customerReviews.length - 1, 0));
+
+  const moveReviewPage = (direction: number) => {
+    setReviewPage(Math.min(Math.max(currentReviewPage + direction, 0), Math.max(reviewPageCount - 1, 0)));
   };
+
+  const moveMobileReview = (direction: number) => {
+    setMobileReviewIndex(Math.min(Math.max(currentMobileReview + direction, 0), Math.max(customerReviews.length - 1, 0)));
+  };
+
+  // Show the Flavours arrows only when the cards overflow the rail
+  // (for example five cards fit on desktop, so no arrows are needed).
+  const [flavorsOverflow, setFlavorsOverflow] = useState(false);
+  useEffect(() => {
+    const scroller = flavorsScrollerRef.current;
+    if (!scroller) return;
+
+    const updateOverflow = () => setFlavorsOverflow(scroller.scrollWidth > scroller.clientWidth + 1);
+    updateOverflow();
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [flavors.length, isLoading]);
 
   const scrollFlavors = (direction: number) => {
     const scroller = flavorsScrollerRef.current;
@@ -652,12 +833,11 @@ const Home: React.FC = () => {
     });
   };
 
-  const activeCustomerReview = customerReviews.length
-    ? customerReviews[wrapIndex(activeReview, customerReviews.length)]
-    : undefined;
-  const visibleCustomerReviews = customerReviews.length
-    ? [0, 1, 2].map((offset) => customerReviews[wrapIndex(activeReview + offset, customerReviews.length)])
-    : [];
+  const activeCustomerReview = customerReviews[currentMobileReview];
+  const visibleCustomerReviews = customerReviews.slice(
+    currentReviewPage * REVIEWS_PER_PAGE,
+    currentReviewPage * REVIEWS_PER_PAGE + REVIEWS_PER_PAGE
+  );
   const showHeroSkeleton = !visibleHeroSlides.length;
 
   return (
@@ -1081,14 +1261,16 @@ const Home: React.FC = () => {
             linkText="View all flavours"
           />
 
-          <div className="relative lg:px-16">
-            <button
-              className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollFlavors(-1)}
-              aria-label="Previous flavours"
-            >
-              <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
-            </button>
+          <div className={cn("relative", flavorsOverflow && "lg:px-16")}>
+            {flavorsOverflow && (
+              <button
+                className={cn("absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+                onClick={() => scrollFlavors(-1)}
+                aria-label="Previous flavours"
+              >
+                <ChevronLeft className="h-5 w-5 stroke-[2.4]" />
+              </button>
+            )}
 
             <div
               ref={flavorsScrollerRef}
@@ -1152,13 +1334,15 @@ const Home: React.FC = () => {
                 : flavors.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
             </div>
 
-            <button
-              className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
-              onClick={() => scrollFlavors(1)}
-              aria-label="Next flavours"
-            >
-              <ChevronRight className="h-5 w-5 stroke-[2.4]" />
-            </button>
+            {flavorsOverflow && (
+              <button
+                className={cn("absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 lg:grid", carouselArrowClass)}
+                onClick={() => scrollFlavors(1)}
+                aria-label="Next flavours"
+              >
+                <ChevronRight className="h-5 w-5 stroke-[2.4]" />
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -1181,21 +1365,23 @@ const Home: React.FC = () => {
                 {reviewConfig.section_title || "Real Customers, Real Reviews"}
               </h2>
 
-              {customerReviews.length > 1 && (
-                <div className="hidden shrink-0 overflow-hidden rounded-full border border-[var(--color-border)] bg-white shadow-[0_8px_20px_rgba(17,24,39,0.06)] sm:flex">
+              {reviewPageCount > 1 && (
+                <div className="hidden shrink-0 overflow-hidden rounded-full border border-[var(--color-border)] bg-white shadow-[0_8px_20px_rgba(17,24,39,0.06)] md:flex">
                   <button
                     type="button"
-                    className="grid h-12 w-12 place-items-center bg-white text-[#b8b8b8] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
-                    onClick={() => moveReview(-1)}
-                    aria-label="Previous review"
+                    className={reviewPagerButtonClass}
+                    onClick={() => moveReviewPage(-1)}
+                    disabled={currentReviewPage === 0}
+                    aria-label="Previous reviews"
                   >
                     <ChevronLeft className="h-6 w-6 stroke-[2.8]" />
                   </button>
                   <button
                     type="button"
-                    className="grid h-12 w-12 place-items-center bg-white text-[#777777] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
-                    onClick={() => moveReview(1)}
-                    aria-label="Next review"
+                    className={reviewPagerButtonClass}
+                    onClick={() => moveReviewPage(1)}
+                    disabled={currentReviewPage >= reviewPageCount - 1}
+                    aria-label="Next reviews"
                   >
                     <ChevronRight className="h-6 w-6 stroke-[2.8]" />
                   </button>
@@ -1210,16 +1396,18 @@ const Home: React.FC = () => {
                 <div className="mt-10 flex items-center justify-center gap-4">
                   <button
                     type="button"
-                    className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)]"
-                    onClick={() => moveReview(-1)}
+                    className={reviewMobileButtonClass}
+                    onClick={() => moveMobileReview(-1)}
+                    disabled={currentMobileReview === 0}
                     aria-label="Previous review"
                   >
                     <ChevronLeft className="h-5 w-5 stroke-[2.8]" />
                   </button>
                   <button
                     type="button"
-                    className="grid h-10 w-10 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[#777777] shadow-[0_8px_20px_rgba(17,24,39,0.06)]"
-                    onClick={() => moveReview(1)}
+                    className={reviewMobileButtonClass}
+                    onClick={() => moveMobileReview(1)}
+                    disabled={currentMobileReview >= customerReviews.length - 1}
                     aria-label="Next review"
                   >
                     <ChevronRight className="h-5 w-5 stroke-[2.8]" />
@@ -1228,9 +1416,10 @@ const Home: React.FC = () => {
               )}
             </div>
 
-            <div className="hidden grid-cols-3 gap-6 md:grid xl:gap-8">
+            {/* Shared rows (stars, text, name, remaining space) keep reviewer names on one line; min height matches the card's original 350px. */}
+            <div className="hidden min-h-[350px] grid-cols-3 grid-rows-[auto_auto_auto_1fr] gap-x-6 gap-y-0 md:grid xl:gap-x-8">
               {visibleCustomerReviews.map((review) => (
-                <ReviewCard key={review.id} review={review} />
+                <ReviewCard key={review.id} review={review} alignWithRow />
               ))}
             </div>
           </div>
@@ -1249,18 +1438,29 @@ const Home: React.FC = () => {
   );
 };
 
-function ReviewCard({ review }: { review: CustomerReview }) {
+function ReviewCard({ review, alignWithRow = false }: { review: CustomerReview; alignWithRow?: boolean }) {
   const rating = Math.max(1, Math.min(review.rating, 5));
 
   return (
-    <article className="relative mx-auto flex min-h-[320px] w-full max-w-[640px] flex-col items-center justify-start rounded-[18px] border border-[#e7e7e7] bg-white px-6 pb-16 pt-8 text-center shadow-[0_14px_34px_rgba(17,24,39,0.04)] sm:min-h-[350px] sm:px-8 lg:px-10">
+    <article
+      className={cn(
+        "relative mx-auto flex min-h-[320px] w-full max-w-[640px] flex-col items-center justify-start rounded-[18px] border border-[#e7e7e7] bg-white px-6 pb-16 pt-8 text-center shadow-[0_14px_34px_rgba(17,24,39,0.04)] sm:min-h-[350px] sm:px-8 lg:px-10",
+        alignWithRow && "row-span-4 grid grid-rows-subgrid content-start items-start justify-items-center"
+      )}
+    >
       <div className="mb-3 flex justify-center gap-1 text-[var(--color-text)]">
         {Array.from({ length: rating }).map((_, star) => (
           <Star key={star} className="h-5 w-5 fill-current stroke-[2.4]" />
         ))}
       </div>
 
-      <p className="mx-auto line-clamp-5 max-w-[30rem] text-base font-medium leading-7 text-[#727272] sm:text-lg sm:leading-8">
+      {/* Text reserves four lines so reviewer names sit on the same line across pages. */}
+      <p
+        className={cn(
+          "mx-auto min-h-[7rem] max-w-[30rem] text-base font-medium leading-7 text-[#727272] sm:min-h-[8rem] sm:text-lg sm:leading-8",
+          alignWithRow ? "line-clamp-[10]" : "line-clamp-5"
+        )}
+      >
         {review.review}
       </p>
 

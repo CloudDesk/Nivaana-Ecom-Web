@@ -8,6 +8,8 @@ export const mediaAssets = {
   heroPrimaryPoster: assetUrl("Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png"),
   heroSecondaryPoster: assetUrl("Gemini_Generated_Image_fmqf65fmqf65fmqf.png"),
   productFallback: assetUrl("Gemini_Generated_Image_fmqf65fmqf65fmqf.png"),
+  taxonomyFallbackImage:
+    "https://images.pexels.com/photos/3639806/pexels-photo-3639806.jpeg",
   homeFallbackProduct: assetUrl("Gemini_Generated_Image_3h8ozb3h8ozb3h8o.png"),
   carFreshenerCategoryDesktop: assetUrl("carfreshner_desktopview_categorycarousel.png"),
   carFreshenerCategoryMobile: assetUrl("carfreshner_mobileview_category_carousel.png"),
@@ -23,6 +25,7 @@ export const {
   heroPrimaryPoster,
   heroSecondaryPoster,
   productFallback,
+  taxonomyFallbackImage,
   homeFallbackProduct,
   carFreshenerCategoryDesktop,
   carFreshenerCategoryMobile,

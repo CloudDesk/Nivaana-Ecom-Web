@@ -8,7 +8,6 @@ import {
   Check,
   Copy,
   Gift,
-  Loader2,
   Percent,
   ShoppingBag,
   Sparkles,
@@ -34,6 +33,9 @@ import {
   buildPromotionEvaluationCartItems,
 } from "../lib/cartPromotions";
 import { toast } from "../components/toastApi";
+import { PageSkeleton } from "../components/PageSkeleton";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 const formatCurrency = (value?: number | null) =>
   `₹${Math.max(Number(value || 0), 0).toLocaleString("en-IN")}`;
@@ -170,7 +172,7 @@ const Promotions: React.FC = () => {
 
   const publicPromotionsQuery = useQuery({
     queryKey: ["my-promotions", userId],
-    queryFn: () => promotionService.mine("web"),
+    queryFn: () => promotionService.customerOffers("web"),
     enabled: Boolean(userId),
   });
 
@@ -281,7 +283,7 @@ const Promotions: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login to view promotions</h1>
@@ -383,9 +385,10 @@ const Promotions: React.FC = () => {
     personalPublicPromotions.length;
 
   return (
-    <main className="min-h-screen bg-[#f6f7fb] px-4 py-8 sm:px-6 sm:py-10">
-      <section className="mx-auto max-w-7xl">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#26344f] via-[#3f4e6c] to-[#56627e] px-6 py-7 text-white shadow-[0_22px_60px_rgba(38,52,79,0.22)] sm:px-9 lg:px-10">
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader currentPage="Promotions" title="Promotions" subtitle="Offers available for your account and your current cart." />
+        <div className="relative mt-8 overflow-hidden rounded-3xl bg-gradient-to-br from-[#26344f] via-[#3f4e6c] to-[#56627e] px-6 py-7 text-white shadow-[0_22px_60px_rgba(38,52,79,0.22)] sm:px-9 lg:px-10">
           <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[42px] border-[#fbbc05]/15" />
           <div className="pointer-events-none absolute -bottom-20 right-1/3 h-48 w-48 rounded-full bg-[#fbbc05]/10 blur-2xl" />
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
@@ -394,9 +397,9 @@ const Promotions: React.FC = () => {
                 <Sparkles className="h-3.5 w-3.5" />
                 Deals selected for you
               </span>
-              <h1 className="mt-3 text-3xl font-extrabold tracking-tight">
+              <h2 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">
                 Make every cart more rewarding
-              </h1>
+              </h2>
               <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
                 Explore active offers, copy voucher codes in one click, and see exactly
                 what each promotion saves before checkout.
@@ -425,10 +428,7 @@ const Promotions: React.FC = () => {
         </div>
 
         {isLoadingOffers ? (
-          <div className="mt-8 flex items-center gap-3 rounded-2xl border border-[#e2e5ec] bg-white p-5 text-sm font-semibold text-[#485470] shadow-sm">
-            <Loader2 className="h-5 w-5 animate-spin text-[#f0ae00]" />
-            Finding the best promotions for your cart...
-          </div>
+          <PageSkeleton variant="promotions" count={4} hideHeader />
         ) : (
           <div className="mt-8 space-y-8">
             {offersQuery.isError && hasCartContext && (

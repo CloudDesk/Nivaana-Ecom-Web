@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
   CalendarDays,
@@ -26,17 +26,22 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { PageSkeleton } from "../components/PageSkeleton";
 import { cn } from "../lib/utils";
 import {
   orderService,
   type OrderAddress,
+  type OrderCostBreakdown,
   type OrderDetails,
   type OrderLine,
   type OrderSummary,
+  type PromotionCostBreakdown,
   type RefundOperation,
   type TrackingDetails,
 } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 import {
   returnSourceService,
   type AllowedReturnReason,
@@ -46,6 +51,8 @@ import {
   type ReturnRequestType,
   type ReturnRequestSummary,
 } from "../services/returnSourceService";
+
+const ORDERS_PAGE_SIZE = 10;
 
 const currencyFormatter = new Intl.NumberFormat("en-IN");
 
@@ -92,8 +99,30 @@ const formatStatus = (status?: string | null) => {
 const getWalletAmountApplied = (order: OrderSummary) =>
   Number(order.wallet_amount_applied ?? order.wallet_discount_total ?? 0);
 
-const getOrderTotal = (order: OrderSummary) =>
-  Number(order.orderamount || 0) + getWalletAmountApplied(order);
+const getPromotionDisplayRows = (promotions: PromotionCostBreakdown[]) =>
+  promotions.flatMap((promotion, promotionIndex) => {
+    const base = {
+      couponCode: promotion.coupon_code,
+      promotionIndex,
+    };
+    const rows = [
+      promotion.merchandise_discount > 0
+        ? { ...base, key: `${promotion.promotion_id ?? promotionIndex}-merchandise`, label: promotion.promotion_name, amount: promotion.merchandise_discount }
+        : null,
+      promotion.free_item_discount > 0
+        ? { ...base, key: `${promotion.promotion_id ?? promotionIndex}-free-item`, label: `${promotion.promotion_name} · Free item`, amount: promotion.free_item_discount }
+        : null,
+      promotion.shipping_discount > 0
+        ? { ...base, key: `${promotion.promotion_id ?? promotionIndex}-shipping`, label: `${promotion.promotion_name} · Shipping`, amount: promotion.shipping_discount }
+        : null,
+    ].filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+    return rows.length > 0
+      ? rows
+      : promotion.discount_amount > 0
+        ? [{ ...base, key: `${promotion.promotion_id ?? promotionIndex}-combined`, label: promotion.promotion_name, amount: promotion.discount_amount }]
+        : [];
+  });
 
 const getPlacedTimestamp = (details: OrderDetails) => {
   const history = Array.isArray(details.order.status_history)
@@ -128,6 +157,7 @@ const scrollToOrderStatus = (orderKey: string) => {
 
 const Orders: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [session] = useState(() => sessionService.getSession());
   const userId = session?.user.id;
   const [detailsByOrder, setDetailsByOrder] = useState<Record<string, OrderDetails>>({});
@@ -158,11 +188,28 @@ const Orders: React.FC = () => {
   const [refreshOrderKey, setRefreshOrderKey] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
 
-  const ordersQuery = useQuery({
-    queryKey: ["orders", userId],
-    queryFn: () => orderService.listUserDetails(userId!),
+  // Order history loads page by page (newest first). Keys stay under ["orders", userId]
+  // so existing invalidations after cancel/payment refresh these queries too.
+  const ordersQuery = useInfiniteQuery({
+    queryKey: ["orders", userId, "history"],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => orderService.listUserDetails(userId!, pageParam, ORDERS_PAGE_SIZE),
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasNext ? Number(lastPage.pagination.page) + 1 : undefined,
     enabled: Boolean(userId),
   });
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = ordersQuery;
+
+  // Totals across all orders, not just the loaded pages.
+  const orderSummaryQuery = useQuery({
+    queryKey: ["orders", userId, "summary"],
+    queryFn: () => orderService.summary(userId!),
+    enabled: Boolean(userId),
+  });
+
+  // Scroll marker held in state so the observer re-attaches whenever it mounts.
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -172,25 +219,60 @@ const Orders: React.FC = () => {
   }, [statusMessage]);
 
   const orders = useMemo(() => {
-    const rawOrders = Array.isArray(ordersQuery.data?.data) ? ordersQuery.data.data : [];
+    const rawOrders = (ordersQuery.data?.pages ?? []).flatMap((page) => (Array.isArray(page.data) ? page.data : []));
+    const seen = new Set<string>();
     return rawOrders
       .map(normalizeOrderDetails)
       .filter((details): details is OrderDetails => Boolean(details))
       .filter((details) => !isReplacementFulfillmentOrder(details.order))
+      // A new order can shift page boundaries; keep the first copy of each order.
+      .filter((details) => {
+        const key = String(details.order.id ?? details.order.orderid ?? "");
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .sort((a, b) => Number(b.order.createddate || 0) - Number(a.order.createddate || 0));
-  }, [ordersQuery.data?.data]);
+  }, [ordersQuery.data?.pages]);
 
-  const orderSummary = useMemo(() => {
-    const totalSpent = orders.reduce((sum, details) => sum + getOrderTotal(details.order), 0);
-    const cancelled = orders.filter((details) => isCancelledStatus(details.order.orderstatus)).length;
+  useEffect(() => {
+    const requestedOrderId = searchParams.get("orderId");
+    if (!requestedOrderId || orders.length === 0) return;
 
-    return {
-      total: orders.length,
-      totalSpent,
-      active: Math.max(orders.length - cancelled, 0),
-      cancelled,
-    };
-  }, [orders]);
+    const orderIndex = orders.findIndex(({ order }) =>
+      [order.id, order.orderid].some((identifier) => String(identifier ?? "") === requestedOrderId)
+    );
+    if (orderIndex < 0) {
+      // A linked older order may be on a later page.
+      if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+      return;
+    }
+
+    const orderKey = getOrderKey(orders[orderIndex].order, orderIndex);
+    setExpandedOrderKey(orderKey);
+    scrollToOrderStatus(orderKey);
+  }, [orders, searchParams, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const summaryData = orderSummaryQuery.data?.data;
+  const orderSummary = {
+    total: summaryData?.total_orders ?? 0,
+    totalSpent: summaryData?.total_spent ?? 0,
+    active: summaryData?.active_orders ?? 0,
+    cancelled: summaryData?.cancelled_orders ?? 0,
+  };
+
+  useEffect(() => {
+    if (!loadMoreNode || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(loadMoreNode);
+    return () => observer.disconnect();
+  }, [loadMoreNode, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   useEffect(() => {
     if (!orders.length) return;
@@ -491,13 +573,75 @@ const Orders: React.FC = () => {
     setCancelOrderKey(orderKey);
     setCancelErrorByOrder((current) => ({ ...current, [orderKey]: "" }));
     setStatusMessage("");
+    const previousDetails = detailsByOrder[orderKey];
+    const optimisticDetails: OrderDetails = {
+      ...details,
+      order: {
+        ...details.order,
+        orderstatus: "cancelled",
+        effective_status: "cancelled",
+        fulfillment_status: "cancelled",
+        cancelleddate: Date.now(),
+      },
+    };
+    setDetailsByOrder((current) => ({ ...current, [orderKey]: optimisticDetails }));
+
+    const waitForCancelledStatus = async () => {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, attempt === 0 ? 750 : 2000);
+        });
+
+        try {
+          const latestResponse = await orderService.details(identifier);
+          const latestDetails = normalizeOrderDetails(latestResponse.data);
+          if (latestDetails && isCancelledStatus(latestDetails.order.orderstatus)) {
+            return latestDetails;
+          }
+        } catch {
+          // The cancellation request may still hold a database lock. Keep polling
+          // until the updated order becomes readable.
+        }
+      }
+
+      return null;
+    };
 
     try {
       await orderService.cancel(identifier, userId!);
-      await queryClient.invalidateQueries({ queryKey: ["orders", userId] });
-      await queryClient.refetchQueries({ queryKey: ["orders", userId], type: "active" });
       setStatusMessage("Order cancelled successfully.");
+      await queryClient
+        .refetchQueries({ queryKey: ["orders", userId], type: "active" })
+        .catch(() => undefined);
     } catch (error) {
+      if (error instanceof Error && /timeout/i.test(error.message)) {
+        setStatusMessage("Cancellation submitted. Confirming the updated status...");
+        const latestDetails = await waitForCancelledStatus();
+        if (latestDetails) {
+          setDetailsByOrder((current) => ({ ...current, [orderKey]: latestDetails }));
+          setCancelErrorByOrder((current) => ({ ...current, [orderKey]: "" }));
+          setStatusMessage("Order cancelled successfully.");
+          await queryClient
+            .refetchQueries({ queryKey: ["orders", userId], type: "active" })
+            .catch(() => undefined);
+          return;
+        }
+
+        // Keep the submitted state and silently refresh the list. A transport
+        // timeout does not mean the server rejected the cancellation.
+        await queryClient
+          .refetchQueries({ queryKey: ["orders", userId], type: "active" })
+          .catch(() => undefined);
+        setStatusMessage("Cancellation is still processing. The status will update automatically.");
+        return;
+      }
+
+      setDetailsByOrder((current) => {
+        const next = { ...current };
+        if (previousDetails) next[orderKey] = previousDetails;
+        else delete next[orderKey];
+        return next;
+      });
       const message = error instanceof Error ? error.message : "Could not cancel this order.";
       setCancelErrorByOrder((current) => ({ ...current, [orderKey]: message }));
     } finally {
@@ -507,7 +651,7 @@ const Orders: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login to view orders</h1>
@@ -529,26 +673,12 @@ const Orders: React.FC = () => {
           onSubmit={handleRequestSubmit}
         />
       )}
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
-      <section className="mx-auto max-w-5xl">
-        <div className="mb-8">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-muted)]">Account</p>
-            <Link
-              to="/account"
-              className="inline-flex min-h-8 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)]"
-            >
-              Back to account
-            </Link>
-          </div>
-          <div>
-            <h1 className="text-[22px] font-semibold text-[var(--color-text)]">Orders</h1>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">Manage order history, tracking, and purchased items.</p>
-          </div>
-        </div>
+      <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader currentPage="Orders" title="Orders" subtitle="Manage order history, tracking, and purchased items." />
 
-        {orders.length > 0 && (
-          <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {(summaryData?.total_orders ?? 0) > 0 && (
+          <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
             <SummaryStat label="Total orders" value={String(orderSummary.total)} />
             <SummaryStat label="Total spent" value={formatCurrency(orderSummary.totalSpent)} />
             <SummaryStat label="Active" value={String(orderSummary.active)} />
@@ -556,17 +686,14 @@ const Orders: React.FC = () => {
           </div>
         )}
 
-        <section>
+        <section className="mt-8">
           {statusMessage && (
             <div className="mb-5 rounded-[var(--radius-sm)] border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
               {statusMessage}
             </div>
           )}
           {ordersQuery.isLoading ? (
-            <div className="flex items-center gap-3 text-sm font-semibold text-[var(--color-secondary)]">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Loading orders
-            </div>
+            <PageSkeleton variant="orders" count={3} hideHeader />
           ) : ordersQuery.isError ? (
             <div className="rounded-[var(--radius-sm)] border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-600">
               Could not load your orders. Please try again.
@@ -655,6 +782,20 @@ const Orders: React.FC = () => {
                   />
                 );
               })}
+              {/* Next page: scroll marker, placeholders while loading, and a manual fallback. */}
+              <div ref={setLoadMoreNode} className="h-1 w-full" aria-hidden="true" />
+              {ordersQuery.isFetchingNextPage && <PageSkeleton variant="orders" count={2} hideHeader />}
+              {ordersQuery.hasNextPage && !ordersQuery.isFetchingNextPage && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => void ordersQuery.fetchNextPage()}
+                    className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-5 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+                  >
+                    Load more orders
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-8 text-center">
@@ -750,11 +891,22 @@ function OrderCard({
   const statusTone = getStatusTone(displayStatus);
   const cancelled = isCancelledStatus(displayStatus);
   const walletAmountApplied = getWalletAmountApplied(order);
-  const promotionDiscount = Number(order.promotion_discount_total || 0);
+  const costBreakdown = order.cost_breakdown;
+  const promotionDiscount = Number(costBreakdown?.promotion_discount ?? order.promotion_discount_total ?? 0);
   const combinedDiscount = Number(order.discountamount || 0);
-  const productDiscount = Math.max(0, combinedDiscount - promotionDiscount);
-  const orderTotal = getOrderTotal(order);
+  const productDiscount = Number(costBreakdown?.product_discount ?? Math.max(0, combinedDiscount - promotionDiscount));
+  const totalDiscount = Number(costBreakdown?.total_discount ?? combinedDiscount);
+  const deliveryCharges = Number(costBreakdown?.delivery_charges ?? order.shipping_cost ?? 0);
+  const originalCartValue = Number(costBreakdown?.original_cart_value ?? order.original_total ?? order.productamount ?? 0);
+  const orderTotal = Number(costBreakdown?.final_payable_amount ?? order.orderamount ?? 0);
+  const promotionBreakdownRows = getPromotionDisplayRows(costBreakdown?.promotions ?? []);
   const walletUsage = details.wallet_usage || [];
+  const walletSourceNames = [...new Set(
+    walletUsage
+      .map((usage) => usage.coupon_name || usage.coupon_code)
+      .filter((name): name is string => Boolean(name))
+  )];
+  const walletCouponNames = walletSourceNames.join(", ");
   const paidUsingWallet =
     String(order.mode || "").toLowerCase() === "wallet" ||
     (Number(order.orderamount || 0) === 0 && walletAmountApplied > 0);
@@ -959,20 +1111,49 @@ function OrderCard({
                 })}
                 <div className="mt-3 space-y-2 border-t border-[var(--color-border)] pt-3 text-sm">
                   <div className="flex items-center justify-between text-[var(--color-muted)]">
-                    <span>Original total</span>
-                    <span>{formatCurrency(order.original_total || order.productamount)}</span>
+                    <span>Original cart value</span>
+                    <span>{formatCurrency(originalCartValue)}</span>
                   </div>
                   {productDiscount > 0 && (
                     <div className="flex items-center justify-between text-red-600">
                       <span>Product discount</span><span>-{formatCurrency(productDiscount)}</span>
                     </div>
                   )}
-                  {promotionDiscount > 0 && (
-                    <div className="flex items-center justify-between text-red-600">
-                      <span>Promotion discount</span><span>-{formatCurrency(promotionDiscount)}</span>
+                  {promotionBreakdownRows.length > 0
+                    ? promotionBreakdownRows.map((promotion) => (
+                        <div key={promotion.key} className="flex items-start justify-between gap-3 text-emerald-700">
+                          <span className="min-w-0">
+                            <span className="font-medium">{promotion.label}</span>
+                            {promotion.couponCode ? (
+                              <span className="ml-1.5 text-xs text-[var(--color-muted)]">({promotion.couponCode})</span>
+                            ) : null}
+                          </span>
+                          <span className="shrink-0">-{formatCurrency(promotion.amount)}</span>
+                        </div>
+                      ))
+                    : promotionDiscount > 0 && (
+                        <div className="flex items-center justify-between text-emerald-700">
+                          <span>Promotion discount</span><span>-{formatCurrency(promotionDiscount)}</span>
+                        </div>
+                      )}
+                  {totalDiscount > 0 && (
+                    <div className="flex items-center justify-between border-t border-dashed border-[var(--color-border)] pt-2 font-semibold text-emerald-700">
+                      <span>Total discount</span><span>-{formatCurrency(totalDiscount)}</span>
                     </div>
                   )}
-                  {walletUsage.length > 0 && (
+                  <div className="flex items-center justify-between text-[var(--color-muted)]">
+                    <span>Delivery charges</span>
+                    <span>{deliveryCharges > 0 ? formatCurrency(deliveryCharges) : "Free"}</span>
+                  </div>
+                  {walletAmountApplied > 0 && walletCouponNames ? (
+                    <div className="flex items-center justify-between font-semibold text-amber-700">
+                      <span>
+                        Coupons <span className="text-xs font-medium">({walletCouponNames})</span>
+                      </span>
+                      <span>-{formatCurrency(walletAmountApplied)}</span>
+                    </div>
+                  ) : null}
+                  {walletAmountApplied <= 0 && walletUsage.length > 0 && (
                     <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3 text-xs text-[var(--color-muted)]">
                       {walletUsage.map((usage) => (
                         <div key={usage.reservation_id} className="flex justify-between gap-3">
@@ -983,33 +1164,13 @@ function OrderCard({
                     </div>
                   )}
                 </div>
-                {Number(order.shipping_cost || 0) > 0 ? (
-                  <div className="mt-3 flex items-center justify-between border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-muted)]">
-                    <span>Shipping charges</span>
-                    <span>{formatCurrency(order.shipping_cost)}</span>
-                  </div>
-                ) : null}
                 <div className={cn(
                   "flex items-center justify-between text-sm font-semibold text-[var(--color-text)]",
                   "mt-3 border-t border-[var(--color-border)] pt-3"
                 )}>
-                  <span>Order total</span>
+                  <span>Final payable amount</span>
                   <span>{formatCurrency(orderTotal)}</span>
                 </div>
-                {walletAmountApplied > 0 && (
-                  <div className="space-y-2 rounded-[var(--radius-sm)] bg-amber-50 p-3 text-sm">
-                    <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">Payment allocation</p>
-                    <div className="flex items-center justify-between font-semibold text-amber-700">
-                      <span>Paid using Wallet</span><span>{formatCurrency(walletAmountApplied)}</span>
-                    </div>
-                    {Number(order.orderamount || 0) > 0 && (
-                      <div className="flex items-center justify-between text-[var(--color-text)]">
-                        <span>Paid using {String(order.mode).toLowerCase() === "cod" ? "COD" : "PhonePe"}</span>
-                        <span>{formatCurrency(order.orderamount)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             ) : (
               <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
@@ -1059,6 +1220,9 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
       wallet_amount_applied: getNumber(orderSource, ["wallet_amount_applied", "wallet_discount_total"]),
       original_total: getNumber(orderSource, ["original_total"]),
       shipping_cost: getNumber(orderSource, ["shipping_cost"]),
+      total_gst_amount: getNumber(orderSource, ["total_gst_amount"]),
+      tax_amount: getNumber(orderSource, ["tax_amount"]),
+      cost_breakdown: normalizeCostBreakdown(orderSource.cost_breakdown),
       mode: getString(orderSource, ["mode"]),
       orderstatus: getString(orderSource, ["orderstatus"]),
       fulfillment_status: getString(orderSource, ["fulfillment_status"]),
@@ -1074,6 +1238,39 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
     refund_operations: Array.isArray(raw.refund_operations) ? raw.refund_operations as any[] : [],
     status_history: Array.isArray(raw.status_history) ? raw.status_history : undefined,
     statusHistory: Array.isArray(raw.statusHistory) ? raw.statusHistory : undefined,
+  };
+}
+
+function normalizeCostBreakdown(value: unknown): OrderCostBreakdown | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const promotions = Array.isArray(value.promotions)
+    ? value.promotions.flatMap((item): PromotionCostBreakdown[] => {
+        if (!isRecord(item)) return [];
+        return [{
+          promotion_id: getNumber(item, ["promotion_id"]) ?? null,
+          promotion_name: getString(item, ["promotion_name"]) || "Promotion discount",
+          coupon_code: getString(item, ["coupon_code"]) || null,
+          discount_type: getString(item, ["discount_type"]) || "PROMOTION",
+          merchandise_discount: getNumber(item, ["merchandise_discount"]) ?? 0,
+          free_item_discount: getNumber(item, ["free_item_discount"]) ?? 0,
+          shipping_discount: getNumber(item, ["shipping_discount"]) ?? 0,
+          discount_amount: getNumber(item, ["discount_amount"]) ?? 0,
+        }];
+      })
+    : [];
+
+  return {
+    original_cart_value: getNumber(value, ["original_cart_value"]) ?? 0,
+    promotions,
+    product_discount: getNumber(value, ["product_discount"]) ?? 0,
+    promotion_discount: getNumber(value, ["promotion_discount"]) ?? 0,
+    free_item_discount: getNumber(value, ["free_item_discount"]) ?? 0,
+    shipping_discount: getNumber(value, ["shipping_discount"]) ?? 0,
+    total_discount: getNumber(value, ["total_discount"]) ?? 0,
+    taxes: getNumber(value, ["taxes"]) ?? 0,
+    delivery_charges: getNumber(value, ["delivery_charges"]) ?? 0,
+    final_payable_amount: getNumber(value, ["final_payable_amount"]) ?? 0,
   };
 }
 
@@ -1163,6 +1360,25 @@ function OrderLineRow({
   const latestLineRequest = [...returnRequests]
     .sort((a, b) => Number(b.modifieddate || b.id || 0) - Number(a.modifieddate || a.id || 0))[0];
   const lineDisplayStatus = latestLineRequest ? getCustomerReturnStatus(latestLineRequest) : line.orderstatus;
+  const quantity = Math.max(1, Number(line.quantity || 1));
+  const finalLineAmount = Math.max(0, Number(line.orderamount ?? line.productamount ?? 0));
+  const combinedDiscount = Math.max(0, Number(line.discountamount ?? 0));
+  const promotionDiscount = Math.max(0, Number(line.promotion_discount_amount ?? 0));
+  const storedProductDiscount = Math.max(0, Number(line.product_discount_amount ?? 0));
+  const productDiscount = storedProductDiscount > 0
+    ? storedProductDiscount
+    : Math.max(0, combinedDiscount - promotionDiscount);
+  const totalLineDiscount = productDiscount + promotionDiscount > 0
+    ? productDiscount + promotionDiscount
+    : combinedDiscount;
+  const storedUnitPrice = Math.max(0, Number(line.original_price ?? line.list_unit_price ?? 0));
+  const originalLineValue = storedUnitPrice > 0
+    ? storedUnitPrice * quantity
+    : finalLineAmount + totalLineDiscount;
+  const unitPrice = storedUnitPrice > 0
+    ? storedUnitPrice
+    : originalLineValue / quantity;
+  const isFreeItem = line.is_free_item === true || String(line.line_type || "").toUpperCase() === "PROMOTIONAL_GIFT";
 
   return (
     <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-3">
@@ -1185,7 +1401,7 @@ function OrderLineRow({
             </h3>
           )}
           <p className="mt-1 text-xs text-[var(--color-muted)]">
-            Qty: {Number(line.quantity || 0)}
+            Qty: {quantity}
             {lineDisplayStatus ? (
               <>
                 <span aria-hidden="true"> . </span>
@@ -1193,6 +1409,43 @@ function OrderLineRow({
               </>
             ) : null}
           </p>
+          {isFreeItem ? (
+            <span className="mt-2 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+              Promotional gift
+            </span>
+          ) : null}
+          <div className="mt-3 grid gap-x-5 gap-y-1.5 border-t border-[var(--color-border)] pt-3 text-xs sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3 text-[var(--color-muted)]">
+              <span>Unit price</span>
+              <span>{formatCurrency(unitPrice)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-[var(--color-muted)]">
+              <span>Original value</span>
+              <span>{formatCurrency(originalLineValue)}</span>
+            </div>
+            {productDiscount > 0 ? (
+              <div className="flex items-center justify-between gap-3 text-emerald-700">
+                <span>Product discount</span>
+                <span>-{formatCurrency(productDiscount)}</span>
+              </div>
+            ) : null}
+            {promotionDiscount > 0 ? (
+              <div className="flex items-center justify-between gap-3 text-emerald-700">
+                <span>{isFreeItem ? "Free-item discount" : "Promotion discount"}</span>
+                <span>-{formatCurrency(promotionDiscount)}</span>
+              </div>
+            ) : null}
+            {totalLineDiscount > 0 ? (
+              <div className="flex items-center justify-between gap-3 font-semibold text-emerald-700">
+                <span>Total discount</span>
+                <span>-{formatCurrency(totalLineDiscount)}</span>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-3 font-semibold text-[var(--color-text)]">
+              <span>Final amount</span>
+              <span>{isFreeItem || finalLineAmount === 0 ? "Free" : formatCurrency(finalLineAmount)}</span>
+            </div>
+          </div>
           {eligibilityItem && !isAnyEligible && eligibilityItem.blockers?.length > 0 ? (
             <p className="mt-2 inline-flex items-start gap-1 rounded-[var(--radius-sm)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--color-muted)]">
               <Info className="mt-0.5 h-3 w-3 shrink-0" />
@@ -1209,9 +1462,6 @@ function OrderLineRow({
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <p className="text-sm font-semibold text-[var(--color-text)]">
-            {formatCurrency(line.orderamount)}
-          </p>
           {isEligibilityLoading ? (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
               <Loader2 className="h-3 w-3 animate-spin" />

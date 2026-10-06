@@ -16,6 +16,7 @@ export interface PaymentOrderItem {
 
 export interface PaymentRequest {
   mode: "phonepe";
+  payment_channel: "ecom";
   order: PaymentOrderItem[];
   returnUrl?: string;
   transaction: {
@@ -29,6 +30,9 @@ export interface PaymentRequest {
   shippingCost?: number;
   taxAmount?: number;
   evaluation_ids?: string[];
+  direct_coupon?: {
+    code: string;
+  };
   wallet?: {
     apply: boolean;
     eligibility_base: number;
@@ -43,7 +47,18 @@ export interface PaymentResponseData {
   success?: boolean;
   orderId?: string;
   paymentMode?: string;
-  mode?: string;
+  mode?: "phonepe" | "wallet" | "promotion" | string;
+  wallet_discount_amount?: number;
+  pricing?: {
+    merchandise_subtotal: number;
+    merchandise_discount: number;
+    direct_coupon_discount?: number;
+    merchandise_payable: number;
+    shipping_amount: number;
+    shipping_discount: number;
+    shipping_payable: number;
+    payable_before_wallet: number;
+  };
   message?: string;
   orderCreation?: {
     status?: "success" | "already_exists" | "failed" | string;
@@ -71,6 +86,10 @@ export interface PaymentResponseData {
       redirectUrl?: string;
     } | null;
     wallet?: {
+      action?: "order_complete" | string;
+      instructions?: string;
+    } | null;
+    internal?: {
       action?: "order_complete" | string;
       instructions?: string;
     } | null;
@@ -105,11 +124,16 @@ export interface TransactionRecord {
 
 class PaymentService {
   initiate(payload: PaymentRequest): Promise<ApiResponse<PaymentResponseData>> {
-    return apiService.post<PaymentResponseData>("/phonepe/initiate", payload);
+    // Payment initiate performs stock locking, order creation, orderlines insertion,
+    // and promotion redemptions. Give it a resilient 120-second timeout.
+    return apiService.post<PaymentResponseData>("/phonepe/initiate", payload, { timeout: 120000 });
   }
 
   getStatus(merchantTransactionId: string): Promise<ApiResponse<PaymentResponseData>> {
-    return apiService.get<PaymentResponseData>(`/phonepe/status/${merchantTransactionId}`);
+    // Status verification can synchronously reconcile and create the order.
+    // Keep the confirmation loader active instead of failing at the global
+    // 20-second timeout while that server-side work is still completing.
+    return apiService.get<PaymentResponseData>(`/phonepe/status/${merchantTransactionId}`, { timeout: 120000 });
   }
 
   getTransaction(transactionId: string): Promise<ApiResponse<TransactionRecord>> {

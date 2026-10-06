@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import CategoryNavigationRail from "../components/CategoryNavigationRail";
@@ -7,8 +7,6 @@ import {
   buildNestedCategoryItems,
   buildTopCategoryItems,
   isKnownCategoryChildValue,
-  matchesProductCategory,
-  matchesProductChildCategory,
   resolveActiveCategory,
   resolveActiveChildKey,
   type CategoryNavChildItem,
@@ -16,40 +14,45 @@ import {
 } from "../components/categoryNavigationData";
 import CategoryShowcaseBanner from "../components/CategoryShowcaseBanner";
 import ProductCard from "../components/ProductCard";
+import ProductFilters, {
+  type ProductPriceRange,
+  type ProductSort,
+} from "../components/ProductFilters";
 import RecentProductRail from "../components/RecentProductRail";
+import { ProductCardSkeleton, ProductGridSkeleton } from "../components/ProductCardSkeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import { readRecentlyViewedProductIds } from "../lib/recentlyViewed";
 import type { Product } from "../types";
 import { platformProductService } from "../services/productPlatformService";
 
 const PRODUCTS_PAGE_SIZE = 40;
 
-const normalize = (value?: string | null) => (value || "").trim().toLowerCase();
-
-const normalizeFilterKey = (value?: string | null) =>
-  normalize(value)
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "_");
-
-const filterKeyVariants = (value?: string | null) => {
-  const key = normalizeFilterKey(value);
-  if (!key) return new Set<string>();
-
-  return new Set([key, key.replace(/(^|_)and(_|$)/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_")]);
+const PRICE_RANGES: Record<ProductPriceRange, { minPrice?: number; maxPrice?: number }> = {
+  "under-100": { maxPrice: 99.99 },
+  "100-250": { minPrice: 100, maxPrice: 249.99 },
+  "250-500": { minPrice: 250, maxPrice: 499.99 },
+  "500-1000": { minPrice: 500, maxPrice: 1000 },
+  "above-1000": { minPrice: 1000.01 },
 };
 
-const filterValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
-  Boolean(filterValue) &&
-  [...filterKeyVariants(productValue)].some((productKey) => filterKeyVariants(filterValue).has(productKey));
+const SORT_OPTIONS: Record<
+  ProductSort,
+  { sortBy: "price" | "createddate" | "averagerating" | "name" | "bestselling"; sortOrder: "asc" | "desc" }
+> = {
+  newest: { sortBy: "createddate", sortOrder: "desc" },
+  bestselling: { sortBy: "bestselling", sortOrder: "desc" },
+  "price-asc": { sortBy: "price", sortOrder: "asc" },
+  "price-desc": { sortBy: "price", sortOrder: "desc" },
+  "rating-desc": { sortBy: "averagerating", sortOrder: "desc" },
+  "name-asc": { sortBy: "name", sortOrder: "asc" },
+  "name-desc": { sortBy: "name", sortOrder: "desc" },
+};
 
-const listValueMatches = (productValue: string | null | undefined, filterValue: string | null | undefined) =>
-  Boolean(filterValue) &&
-  normalize(productValue)
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .some((value) => filterValueMatches(value, filterValue));
+const isProductSort = (value: string | null): value is ProductSort =>
+  Boolean(value && value in SORT_OPTIONS);
+
+const isProductPriceRange = (value: string | null): value is ProductPriceRange =>
+  Boolean(value && value in PRICE_RANGES);
 
 const formatFilterLabel = (value: string) =>
   value.replace(/_/g, " ").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -61,33 +64,23 @@ interface ProductsProps {
 const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<number[]>([]);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  // Scroll marker kept in state so the observer re-attaches whenever the marker mounts or remounts.
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   const category = searchParams.get("category");
+  const excludeCategory = searchParams.get("excludeCategory");
   const subcategory = searchParams.get("subcategory");
   const subsubcategory = searchParams.get("subsubcategory");
   const collection = searchParams.get("collection") || defaultCollection;
   const offerId = searchParams.get("offerId");
   const routeTitle = searchParams.get("title");
   const search = searchParams.get("search");
-  const hasActiveFilter = Boolean(category || subcategory || subsubcategory || collection || offerId || search);
-  const currentCategoryRoute = useMemo(() => {
-    const nextParams = new URLSearchParams(searchParams);
-    const queryString = nextParams.toString();
-    return `/products${queryString ? `?${queryString}` : ""}#category-top`;
-  }, [searchParams]);
-
-  const productsQuery = useInfiniteQuery({
-    queryKey: ["platform-products-list"],
-    initialPageParam: 1,
-    queryFn: async ({ pageParam }) => platformProductService.getProducts(pageParam, PRODUCTS_PAGE_SIZE),
-    getNextPageParam: (lastPage) =>
-      lastPage.pagination?.hasNext && lastPage.pagination.page < lastPage.pagination.totalPages
-        ? lastPage.pagination.page + 1
-        : undefined,
-    staleTime: 1000 * 60,
-  });
-
+  const sortParam = searchParams.get("sort");
+  const priceParam = searchParams.get("price");
+  // Best Sellers page defaults to the backend best-selling rank (same as Home Best Sellers).
+  const defaultSort: ProductSort = collection === "best-sellers" ? "bestselling" : "newest";
+  const sort: ProductSort = isProductSort(sortParam) ? sortParam : defaultSort;
+  const priceRange: ProductPriceRange | "" = isProductPriceRange(priceParam) ? priceParam : "";
   const categoryTreeQuery = useQuery({
     queryKey: ["product-category-tree", "sortorder-v3"],
     queryFn: () => platformProductService.getCategoryTree(),
@@ -95,79 +88,57 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   });
   const categoryTree = categoryTreeQuery.data?.data;
 
+  // Subcategory values that are known children in the category tree match taxonomy
+  // fields only; other values (for example flavour links) also match fragrance type.
+  const waitForCategoryTree = Boolean(subcategory || subsubcategory) && categoryTreeQuery.isPending;
+
+  // Filtering, sorting and paging happen on the backend (filterMode=storefront),
+  // so only the pages the shopper scrolls to are downloaded.
+  const apiFilters = useMemo(() => {
+    const childMatch = (value: string | null): "taxonomy" | "loose" | undefined =>
+      value ? (isKnownCategoryChildValue(categoryTree, value, category) ? "taxonomy" : "loose") : undefined;
+
+    return {
+      ...SORT_OPTIONS[sort],
+      ...(priceRange ? PRICE_RANGES[priceRange] : {}),
+      filterMode: "storefront" as const,
+      category: category || undefined,
+      excludeCategory: excludeCategory || undefined,
+      subcategory: subcategory || undefined,
+      subcategoryMatch: childMatch(subcategory),
+      subsubcategory: subsubcategory || undefined,
+      subsubcategoryMatch: childMatch(subsubcategory),
+      collection: collection || undefined,
+      search: search || undefined,
+    };
+  }, [categoryTree, category, collection, excludeCategory, priceRange, search, sort, subcategory, subsubcategory]);
+  const currentCategoryRoute = useMemo(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    const queryString = nextParams.toString();
+    return `/products${queryString ? `?${queryString}` : ""}#category-top`;
+  }, [searchParams]);
+
+  const productsQuery = useInfiniteQuery({
+    queryKey: ["platform-products-list", apiFilters],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) =>
+      platformProductService.getProducts(pageParam, PRODUCTS_PAGE_SIZE, apiFilters),
+    enabled: !waitForCategoryTree,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasNext && lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined,
+    staleTime: 1000 * 60,
+  });
+
   const products = useMemo(
     () => (productsQuery.data?.pages ?? []).flatMap((page) => page.data ?? []),
     [productsQuery.data?.pages]
   );
 
-  const filteredProducts = useMemo(() => {
-    let result = products;
-
-    if (category) {
-      result = result.filter((product) => matchesProductCategory(product, category));
-    }
-
-    if (subcategory) {
-      result = result.filter((product) =>
-        isKnownCategoryChildValue(categoryTree, subcategory, category)
-          ? matchesProductChildCategory(product, subcategory, category)
-          : filterValueMatches(product.subcategory, subcategory) ||
-            filterValueMatches(product.subsubcategory, subcategory) ||
-            filterValueMatches(product.fragnancetype, subcategory) ||
-            listValueMatches(product.fragnancetype, subcategory)
-      );
-    }
-
-    if (subsubcategory) {
-      result = result.filter(
-        (product) =>
-          (isKnownCategoryChildValue(categoryTree, subsubcategory, category)
-            ? matchesProductChildCategory(product, subsubcategory, category)
-            : filterValueMatches(product.subsubcategory, subsubcategory) ||
-              filterValueMatches(product.fragnancetype, subsubcategory) ||
-              listValueMatches(product.fragnancetype, subsubcategory))
-      );
-    }
-
-    if (collection === "deals") {
-      result = result.filter((product) => product.isdealoftheday || product.discount > 0);
-    }
-
-    if (collection === "best-sellers") {
-      result = [...result].sort((a, b) => (b.soldquantity ?? 0) - (a.soldquantity ?? 0));
-    }
-
-    if (collection === "new-arrivals") {
-      result = [...result].sort((a, b) => b.createddate - a.createddate);
-    }
-
-    if (collection === "gift-sets") {
-      result = result.filter((product) => product.pack?.includes("pack") || product.name.toLowerCase().includes("combo"));
-    }
-
-    if (search) {
-      const query = normalize(search);
-      result = result.filter((product) =>
-        [
-          product.name,
-          product.shortname,
-          product.shortdescription,
-          product.fulldescription,
-          product.category,
-          product.subcategory,
-          product.subsubcategory,
-          product.fragnancetype,
-          product.brand,
-          product.pack,
-          product.puc,
-        ]
-          .filter(Boolean)
-          .some((value) => normalize(value).includes(query))
-      );
-    }
-
-    return result;
-  }, [category, categoryTree, collection, products, search, subcategory, subsubcategory]);
+  // Products already arrive filtered and sorted by the backend.
+  const filteredProducts = products;
+  const totalProducts = productsQuery.data?.pages[0]?.pagination?.total;
 
   const resolvedCategory = useMemo(
     () =>
@@ -184,8 +155,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   const topCategoryItems = useMemo(() => buildTopCategoryItems(categoryTree), [categoryTree]);
 
   const childCategoryItems = useMemo(
-    () => buildChildCategoryItems(products, categoryTree, resolvedCategory),
-    [categoryTree, products, resolvedCategory]
+    () => buildChildCategoryItems(categoryTree, resolvedCategory),
+    [categoryTree, resolvedCategory]
   );
 
   const nestedCategoryItems = useMemo(
@@ -271,16 +242,33 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
       .slice(0, 10);
   }, [products, recentlyViewedIds]);
 
-  const showAllProducts = () => {
-    setSearchParams({});
-  };
-
   const selectTopCategory = (item: CategoryNavTopItem) => {
-    setSearchParams({ category: item.value });
+    const nextParams = new URLSearchParams();
+    nextParams.set("category", item.value);
+    if (priceRange) nextParams.set("price", priceRange);
+    if (sortParam && isProductSort(sortParam)) nextParams.set("sort", sortParam);
+    setSearchParams(nextParams);
   };
 
   const selectChildCategory = (item: CategoryNavChildItem) => {
-    setSearchParams(item.queryParams);
+    const nextParams = new URLSearchParams(item.queryParams);
+    if (priceRange) nextParams.set("price", priceRange);
+    if (sortParam && isProductSort(sortParam)) nextParams.set("sort", sortParam);
+    setSearchParams(nextParams);
+  };
+
+  const updateProductFilter = (key: "price" | "sort", value: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (value) nextParams.set(key, value);
+    else nextParams.delete(key);
+    setSearchParams(nextParams);
+  };
+
+  const clearProductFilters = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("price");
+    nextParams.delete("sort");
+    setSearchParams(nextParams);
   };
 
   useEffect(() => {
@@ -288,7 +276,7 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
   }, [category, collection, search, subcategory, subsubcategory]);
 
   useEffect(() => {
-    const node = loadMoreRef.current;
+    const node = loadMoreNode;
     if (!node || !productsQuery.hasNextPage) return;
 
     const observer = new IntersectionObserver(
@@ -304,26 +292,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [productsQuery.fetchNextPage, productsQuery.hasNextPage, productsQuery.isFetchingNextPage]);
+  }, [loadMoreNode, productsQuery.fetchNextPage, productsQuery.hasNextPage, productsQuery.isFetchingNextPage]);
 
-  useEffect(() => {
-    if (
-      !hasActiveFilter ||
-      productsQuery.isLoading ||
-      productsQuery.isFetchingNextPage ||
-      !productsQuery.hasNextPage
-    ) {
-      return;
-    }
-
-    productsQuery.fetchNextPage();
-  }, [
-    hasActiveFilter,
-    productsQuery.fetchNextPage,
-    productsQuery.hasNextPage,
-    productsQuery.isFetchingNextPage,
-    productsQuery.isLoading,
-  ]);
 
   return (
     <div className="min-h-screen bg-secondary-extra-light-gray">
@@ -343,30 +313,32 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
 
       <div id="category-results" className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
         {/* Results Header */}
-        <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-secondary-dark-gray sm:text-3xl">{pageTitle}</h1>
-            <p className="mt-2 text-secondary-medium-gray">
-              Showing {filteredProducts.length}{productsQuery.hasNextPage ? "+" : ""} products
-              {search ? ` matching "${search}"` : ""}
-            </p>
+            {productsQuery.isPending ? (
+              // Count is unknown while a new filter loads; avoid flashing "Showing 0 products".
+              <Skeleton className="mt-3 h-5 w-40 rounded-full" />
+            ) : (
+              <p className="mt-2 text-secondary-medium-gray">
+                Showing {totalProducts ?? filteredProducts.length} products
+                {search ? ` matching "${search}"` : ""}
+              </p>
+            )}
           </div>
-          {(category || subcategory || subsubcategory || collection || search) && (
-            <button
-              type="button"
-              onClick={showAllProducts}
-              className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--color-text)] transition hover:border-primary-gold"
-            >
-              All products
-            </button>
-          )}
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+            <ProductFilters
+              sort={sort}
+              priceRange={priceRange}
+              onSortChange={(value) => updateProductFilter("sort", value)}
+              onPriceRangeChange={(value) => updateProductFilter("price", value)}
+              onClear={clearProductFilters}
+            />
+          </div>
         </div>
         {/* Products Grid */}
-        {productsQuery.isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-gold mx-auto mb-4"></div>
-            <p className="text-secondary-medium-gray">Loading products...</p>
-          </div>
+        {productsQuery.isPending ? (
+          <ProductGridSkeleton count={10} />
         ) : productsQuery.isError ? (
           <div className="text-center py-12">
             <svg
@@ -395,10 +367,13 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
           </div>
         ) : filteredProducts.length > 0 ? (
           <>
-            <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
+            <div className="listing-fade-in grid grid-cols-2 items-stretch gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 xl:grid-cols-5">
               {filteredProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
+              {/* Next page: placeholder cards continue the grid instead of a spinner. */}
+              {productsQuery.isFetchingNextPage &&
+                Array.from({ length: 5 }).map((_, index) => <ProductCardSkeleton key={`next-${index}`} index={index} />)}
             </div>
 
             {recentlyViewedProducts.length > 0 && (
@@ -419,14 +394,8 @@ const Products: React.FC<ProductsProps> = ({ defaultCollection }) => {
               </>
             )}
 
-            <div ref={loadMoreRef} className="h-4 w-full" />
+            <div ref={setLoadMoreNode} className="h-4 w-full" />
 
-            {productsQuery.isFetchingNextPage && (
-              <div className="py-8 text-center">
-                <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-b-2 border-primary-gold" />
-                <p className="text-secondary-medium-gray">Loading more products...</p>
-              </div>
-            )}
 
           </>
         ) : (

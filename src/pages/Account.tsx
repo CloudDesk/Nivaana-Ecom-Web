@@ -4,6 +4,8 @@ import { Check, CreditCard, Heart, Info, LogOut, MapPin, PackageCheck, Pencil, S
 import { Button } from "../components/ui/button";
 import { getUserDisplayName, hasRequiredUserName, sessionService, type AuthSession } from "../services/sessionService";
 import { userService } from "../services/userService";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
@@ -115,7 +117,7 @@ const Account: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Welcome, Guest</h1>
@@ -137,13 +139,12 @@ const Account: React.FC = () => {
   const mobile = user.usermobilenumber?.toString();
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-5xl">
-        <h1 className="text-3xl font-bold text-[var(--color-text)]">My Account</h1>
-        <p className="mt-2 text-sm text-[var(--color-muted)]">Manage your Nivaana profile and shopping shortcuts.</p>
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader title="My Account" subtitle="Manage your Nivaana profile and shopping shortcuts." />
 
         {requiresName && (
-          <div className="mt-6 flex items-start gap-3 rounded-[var(--radius-md)] border border-amber-300 bg-amber-50 p-4 text-amber-950" role="status">
+          <div className="mt-8 flex items-start gap-3 rounded-[var(--radius-md)] border border-amber-300 bg-amber-50 p-4 text-amber-950" role="status">
             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-200" aria-hidden="true">
               <Info className="h-4 w-4" />
             </span>

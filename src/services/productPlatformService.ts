@@ -8,9 +8,39 @@ interface ProductPicklistItem {
     controlledvalue: string | null;
     parent: string | null;
     sortorder: number | null;
+    imageUrl?: string | null;
+    thumbnailUrl?: string | null;
 }
 
 type ProductTaxonomyField = 'category' | 'subcategory' | 'subsubcategory';
+
+type HomeCatalogImages = Pick<Product, 'large' | 'medium' | 'small'>;
+
+/** Storefront Home sections ranked by the backend (GET /products/platform/nivapp/home). */
+export interface HomeCatalog {
+    bestSellers: Product[];
+    newArrivals: Product[];
+    bestOfNivaana: Product[];
+    flavours: Array<HomeCatalogImages & { value: string }>;
+    categories: Array<HomeCatalogImages & { category: string | null; subcategory: string | null }>;
+}
+
+export interface PlatformProductFilters {
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: 'price' | 'createddate' | 'averagerating' | 'name' | 'bestselling';
+    sortOrder?: 'asc' | 'desc';
+    /** storefront = backend applies the Ecom listing rules for the filters below. */
+    filterMode?: 'storefront';
+    category?: string;
+    excludeCategory?: string;
+    subcategory?: string;
+    subcategoryMatch?: 'taxonomy' | 'loose';
+    subsubcategory?: string;
+    subsubcategoryMatch?: 'taxonomy' | 'loose';
+    collection?: string;
+    search?: string;
+}
 
 const getActiveProductPicklists = async (
     fieldname: ProductTaxonomyField
@@ -55,18 +85,43 @@ export class PlatformProductService {
      * @param limit - Items per page (optional)
      * @returns Promise with products data
      */
-    async getProducts(page?: number, limit?: number): Promise<ApiResponse<Product[]>> {
+    async getProducts(
+        page?: number,
+        limit?: number,
+        filters: PlatformProductFilters = {}
+    ): Promise<ApiResponse<Product[]>> {
         let url = '/products/platform/nivapp';
         const params = new URLSearchParams();
 
         if (page) params.append('page', page.toString());
         if (limit) params.append('limit', limit.toString());
+        if (filters.minPrice !== undefined) params.append('minPrice', filters.minPrice.toString());
+        if (filters.maxPrice !== undefined) params.append('maxPrice', filters.maxPrice.toString());
+        if (filters.sortBy) params.append('sortBy', filters.sortBy);
+        if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
+        if (filters.filterMode) params.append('filterMode', filters.filterMode);
+        if (filters.category) params.append('category', filters.category);
+        if (filters.excludeCategory) params.append('excludeCategory', filters.excludeCategory);
+        if (filters.subcategory) params.append('subcategory', filters.subcategory);
+        if (filters.subcategoryMatch) params.append('subcategoryMatch', filters.subcategoryMatch);
+        if (filters.subsubcategory) params.append('subsubcategory', filters.subsubcategory);
+        if (filters.subsubcategoryMatch) params.append('subsubcategoryMatch', filters.subsubcategoryMatch);
+        if (filters.collection) params.append('collection', filters.collection);
+        if (filters.search) params.append('search', filters.search);
 
         if (params.toString()) {
             url += `?${params.toString()}`;
         }
 
         return apiService.get<Product[]>(url);
+    }
+
+    /**
+     * Home page sections in a single read-only request.
+     * Product items have the same shape as getProducts().
+     */
+    async getHomeCatalog(): Promise<ApiResponse<HomeCatalog>> {
+        return apiService.get<HomeCatalog>('/products/platform/nivapp/home');
     }
 
     async getProduct(productId: number): Promise<ApiResponse<Product>> {
@@ -99,6 +154,8 @@ export class PlatformProductService {
                 id: item.value,
                 label: item.label,
                 count: counted?.count ?? 0,
+                imageUrl: counted?.imageUrl ?? item.imageUrl ?? null,
+                thumbnailUrl: counted?.thumbnailUrl ?? item.thumbnailUrl ?? null,
                 sortOrder: item.sortorder,
                 subcategories: [],
             });
@@ -116,6 +173,8 @@ export class PlatformProductService {
                 id: item.value,
                 label: item.label,
                 count: counted?.count ?? 0,
+                imageUrl: counted?.imageUrl ?? item.imageUrl ?? null,
+                thumbnailUrl: counted?.thumbnailUrl ?? item.thumbnailUrl ?? null,
                 sortOrder: item.sortorder,
                 subsubcategories: [],
             });

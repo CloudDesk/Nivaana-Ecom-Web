@@ -1,4 +1,4 @@
-import type { AppliedPromotion } from "../services/promotionService";
+import type { AppliedPromotion, ApplicablePromotion, PromotionV2Quote } from "../services/promotionService";
 import type { Product } from "../types";
 
 const SELECTED_PROMOTION_KEY = "nivaana_selected_cart_promotion";
@@ -236,10 +236,9 @@ export const getAppliedPromotionSummary = (
   fallbackDiscount = 0
 ): PromotionDiscountSummary => {
   const freeShippingPromotions = appliedPromotions.filter(
-    // Legacy `cart.total_value` conditions are evaluated by the API against
-    // merchandise + shipping + tax. Use the same pre-promotion cart total here
-    // so an API-applied shipping waiver is not incorrectly discarded by the UI.
-    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.total)
+    // Shipping is never part of promotion qualification. Otherwise the
+    // delivery fee could unlock the same promotion that removes that fee.
+    (promotion) => isFreeShippingAppliedPromotion(promotion) && isFreeShippingPromotionEligible(promotion, totals.subtotal)
   );
   const normalPromotions = appliedPromotions.filter((promotion) => !isFreeShippingAppliedPromotion(promotion));
   const normalDiscountFromPromotions = normalPromotions.reduce(
@@ -290,6 +289,34 @@ export const selectedCartPromotionIds = (
   promotion?.promotionId,
 ].map(Number).filter((id) => Number.isFinite(id) && id > 0))];
 
+export const promotionSelectionKey = (promotionIds: number[]) =>
+  [...new Set(promotionIds)]
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .sort((left, right) => left - right)
+    .join(",") || "automatic";
+
+export const isRecoverablePromotionEvaluationError = (error: unknown) => {
+  const candidate = error as {
+    message?: string;
+    statusCode?: number;
+    data?: { message?: string; details?: string; code?: string; error_code?: string };
+  };
+  const code = String(candidate?.data?.code ?? candidate?.data?.error_code ?? "").toUpperCase();
+  const message = [candidate?.message, candidate?.data?.message, candidate?.data?.details]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    code === "PROMOTION_EVALUATION_EXPIRED" ||
+    code === "PROMOTION_EVALUATION_INACTIVE" ||
+    message.includes("promotion evaluation has expired") ||
+    message.includes("promotion evaluation is no longer active") ||
+    message.includes("evaluation not found") ||
+    message.includes("requested record does not exist")
+  );
+};
+
 export const saveSelectedCartPromotion = (promotion: SelectedCartPromotion) => {
   localStorage.setItem(`${SELECTED_PROMOTION_KEY}:${promotion.userId}`, JSON.stringify(promotion));
 };
@@ -297,4 +324,200 @@ export const saveSelectedCartPromotion = (promotion: SelectedCartPromotion) => {
 export const clearSelectedCartPromotion = (userId?: number | null) => {
   if (!userId) return;
   localStorage.removeItem(`${SELECTED_PROMOTION_KEY}:${userId}`);
+};
+
+// ---------------------------------------------------------------------------
+// Shared offer rules for Cart and Checkout. Both pages must use these helpers
+// so the offer buttons and messages behave identically.
+// ---------------------------------------------------------------------------
+
+type OfferModeLike = Pick<ApplicablePromotion, "application_mode" | "auto_apply">;
+type StackingLike = { stackable?: boolean | null; is_stacked?: boolean | null };
+
+export const isAutomaticOffer = (promotion?: OfferModeLike | null) =>
+  promotion?.application_mode === "automatic" || promotion?.auto_apply === true;
+
+export const isCodeEntryOffer = (promotion?: OfferModeLike | null) =>
+  promotion?.application_mode === "code_entry";
+
+/**
+ * Whether an applied promotion is stackable. Live offer details win; the saved
+ * selection is only a fallback because older saved copies can miss the flag.
+ */
+export const resolveAppliedStackable = (details?: StackingLike | null, saved?: StackingLike | null) =>
+  details?.stackable === true || saved?.stackable === true || saved?.is_stacked === true;
+
+/** Keeps stackable/is_stacked when an applied list is rebuilt (for example after Remove). */
+export const preserveAppliedStacking = (
+  appliedPromotions: AppliedPromotion[],
+  previousPromotions: AppliedPromotion[],
+  detailsById?: Map<number, StackingLike>,
+): AppliedPromotion[] =>
+  appliedPromotions.map((promotion) => {
+    const id = Number(promotion.promotion_id || 0);
+    const previous = previousPromotions.find((item) => Number(item.promotion_id || 0) === id);
+    const stackable = resolveAppliedStackable(detailsById?.get(id), previous);
+    return { ...promotion, stackable, is_stacked: stackable };
+  });
+
+export type OfferActionKind = "already-used" | "remove" | "applied" | "automatic" | "use-code" | "apply";
+export type OfferActionState = { kind: OfferActionKind; disabled: boolean; busy: boolean };
+
+/**
+ * Button for one offer card. Combination is never decided here: the V2 engine
+ * keeps whichever set saves the customer more, and the result is explained in
+ * a message.
+ * - disabled: a real blocker; the button is greyed out.
+ * - busy: another offer action or a price re-check is running; the button keeps
+ *   its look but ignores clicks, so the list does not flash grey.
+ */
+export const getOfferActionState = ({
+  promotion,
+  isApplied,
+  canRemove,
+  isAlreadyUsed,
+  isLoggedIn,
+  freeShippingEligible,
+  anyOfferActionPending,
+  pricingResolving = false,
+}: {
+  promotion: ApplicablePromotion;
+  isApplied: boolean;
+  canRemove: boolean;
+  isAlreadyUsed: boolean;
+  isLoggedIn: boolean;
+  freeShippingEligible: boolean;
+  anyOfferActionPending: boolean;
+  pricingResolving?: boolean;
+}): OfferActionState => {
+  const busy = anyOfferActionPending || pricingResolving;
+  if (isAlreadyUsed) return { kind: "already-used", disabled: true, busy: false };
+  if (isApplied) {
+    return canRemove
+      ? { kind: "remove", disabled: false, busy }
+      : { kind: "applied", disabled: true, busy: false };
+  }
+  if (isAutomaticOffer(promotion)) return { kind: "automatic", disabled: true, busy: false };
+  if (isCodeEntryOffer(promotion)) return { kind: "use-code", disabled: true, busy: false };
+  return { kind: "apply", disabled: !isLoggedIn || !freeShippingEligible, busy };
+};
+
+/** Label while this card's own action runs; follows the action, not the card state. */
+export const offerPendingLabel = (action: "apply" | "remove") =>
+  action === "apply" ? "Applying..." : "Removing...";
+
+/**
+ * Apply/Remove already return the new quote. Seeding it under the new
+ * selection key and marking it fresh for a short time avoids an immediate
+ * second request (which made the offer buttons flash grey).
+ */
+export const SEEDED_QUOTE_FRESH_MS = 15_000;
+export const createSeededQuoteTracker = () => {
+  const seededAt = new Map<string, number>();
+  return {
+    mark: (queryHash: string) => {
+      seededAt.set(queryHash, Date.now());
+    },
+    staleTime: (queryHash: string) => {
+      const at = seededAt.get(queryHash);
+      return at !== undefined && Date.now() - at < SEEDED_QUOTE_FRESH_MS ? SEEDED_QUOTE_FRESH_MS : 0;
+    },
+  };
+};
+
+/** Note shown on offers that cannot be combined with other offers. */
+export const offerCombinationNote = (promotion: ApplicablePromotion) =>
+  !isAutomaticOffer(promotion) && !isFreeShippingPromotion(promotion) && promotion.stackable !== true
+    ? "Can't be combined with other offers. We'll keep whichever saves you more."
+    : null;
+
+/** Error whose message is already customer-ready and must be shown as is. */
+export class PromotionOfferMessageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PromotionOfferMessageError";
+  }
+}
+
+const formatPaise = (paise: number) =>
+  `₹${(Math.max(paise, 0) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+const joinNames = (names: string[]) =>
+  names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
+export const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
+  const messages: Record<string, string> = {
+    MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
+    MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
+    GIFT_OUT_OF_STOCK: "This promotional gift is currently unavailable.",
+    CONFLICTED_WITH_BETTER_OFFER: "Your current offers save more. This offer was not applied.",
+    CUSTOMER_NOT_ELIGIBLE: "This offer is not available for this account.",
+    CHANNEL_NOT_ELIGIBLE: "This offer is not available on this shopping channel.",
+    USAGE_LIMIT_REACHED: "This offer has already been used.",
+    BUDGET_EXHAUSTED: "This offer is no longer available.",
+  };
+  return messages[reason] ?? reason.replaceAll("_", " ").toLowerCase();
+};
+
+const quoteSaving = (promotions: Array<{ saving: number }>) =>
+  promotions.reduce((sum, promotion) => sum + Number(promotion.saving || 0), 0);
+
+/**
+ * Note shown on the offer's own card when V2 did not apply it. Not an error:
+ * the engine compared the offers and kept the set that saves more.
+ */
+export const describeOfferNotApplied = (
+  promotionIdToApply: number,
+  quote: PromotionV2Quote,
+  fallbackOfferSavingPaise = 0,
+) => {
+  const rejection = quote.rejected_candidates.find((item) => item.promotion_id === promotionIdToApply);
+  if (rejection && rejection.reason_code !== "CONFLICTED_WITH_BETTER_OFFER") {
+    return promotionReasonCopy(rejection.reason_code, rejection.details);
+  }
+
+  const offerSaving =
+    quote.eligible_alternatives.find((item) => item.promotion_id === promotionIdToApply)?.saving ??
+    fallbackOfferSavingPaise;
+  const currentSaving = quoteSaving(quote.applied_promotions);
+  if (offerSaving > 0 && currentSaving > 0) {
+    return `Not applied. Your current offers save you ${formatPaise(currentSaving)}, more than the ${formatPaise(offerSaving)} from this offer. To use this one instead, remove your other offers first.`;
+  }
+  return "Not applied. Your current offers save you more. To use this one instead, remove your other offers first.";
+};
+
+/** Short-lived note attached to one offer card (cleared when the offers view closes). */
+export type OfferNotice = { promotionId: number; message: string; tone: "info" | "error" };
+
+export const offerNoticeClassName = (tone: OfferNotice["tone"]) =>
+  tone === "info"
+    ? "border-amber-200 bg-amber-50 text-[#7a5700]"
+    : "border-red-200 bg-red-50 text-red-700";
+
+/** Success message; names the offers that were replaced because the new set saves more. */
+export const describeOfferApplied = (
+  promotionName: string,
+  promotionIdApplied: number,
+  quote: PromotionV2Quote,
+  previousApplied: Array<{ promotion_id: number; name: string; saving: number }>,
+  scope: "cart" | "order",
+) => {
+  const appliedIds = new Set(quote.applied_promotions.map((item) => item.promotion_id));
+  const replaced = previousApplied.filter(
+    (item) => item.promotion_id !== promotionIdApplied && !appliedIds.has(item.promotion_id),
+  );
+  if (replaced.length === 0) return `${promotionName} applied to your ${scope}.`;
+
+  const extraSaving = quoteSaving(quote.applied_promotions) - quoteSaving(previousApplied);
+  return `${promotionName} applied. It replaces ${joinNames(replaced.map((item) => item.name))}${
+    extraSaving > 0 ? ` because it saves you ${formatPaise(extraSaving)} more` : ""
+  }.`;
+};
+
+/** Summary label for the promotion discount line: one offer vs several. */
+export const promotionDiscountLabel = (appliedPromotions: AppliedPromotion[]) => {
+  const discountOffers = appliedPromotions.filter(
+    (promotion) => !isFreeShippingAppliedPromotion(promotion) && Number(promotion.discount_amount || 0) > 0,
+  );
+  return discountOffers.length > 1 ? "Promotions" : "Promotion";
 };

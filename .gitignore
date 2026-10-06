@@ -46,3 +46,6 @@ firestore-debug.log*
 
 # Vite
 .vite
+
+# Local Superdesign planning files
+.superdesign/

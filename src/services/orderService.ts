@@ -4,6 +4,8 @@ import type { ApiResponse } from "../types";
 export interface OrderSummary {
   id?: number;
   orderid?: string;
+  transactionid?: string;
+  merchanttransactionid?: string;
   orderamount?: number;
   productamount?: number;
   discountamount?: number;
@@ -12,6 +14,9 @@ export interface OrderSummary {
   wallet_amount_applied?: number;
   original_total?: number;
   shipping_cost?: number;
+  total_gst_amount?: number;
+  tax_amount?: number;
+  cost_breakdown?: OrderCostBreakdown;
   mode?: string;
   orderstatus?: string;
   fulfillment_status?: string;
@@ -29,12 +34,45 @@ export interface OrderSummary {
   [key: string]: unknown;
 }
 
+export interface PromotionCostBreakdown {
+  promotion_id: number | null;
+  promotion_name: string;
+  coupon_code: string | null;
+  discount_type: string;
+  merchandise_discount: number;
+  free_item_discount: number;
+  shipping_discount: number;
+  discount_amount: number;
+}
+
+export interface OrderCostBreakdown {
+  original_cart_value: number;
+  promotions: PromotionCostBreakdown[];
+  product_discount: number;
+  promotion_discount: number;
+  free_item_discount: number;
+  shipping_discount: number;
+  total_discount: number;
+  taxes: number;
+  delivery_charges: number;
+  final_payable_amount: number;
+}
+
 export interface OrderLine {
   id?: number;
   productid?: number;
   productname?: string;
   quantity?: number;
+  productamount?: number;
+  discountamount?: number;
   orderamount?: number;
+  original_price?: number;
+  product_discount_amount?: number;
+  promotion_discount_amount?: number;
+  line_type?: string | null;
+  is_free_item?: boolean;
+  list_unit_price?: number;
+  promotion_unit_discount?: number;
   orderstatus?: string;
   orderlinenumber?: string;
   image?: string | null;
@@ -123,6 +161,14 @@ export interface TrackingDetails {
   [key: string]: unknown;
 }
 
+export interface OrderHistorySummary {
+  total_orders: number;
+  active_orders: number;
+  cancelled_orders: number;
+  /** Paid amount on non-cancelled orders minus completed return refunds (rupees). */
+  total_spent: number;
+}
+
 class OrderService {
   list(userId: number): Promise<ApiResponse<OrderSummary[]>> {
     return apiService.get<OrderSummary[]>(`/orders?userid=${userId}`);
@@ -132,8 +178,14 @@ class OrderService {
     return apiService.get<OrderDetails>(`/orders/${orderId}/details`);
   }
 
-  listUserDetails(userId: number): Promise<ApiResponse<OrderDetails[]>> {
-    return apiService.get<OrderDetails[]>(`/orders/user/${userId}/details`);
+  /** One page of the customer's order history (newest first). */
+  listUserDetails(userId: number, page = 1, limit = 10): Promise<ApiResponse<OrderDetails[]>> {
+    return apiService.get<OrderDetails[]>(`/orders/user/${userId}/details?page=${page}&limit=${limit}`);
+  }
+
+  /** Totals across the customer's whole order history (not just loaded pages). */
+  summary(userId: number): Promise<ApiResponse<OrderHistorySummary>> {
+    return apiService.get<OrderHistorySummary>(`/orders/user/${userId}/summary`);
   }
 
   track(orderId: number | string): Promise<ApiResponse<TrackingDetails>> {

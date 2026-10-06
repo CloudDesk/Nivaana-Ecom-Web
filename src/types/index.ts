@@ -5,6 +5,26 @@ export interface BenefitItem {
   text: string;
 }
 
+export interface PlatformStock {
+  availableqty: number;
+  lockqty?: number | null;
+  orderedqty?: number | null;
+  soldqty?: number | null;
+  platformstatus?: string | null;
+}
+
+export interface ProductComponent {
+  componentproductid: number | string;
+  requiredqty: number;
+  isactive: boolean;
+  product?: {
+    name?: string | null;
+    puc?: string | null;
+  } | null;
+  platformStock?: PlatformStock | null;
+  availablequantity?: number | null;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -35,12 +55,18 @@ export interface Product {
   small: string[] | null;
   brand: string | null;
   pack: string | null;
+  iscombo?: boolean | null;
+  combotype?: "fixed" | "dynamic" | null;
+  components?: ProductComponent[] | null;
+  platformStock?: PlatformStock | null;
 }
 
 export interface ProductCategoryCount {
   id: string;
   label: string;
   count: number;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
   sortOrder?: number | null;
   subcategories: ProductSubcategoryCount[];
 }
@@ -49,6 +75,8 @@ export interface ProductSubcategoryCount {
   id: string;
   label: string;
   count: number;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
   sortOrder?: number | null;
   subsubcategories: ProductSubsubcategoryCount[];
 }

@@ -313,6 +313,48 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Loading placeholder: soft light band sweeping across a neutral block.
+     Children can stagger the wave with --shimmer-delay. */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-border);
+  }
+
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.7) 50%, transparent 100%);
+    animation: shimmer 1.5s ease-in-out infinite;
+    animation-delay: var(--shimmer-delay, 0s);
+  }
+
+  /* Real items fade up when they replace placeholders. "backwards" only, so the
+     animation never overrides the cards' hover transform once it has finished. */
+  .listing-fade-in > * {
+    animation: listing-fade-up 0.35s ease-out backwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer::after,
+    .listing-fade-in > * {
+      animation: none;
+    }
+  }
+}
+
+@keyframes listing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes marquee {
@@ -323,3 +365,13 @@
     transform: translateX(-33.333%);
   }
 }
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
