@@ -56,6 +56,9 @@ export const loadPhonePeCheckout = (): Promise<PhonePeCheckoutApi> => {
       settled = true;
       cleanup();
       checkoutScriptPromise = null;
+      // A failed tag never fires load/error again; remove it so a retry
+      // requests the script afresh instead of waiting for the timeout.
+      script.remove();
       reject(new Error(message));
     };
 
@@ -99,4 +102,50 @@ export const openPhonePeIframe = async (
 ) => {
   const checkout = await loadPhonePeCheckout();
   checkout.transact({ tokenUrl, type: "IFRAME", callback });
+};
+
+// A PhonePe payment whose outcome was unknown when the iframe closed. Kept per
+// customer in sessionStorage so a refresh in the same tab still checks it
+// before a new payment is started. Order creation never depends on this: the
+// webhook, status endpoint and Cloud Task reconcile the payment server-side.
+const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
+const pendingPaymentKey = (userId: number) => `nivaana-phonepe-pending-${userId}`;
+
+export const savePendingPhonePePayment = (userId: number | undefined, merchantTransactionId: string) => {
+  if (!userId) return;
+  try {
+    window.sessionStorage.setItem(
+      pendingPaymentKey(userId),
+      JSON.stringify({ merchantTransactionId, savedAt: Date.now() }),
+    );
+  } catch {
+    // Storage can be unavailable in some in-app browsers; the in-memory
+    // state on Checkout still covers the current page.
+  }
+};
+
+export const readPendingPhonePePayment = (userId: number | undefined): string | null => {
+  if (!userId) return null;
+  try {
+    const stored = JSON.parse(window.sessionStorage.getItem(pendingPaymentKey(userId)) || "null") as
+      | { merchantTransactionId?: string; savedAt?: number }
+      | null;
+    if (!stored?.merchantTransactionId || !stored.savedAt) return null;
+    if (Date.now() - stored.savedAt > PENDING_PAYMENT_MAX_AGE_MS) {
+      window.sessionStorage.removeItem(pendingPaymentKey(userId));
+      return null;
+    }
+    return stored.merchantTransactionId;
+  } catch {
+    return null;
+  }
+};
+
+export const clearPendingPhonePePayment = (userId: number | undefined) => {
+  if (!userId) return;
+  try {
+    window.sessionStorage.removeItem(pendingPaymentKey(userId));
+  } catch {
+    // Nothing to clear when storage is unavailable.
+  }
 };

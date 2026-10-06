@@ -23,8 +23,11 @@ import { cartService } from "../services/cartService";
 import { couponWalletService } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import {
+  clearPendingPhonePePayment,
   isPhonePeIframeCheckoutEnabled,
   openPhonePeIframe,
+  readPendingPhonePePayment,
+  savePendingPhonePePayment,
   type PhonePeCheckoutResult,
 } from "../services/phonePeCheckoutService";
 import { platformProductService } from "../services/productPlatformService";
@@ -122,6 +125,23 @@ const paymentIsUncertain = (status?: string) => {
   const normalized = paymentStatusText(status);
   return !normalized || normalized.includes("pending") || normalized.includes("initiated") || normalized.includes("processing");
 };
+
+// Backend status for one PhonePe transaction. A failed request is "pending":
+// only the backend may decide that a payment failed.
+const fetchPaymentOutcome = async (merchantTransactionId: string): Promise<"success" | "pending" | "failed"> => {
+  try {
+    const response = await paymentService.getStatus(merchantTransactionId);
+    const status = response.data?.status || response.data?.paymentData?.state;
+    if (paymentWasSuccessful(status)) return "success";
+    return paymentIsUncertain(status) ? "pending" : "failed";
+  } catch {
+    return "pending";
+  }
+};
+
+const PENDING_PAYMENT_POLL_MS = 5000;
+// Matches the 120s Cloud Task that reconciles or releases the payment.
+const PENDING_PAYMENT_POLL_ATTEMPTS = 24;
 
 const quantityFor = (quantity: unknown) => {
   const parsed = Number(quantity);
@@ -249,6 +269,9 @@ const Checkout: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [phonePeCheckoutActive, setPhonePeCheckoutActive] = useState(false);
+  const [pendingPaymentId, setPendingPaymentId] = useState<string | null>(() => readPendingPhonePePayment(userId));
+  const [pendingPaymentPromptOpen, setPendingPaymentPromptOpen] = useState(false);
+  const [pendingPaymentChecking, setPendingPaymentChecking] = useState(false);
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
   const [voucherCode, setVoucherCode] = useState("");
@@ -314,6 +337,44 @@ const Checkout: React.FC = () => {
       window.clearTimeout(clearTimer);
     };
   }, [statusMessage, errorMessage]);
+
+  useEffect(() => {
+    setPendingPaymentId(readPendingPhonePePayment(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    // Quietly follow a payment left pending when the PhonePe window closed.
+    // If the customer finished it in their UPI app, show the confirmation.
+    if (!pendingPaymentId || phonePeCheckoutActive) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+
+    const check = async () => {
+      attempts += 1;
+      const outcome = await fetchPaymentOutcome(pendingPaymentId);
+      if (cancelled) return;
+      if (outcome === "success") {
+        clearPendingPhonePePayment(userId);
+        navigate(`/checkout/confirmation?${new URLSearchParams({ merchantTransactionId: pendingPaymentId }).toString()}`, { replace: true });
+        return;
+      }
+      if (outcome === "failed") {
+        clearPendingPhonePePayment(userId);
+        setPendingPaymentId(null);
+        return;
+      }
+      if (attempts < PENDING_PAYMENT_POLL_ATTEMPTS) {
+        timer = window.setTimeout(() => void check(), PENDING_PAYMENT_POLL_MS);
+      }
+    };
+
+    timer = window.setTimeout(() => void check(), PENDING_PAYMENT_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [navigate, pendingPaymentId, phonePeCheckoutActive, userId]);
 
   const cartQuery = useQuery({
     queryKey: ["cart", userId],
@@ -1650,28 +1711,32 @@ const Checkout: React.FC = () => {
             }
 
             setStatusMessage("Payment window closed. Checking the latest payment status...");
-            try {
-              const statusResponse = await paymentService.getStatus(merchantTransactionId);
-              const status = statusResponse.data?.status || statusResponse.data?.paymentData?.state;
-
-              if (paymentWasSuccessful(status) || paymentIsUncertain(status)) {
-                goToConfirmation();
-                return;
-              }
-            } catch {
-              // The confirmation page provides the resilient retry UI when a
-              // one-off status request fails after the iframe closes.
+            const outcome = await fetchPaymentOutcome(merchantTransactionId);
+            if (outcome === "success") {
+              clearPendingPhonePePayment(userId);
               goToConfirmation();
               return;
             }
 
             paymentSubmissionRef.current = false;
             setStatusMessage("");
+            if (outcome === "pending") {
+              // Stay on Checkout. A late UPI approval is still turned into an
+              // order by the webhook/Cloud Task; the next Pay click checks this
+              // transaction first so the customer is not charged twice.
+              setPendingPaymentId(merchantTransactionId);
+              return;
+            }
+
+            clearPendingPhonePePayment(userId);
+            setPendingPaymentId(null);
             setErrorMessage("Payment was cancelled. You can try again when you are ready.");
           };
 
           try {
             setPhonePeCheckoutActive(true);
+            setPendingPaymentId(null);
+            savePendingPhonePePayment(userId, merchantTransactionId);
             setStatusMessage("Opening secure PhonePe checkout...");
             setErrorMessage("");
             await openPhonePeIframe(redirectUrl, (result) => {
@@ -1735,12 +1800,45 @@ const Checkout: React.FC = () => {
     },
   });
 
-  const handlePaymentSubmission = () => {
+  const startPayment = () => {
+    paymentSubmissionRef.current = true;
+    paymentMutation.mutate();
+  };
+
+  const handlePaymentSubmission = async () => {
     // React Query updates isPending on the next render. This synchronous guard
     // closes the small window where a rapid double-click can submit twice.
     if (paymentSubmissionRef.current || paymentMutation.isPending) return;
     paymentSubmissionRef.current = true;
-    paymentMutation.mutate();
+
+    if (pendingPaymentId) {
+      // Check the earlier payment before charging the customer again.
+      setPendingPaymentChecking(true);
+      const outcome = await fetchPaymentOutcome(pendingPaymentId);
+      setPendingPaymentChecking(false);
+      if (outcome === "success") {
+        clearPendingPhonePePayment(userId);
+        navigate(`/checkout/confirmation?${new URLSearchParams({ merchantTransactionId: pendingPaymentId }).toString()}`, { replace: true });
+        return;
+      }
+      if (outcome === "pending") {
+        paymentSubmissionRef.current = false;
+        setPendingPaymentPromptOpen(true);
+        return;
+      }
+      clearPendingPhonePePayment(userId);
+      setPendingPaymentId(null);
+    }
+
+    startPayment();
+  };
+
+  const payAgainDespitePendingPayment = () => {
+    if (paymentSubmissionRef.current || paymentMutation.isPending) return;
+    setPendingPaymentPromptOpen(false);
+    clearPendingPhonePePayment(userId);
+    setPendingPaymentId(null);
+    startPayment();
   };
 
   const handleAddressSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -1845,6 +1943,16 @@ const Checkout: React.FC = () => {
               }`}
           >
             {errorMessage || statusMessage}
+          </div>
+        )}
+
+        {pendingPaymentId && !phonePeCheckoutActive && (
+          <div role="status" className="mb-5 rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+            <p className="font-semibold">Payment window closed.</p>
+            <p>
+              If you completed the payment in your UPI app, we'll confirm it automatically. You can also check{" "}
+              <Link to="/payments" className="font-semibold underline">Payments</Link> in a few minutes.
+            </p>
           </div>
         )}
 
@@ -2237,6 +2345,7 @@ const Checkout: React.FC = () => {
                 !selectedAddress ||
                 paymentMutation.isPending ||
                 phonePeCheckoutActive ||
+                pendingPaymentChecking ||
                 createAddressMutation.isPending ||
                 updateAddressMutation.isPending ||
                 applyPromotionMutation.isPending ||
@@ -2246,11 +2355,13 @@ const Checkout: React.FC = () => {
                 Object.keys(backendStockErrors).length > 0 ||
                 finalCheckoutTotal < 0
               }
-              onClick={handlePaymentSubmission}
+              onClick={() => void handlePaymentSubmission()}
             >
-              {paymentMutation.isPending || phonePeCheckoutActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+              {paymentMutation.isPending || phonePeCheckoutActive || pendingPaymentChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
               {phonePeCheckoutActive
                 ? "Complete payment in PhonePe"
+                : pendingPaymentChecking
+                ? "Checking previous payment..."
                 : paymentMutation.isPending
                 ? walletCoversOrder || finalCheckoutTotal <= 0
                   ? "Placing order..."
@@ -2274,6 +2385,25 @@ const Checkout: React.FC = () => {
           <section role="dialog" aria-modal="true" aria-labelledby="checkout-offers-title" className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b border-[#e5e9f0] px-5 py-4"><div><h2 id="checkout-offers-title" className="text-lg font-extrabold text-[#172033]">Offers</h2><p className="mt-1 text-xs text-[#68748a]">Apply or remove an offer for this order.</p>{(applyPromotionMutation.isPending || removePromotionMutation.isPending || isPromotionResolving) && <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[#9a6b00]" role="status"><Loader2 className="h-3 w-3 animate-spin" />Updating total...</p>}</div><button type="button" onClick={() => setOffersModalOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1f3f7] text-[#26344f] transition hover:bg-[#e3e7ee]" aria-label="Close eligible offers"><X className="h-5 w-5" /></button></header>
             <div className="overflow-y-auto px-5 py-4"><div className="space-y-2.5">{eligiblePromotionCandidates.map(renderCheckoutPromotionOffer)}</div></div>
+          </section>
+        </div>
+      )}
+
+      {pendingPaymentPromptOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#111827]/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={() => setPendingPaymentPromptOpen(false)}>
+          <section role="alertdialog" aria-modal="true" aria-labelledby="pending-payment-title" aria-describedby="pending-payment-text" className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
+            <h2 id="pending-payment-title" className="text-lg font-extrabold text-[#172033]">Previous payment still processing</h2>
+            <p id="pending-payment-text" className="mt-2 text-sm leading-6 text-[#68748a]">
+              If money was debited, please don't pay again. It will be confirmed shortly and your order will appear in Payments.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={payAgainDespitePendingPayment} className="min-h-10 rounded-xl border border-[#d5dae3] px-4 text-sm font-bold text-[#26344f] transition hover:bg-[#f1f3f7]">
+                Pay again
+              </button>
+              <Button autoFocus className="rounded-xl" onClick={() => setPendingPaymentPromptOpen(false)}>
+                Wait
+              </Button>
+            </div>
           </section>
         </div>
       )}
