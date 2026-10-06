@@ -608,8 +608,10 @@ const Checkout: React.FC = () => {
       });
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
   const promotionDetailsById = useMemo(
-    () => new Map(promotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
-    [promotionCandidates],
+    // Preserve conditions/minimums even when an offer is currently
+    // ineligible; compact applied-evaluation records do not include them.
+    () => new Map(rawPromotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
+    [rawPromotionCandidates],
   );
   const promotionEvaluation = promotionEvaluationQuery.data?.data;
   const selectedPromotionApplies = selectedPromotionMatchesOrder;
@@ -637,18 +639,9 @@ const Checkout: React.FC = () => {
   );
   const appliedPromotionsForTotals =
     promotionsV2Quote
-      ? [
-        ...(liveV2AppliedPromotions.length > 0
-          ? liveV2AppliedPromotions
-          : selectedV2AppliedPromotions),
-        ...backendAppliedPromotions.filter(
-          (promotion) =>
-            isFreeShippingAppliedPromotion(promotion) &&
-            ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
-              (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
-            ),
-        ),
-      ]
+      // Current-cart V2 results override saved and legacy evaluations. A
+      // promotion absent from this quote is not applied to this checkout.
+      ? liveV2AppliedPromotions
       : backendAppliedPromotions.length > 0
         ? backendAppliedPromotions
         : promotionEvaluation?.applied_promotions?.length
@@ -809,10 +802,15 @@ const Checkout: React.FC = () => {
 
     return uniquePromotions([...appliedCandidates, ...promotionCandidates]);
   }, [appliedPromotionsForTotals, promotionCandidates]);
-  const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
-    (promotion) =>
-      !isFreeShippingPromotion(promotion) ||
-      isFreeShippingPromotionEligible(promotion, cartTotals.subtotal)
+  const v2MinimumRejectedPromotionIds = new Set(
+    (promotionsV2Quote?.rejected_candidates ?? [])
+      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
+      .map((candidate) => candidate.promotion_id),
+  );
+  const eligiblePromotionCandidates = visiblePromotionCandidates.filter((promotion) =>
+    !v2MinimumRejectedPromotionIds.has(promotionId(promotion)) &&
+    (!isFreeShippingPromotion(promotion) ||
+      isFreeShippingPromotionEligible(promotion, cartTotals.subtotal))
   );
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => appliedPromotionIds.has(promotionId(promotion)),

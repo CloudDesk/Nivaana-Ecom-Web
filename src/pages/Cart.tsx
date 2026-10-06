@@ -505,8 +505,10 @@ const Cart: React.FC = () => {
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
 
   const promotionDetailsById = useMemo(
-    () => new Map(promotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
-    [promotionCandidates]
+    // Keep rule metadata for eligible and ineligible offers. Applied records
+    // are intentionally compact and need this data to enforce thresholds.
+    () => new Map(rawPromotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
+    [rawPromotionCandidates]
   );
   const backendEvaluation = useMemo(() => {
     const refreshedEvaluation = automaticPromotionsQuery.data?.data;
@@ -585,18 +587,10 @@ const Cart: React.FC = () => {
   );
   const appliedPromotionsForTotals =
     useV2PromotionResult
-      ? [
-        ...(liveV2AppliedPromotions.length > 0
-          ? liveV2AppliedPromotions
-          : selectedV2AppliedPromotions),
-        ...backendAppliedPromotions.filter(
-          (promotion) =>
-            isFreeShippingAppliedPromotion(promotion) &&
-            ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
-              (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
-            ),
-        ),
-      ]
+      // A live V2 quote is authoritative for the current cart signature.
+      // Never merge saved selections or legacy active evaluations into it:
+      // those records may describe an older, higher-value cart.
+      ? liveV2AppliedPromotions
       : backendAppliedPromotions.length > 0
         ? backendAppliedPromotions
         : selectedPromotionApplies
@@ -1221,7 +1215,7 @@ const Cart: React.FC = () => {
     const isApplied =
       freeShippingEligible && Boolean(
         appliedPromotion ||
-        (!hasSelectedV2Promotion && backendAppliedIds.has(id))
+        (!useV2PromotionResult && !hasSelectedV2Promotion && backendAppliedIds.has(id))
       );
     const canRemove = Boolean(
       isApplied &&
@@ -1281,9 +1275,15 @@ const Cart: React.FC = () => {
     );
   };
 
-  const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
-    (promotion) => getPromotionDisplayState(promotion).freeShippingEligible
+  const v2MinimumRejectedPromotionIds = new Set(
+    (promotionsV2Quote?.rejected_candidates ?? [])
+      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
+      .map((candidate) => candidate.promotion_id),
   );
+  const eligiblePromotionCandidates = visiblePromotionCandidates.filter((promotion) => {
+    const state = getPromotionDisplayState(promotion);
+    return state.freeShippingEligible && !v2MinimumRejectedPromotionIds.has(state.id);
+  });
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => getPromotionDisplayState(promotion).isApplied
   );
