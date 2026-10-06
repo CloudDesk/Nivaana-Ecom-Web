@@ -1743,7 +1743,9 @@ const Checkout: React.FC = () => {
             if (outcome === "pending") {
               // Stay on Checkout. A late UPI approval is still turned into an
               // order by the webhook/Cloud Task; the next Pay click checks this
-              // transaction first so the customer is not charged twice.
+              // transaction first so the customer is not charged twice. This is
+              // the only place the transaction is remembered.
+              savePendingPhonePePayment(userId, merchantTransactionId);
               setPendingPaymentId(merchantTransactionId);
               return;
             }
@@ -1755,8 +1757,10 @@ const Checkout: React.FC = () => {
 
           try {
             setPhonePeCheckoutActive(true);
+            // A new payment replaces any earlier pending one. The new
+            // transaction is only remembered if it is closed while pending.
+            clearPendingPhonePePayment(userId);
             setPendingPaymentId(null);
-            savePendingPhonePePayment(userId, merchantTransactionId);
             setStatusMessage("Opening secure PhonePe checkout...");
             setErrorMessage("");
             await openPhonePeIframe(redirectUrl, (result) => {
