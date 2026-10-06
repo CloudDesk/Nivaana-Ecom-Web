@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { cartService } from "../services/cartService";
-import { couponWalletService } from "../services/couponWalletService";
+import { couponWalletService, isUsableUnclaimedCoupon } from "../services/couponWalletService";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
@@ -288,6 +288,14 @@ const Cart: React.FC = () => {
     ({ product, quantity }) => isOutOfStock(product) || quantity > getAvailableStock(product)
   ).length;
   const hasCartStockIssues = cartStockIssueCount > 0;
+  // Same query/key as the navbar wallet badge, so this adds no request.
+  const walletCouponsQuery = useQuery({
+    queryKey: ["wallet", session?.user.id],
+    queryFn: () => couponWalletService.getWallet(),
+    enabled: Boolean(session),
+    staleTime: 1000 * 60,
+  });
+  const unclaimedCouponCount = (walletCouponsQuery.data?.data?.available_coupons ?? []).filter(isUsableUnclaimedCoupon).length;
   const promotionRows = useMemo(
     () =>
       enriched
@@ -1625,7 +1633,11 @@ const Cart: React.FC = () => {
                   <div className="mt-3 flex items-start gap-2 rounded-2xl border border-[#dfe4ee] bg-[#f7f8fb] p-3 text-[11px] leading-4 text-[#68748a]">
                     <TicketPercent className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />
                     <p>
-                      {session
+                      {session && unclaimedCouponCount > 0 ? (
+                        <strong className="text-[#26344f]">
+                          You have {unclaimedCouponCount} {unclaimedCouponCount === 1 ? "coupon" : "coupons"}. Apply at checkout.
+                        </strong>
+                      ) : session
                         ? "Have a coupon code? Apply it securely at checkout."
                         : "Have a coupon code? Sign in and apply it securely at checkout."}
                     </p>

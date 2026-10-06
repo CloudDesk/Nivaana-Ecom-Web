@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { addressService, type Address, type AddressPayload } from "../services/addressService";
 import { cartService } from "../services/cartService";
-import { couponWalletService } from "../services/couponWalletService";
+import { couponWalletService, isUsableUnclaimedCoupon } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
 import {
   clearPendingPhonePePayment,
@@ -77,6 +77,7 @@ import {
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
+import { readDirectCoupon, saveDirectCoupon } from "../lib/directCouponSelection";
 import { isOfferAlreadyUsedError } from "../lib/notificationMessages";
 import { canonicalIndianMobile, INVALID_MOBILE_MESSAGE, isValidIndianMobile } from "../lib/phone";
 
@@ -275,7 +276,7 @@ const Checkout: React.FC = () => {
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
   const [voucherCode, setVoucherCode] = useState("");
-  const [appliedDirectCouponCode, setAppliedDirectCouponCode] = useState<string | null>(null);
+  const [appliedDirectCouponCode, setAppliedDirectCouponCode] = useState<string | null>(() => readDirectCoupon(userId));
   const [offerActionError, setOfferActionError] = useState("");
   // Offer apply/remove feedback lives on the offer's own card inside the pop-up;
   // offerActionError is kept for the coupon-code box only.
@@ -287,7 +288,7 @@ const Checkout: React.FC = () => {
   const [walletApplied, setWalletApplied] = useState(() => readWalletApplied(userId));
   const paymentSubmissionRef = useRef(false);
   const seededQuotes = useRef(createSeededQuoteTracker()).current;
-  const announcedDirectCouponCodeRef = useRef<string | null>(null);
+  const announcedDirectCouponCodeRef = useRef<string | null>(readDirectCoupon(userId));
   const [selectedPromotion, setSelectedPromotion] = useState<SelectedCartPromotion | null>(() =>
     readSelectedCartPromotion(user?.id)
   );
@@ -316,6 +317,9 @@ const Checkout: React.FC = () => {
       setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
       setSelectedPromotion(readSelectedCartPromotion(userId));
       setWalletApplied(readWalletApplied(userId));
+      const storedCoupon = readDirectCoupon(userId);
+      announcedDirectCouponCodeRef.current = storedCoupon;
+      setAppliedDirectCouponCode(storedCoupon);
     }
   }, [storedCustomerName, userId, userMobile]);
 
@@ -795,6 +799,16 @@ const Checkout: React.FC = () => {
     merchandiseRemainingAfterPromotions - directCouponDiscount,
   );
   const payableBeforeWallet = Math.max(0, checkoutTotal - directCouponDiscount);
+  // Coupons issued to this customer that are not in the wallet yet. They are
+  // not promotion offers, so list them here and apply them by code. Coupons
+  // already added to the wallet are used through the wallet instead.
+  const walletCouponsQuery = useQuery({
+    queryKey: ["wallet", userId],
+    queryFn: () => couponWalletService.getWallet(),
+    enabled: Boolean(userId),
+    staleTime: 1000 * 60,
+  });
+  const unclaimedCoupons = (walletCouponsQuery.data?.data?.available_coupons ?? []).filter(isUsableUnclaimedCoupon);
   const walletQuoteQuery = useQuery({
     queryKey: ["wallet-discount-quote", userId, cartTotals.subtotal, merchandiseRemainingAfterCoupon, shipping],
     queryFn: () => couponWalletService.quoteDiscount(
@@ -1080,8 +1094,9 @@ const Checkout: React.FC = () => {
     if (!appliedDirectCouponCode || !directCouponQuery.error) return;
     setOfferActionError(directCouponErrorMessage(directCouponQuery.error));
     announcedDirectCouponCodeRef.current = null;
+    saveDirectCoupon(userId, null);
     setAppliedDirectCouponCode(null);
-  }, [appliedDirectCouponCode, directCouponQuery.error]);
+  }, [appliedDirectCouponCode, directCouponQuery.error, userId]);
 
   useEffect(() => {
     if (!appliedDirectCouponCode || !directCouponQuote) return;
@@ -1093,8 +1108,8 @@ const Checkout: React.FC = () => {
     setStatusMessage(`${directCouponQuote.name} applied to your order.`);
   }, [appliedDirectCouponCode, directCouponQuote]);
 
-  const applyDirectCoupon = () => {
-    const normalizedCode = voucherCode.trim().toUpperCase();
+  const applyDirectCoupon = (code: string = voucherCode) => {
+    const normalizedCode = code.trim().toUpperCase();
     if (!normalizedCode) {
       setOfferActionError("Enter your coupon code.");
       return;
@@ -1105,11 +1120,13 @@ const Checkout: React.FC = () => {
     }
     announcedDirectCouponCodeRef.current = null;
     setOfferActionError("");
+    saveDirectCoupon(userId, normalizedCode);
     setAppliedDirectCouponCode(normalizedCode);
   };
 
   const removeDirectCoupon = () => {
     announcedDirectCouponCodeRef.current = null;
+    saveDirectCoupon(userId, null);
     setAppliedDirectCouponCode(null);
     setVoucherCode("");
     setOfferActionError("");
@@ -1665,6 +1682,9 @@ const Checkout: React.FC = () => {
     onSuccess: async (response) => {
       const data = response.data;
       const redirectUrl = data.redirectUrl || data.next_steps?.phonepe?.redirectUrl;
+      // The coupon is now reserved/consumed by this payment; a later Checkout
+      // visit must not restore it.
+      saveDirectCoupon(userId, null);
 
       if (data.status === "SUCCESS" && data.orderData?.order_created) {
         clearSelectedCartPromotion(userId);
@@ -1784,6 +1804,7 @@ const Checkout: React.FC = () => {
       if (appliedDirectCouponCode && /(?:DIRECT_)?COUPON_/i.test(paymentErrorText)) {
         const friendlyMessage = directCouponErrorMessage(apiError);
         announcedDirectCouponCodeRef.current = null;
+        saveDirectCoupon(userId, null);
         setAppliedDirectCouponCode(null);
         void queryClient.invalidateQueries({ queryKey: ["direct-coupon-checkout-quote"] });
         setOfferActionError(friendlyMessage);
@@ -2283,6 +2304,52 @@ const Checkout: React.FC = () => {
                     <p className="mt-2 text-[11px] leading-4 text-[#68748a]">
                       Applying here uses the coupon for this order. To save it for later, add it from My Wallet instead.
                     </p>
+                    {unclaimedCoupons.length > 0 && (
+                      <div className="mt-3 border-t border-[#dfe4ee] pt-3">
+                        <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#26344f]">
+                          Your coupons ({unclaimedCoupons.length})
+                        </p>
+                        <ul className="mt-2 space-y-2">
+                          {unclaimedCoupons.map((coupon) => {
+                            const amount = Number(coupon.promotion.action?.value || 0);
+                            const minimum = Number(
+                              coupon.promotion.conditions?.find((condition) => condition.attribute === "cart.total_value")?.value || 0,
+                            );
+                            return (
+                              <li key={coupon.id} className="flex items-center gap-3 rounded-lg border border-dashed border-[#cbd2df] bg-white p-2.5">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-extrabold text-[#172033]">
+                                    {amount > 0 ? `${formatCurrency(amount)} off` : coupon.promotion.name || "Coupon"}
+                                  </p>
+                                  <p className="mt-0.5 truncate font-mono text-[11px] font-bold text-[#46536b]">{coupon.code}</p>
+                                  {minimum > 0 && (
+                                    <p className="text-[11px] text-[#68748a]">Minimum cart {formatCurrency(minimum)}</p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVoucherCode(coupon.code);
+                                    applyDirectCoupon(coupon.code);
+                                  }}
+                                  disabled={Boolean(appliedDirectCouponCode) || directCouponQuery.isFetching || isPromotionResolving}
+                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#fbbc05] px-3 py-2 text-[11px] font-extrabold text-[#172033] disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {appliedDirectCouponCode === coupon.code ? (
+                                    <>
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      Applying…
+                                    </>
+                                  ) : (
+                                    "Apply"
+                                  )}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
                   </form>
                 )}
 
