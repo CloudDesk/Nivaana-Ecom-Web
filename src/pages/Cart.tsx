@@ -282,6 +282,12 @@ const Cart: React.FC = () => {
     apiId: "id" in item && typeof item.id === "number" ? item.id : undefined,
     product: products.find((product) => product.id === item.productid),
   }));
+  // Same stock rule Checkout uses to block payment, so customers fix the cart
+  // here instead of discovering it on Checkout. Totals/offers are unchanged.
+  const cartStockIssueCount = enriched.filter(
+    ({ product, quantity }) => isOutOfStock(product) || quantity > getAvailableStock(product)
+  ).length;
+  const hasCartStockIssues = cartStockIssueCount > 0;
   const promotionRows = useMemo(
     () =>
       enriched
@@ -1664,10 +1670,17 @@ const Cart: React.FC = () => {
                   </p>
                 </div>
               )}
+              {hasCartStockIssues && (
+                <p role="alert" className="mt-5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+                  {cartStockIssueCount === 1
+                    ? "1 item is unavailable. Remove it or save it for later to continue."
+                    : `${cartStockIssueCount} items are unavailable. Remove them or save them for later to continue.`}
+                </p>
+              )}
               {session ? (
                 <Button
                   className="mt-5 w-full"
-                  disabled={checkoutValidationMutation.isPending || isPricingRecalculating}
+                  disabled={checkoutValidationMutation.isPending || isPricingRecalculating || hasCartStockIssues}
                   onClick={() => checkoutValidationMutation.mutate()}
                 >
                   {checkoutValidationMutation.isPending && (
@@ -1678,10 +1691,11 @@ const Cart: React.FC = () => {
               ) : (
                 <Link
                   to="/login?redirect=/checkout"
-                  className={`mt-5 block ${isPricingRecalculating ? "pointer-events-none" : ""}`}
-                  aria-disabled={isPricingRecalculating}
+                  className={`mt-5 block ${isPricingRecalculating || hasCartStockIssues ? "pointer-events-none" : ""}`}
+                  aria-disabled={isPricingRecalculating || hasCartStockIssues}
+                  tabIndex={hasCartStockIssues ? -1 : undefined}
                 >
-                  <Button className="w-full" disabled={isPricingRecalculating}>
+                  <Button className="w-full" disabled={isPricingRecalculating || hasCartStockIssues}>
                     Login to Checkout
                   </Button>
                 </Link>
