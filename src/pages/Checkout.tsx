@@ -22,6 +22,11 @@ import { addressService, type Address, type AddressPayload } from "../services/a
 import { cartService } from "../services/cartService";
 import { couponWalletService } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
+import {
+  isPhonePeIframeCheckoutEnabled,
+  openPhonePeIframe,
+  type PhonePeCheckoutResult,
+} from "../services/phonePeCheckoutService";
 import { platformProductService } from "../services/productPlatformService";
 import {
   promotionService,
@@ -105,6 +110,18 @@ const productImage = (product?: Product) =>
 
 const notificationDisplayMs = 4200;
 const notificationFadeMs = 350;
+
+const paymentStatusText = (status?: string) => String(status || "").toLowerCase();
+
+const paymentWasSuccessful = (status?: string) => {
+  const normalized = paymentStatusText(status);
+  return normalized === "success" || normalized.includes("payment_success") || normalized.includes("completed");
+};
+
+const paymentIsUncertain = (status?: string) => {
+  const normalized = paymentStatusText(status);
+  return !normalized || normalized.includes("pending") || normalized.includes("initiated") || normalized.includes("processing");
+};
 
 const quantityFor = (quantity: unknown) => {
   const parsed = Number(quantity);
@@ -231,6 +248,7 @@ const Checkout: React.FC = () => {
   );
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [phonePeCheckoutActive, setPhonePeCheckoutActive] = useState(false);
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
   const [voucherCode, setVoucherCode] = useState("");
@@ -1609,6 +1627,65 @@ const Checkout: React.FC = () => {
       }
 
       if (redirectUrl) {
+        if (isPhonePeIframeCheckoutEnabled && data.merchantTransactionId) {
+          const merchantTransactionId = data.merchantTransactionId;
+          let iframeResultHandled = false;
+          const goToConfirmation = () => {
+            const params = new URLSearchParams({ merchantTransactionId });
+            navigate(`/checkout/confirmation?${params.toString()}`, { replace: true });
+          };
+
+          const handleIframeResult = async (result: PhonePeCheckoutResult) => {
+            if (iframeResultHandled) return;
+            iframeResultHandled = true;
+            setPhonePeCheckoutActive(false);
+            setErrorMessage("");
+
+            if (result === "CONCLUDED") {
+              // PhonePe only promises that CONCLUDED is terminal at the
+              // checkout-UI level. The confirmation page verifies the actual
+              // payment state and polls while order reconciliation finishes.
+              goToConfirmation();
+              return;
+            }
+
+            setStatusMessage("Payment window closed. Checking the latest payment status...");
+            try {
+              const statusResponse = await paymentService.getStatus(merchantTransactionId);
+              const status = statusResponse.data?.status || statusResponse.data?.paymentData?.state;
+
+              if (paymentWasSuccessful(status) || paymentIsUncertain(status)) {
+                goToConfirmation();
+                return;
+              }
+            } catch {
+              // The confirmation page provides the resilient retry UI when a
+              // one-off status request fails after the iframe closes.
+              goToConfirmation();
+              return;
+            }
+
+            paymentSubmissionRef.current = false;
+            setStatusMessage("");
+            setErrorMessage("Payment was cancelled. You can try again when you are ready.");
+          };
+
+          try {
+            setPhonePeCheckoutActive(true);
+            setStatusMessage("Opening secure PhonePe checkout...");
+            setErrorMessage("");
+            await openPhonePeIframe(redirectUrl, (result) => {
+              void handleIframeResult(result);
+            });
+            return;
+          } catch (error) {
+            setPhonePeCheckoutActive(false);
+            // Keep checkout available on browsers that block or cannot load
+            // PhonePe's iframe SDK. This uses the already-created transaction.
+            console.warn("PhonePe iframe checkout unavailable; using redirect fallback.", error);
+          }
+        }
+
         window.location.replace(redirectUrl);
         return;
       }
@@ -2159,6 +2236,7 @@ const Checkout: React.FC = () => {
               disabled={
                 !selectedAddress ||
                 paymentMutation.isPending ||
+                phonePeCheckoutActive ||
                 createAddressMutation.isPending ||
                 updateAddressMutation.isPending ||
                 applyPromotionMutation.isPending ||
@@ -2170,8 +2248,10 @@ const Checkout: React.FC = () => {
               }
               onClick={handlePaymentSubmission}
             >
-              {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              {paymentMutation.isPending
+              {paymentMutation.isPending || phonePeCheckoutActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+              {phonePeCheckoutActive
+                ? "Complete payment in PhonePe"
+                : paymentMutation.isPending
                 ? walletCoversOrder || finalCheckoutTotal <= 0
                   ? "Placing order..."
                   : "Starting payment..."

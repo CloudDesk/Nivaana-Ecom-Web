@@ -130,7 +130,10 @@ class PaymentService {
   }
 
   getStatus(merchantTransactionId: string): Promise<ApiResponse<PaymentResponseData>> {
-    return apiService.get<PaymentResponseData>(`/phonepe/status/${merchantTransactionId}`);
+    // Status verification can synchronously reconcile and create the order.
+    // Keep the confirmation loader active instead of failing at the global
+    // 20-second timeout while that server-side work is still completing.
+    return apiService.get<PaymentResponseData>(`/phonepe/status/${merchantTransactionId}`, { timeout: 120000 });
   }
 
   getTransaction(transactionId: string): Promise<ApiResponse<TransactionRecord>> {
