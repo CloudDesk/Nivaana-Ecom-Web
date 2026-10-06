@@ -160,14 +160,43 @@ const CheckoutConfirmation: React.FC = () => {
   );
   const estimatedDelivery = formatEstimatedDelivery(order?.createddate);
 
-  const state = useMemo<"checking" | "success" | "failure" | "delayed">(() => {
-    if (orderId && paymentSucceeded) return "success";
-    if (missingReference || paymentStatusQuery.isError || isPaymentFailed(paymentStatus) || (returnedPayment === "failure" && !paymentStatusQuery.isFetching)) {
+  const state = useMemo<"checking" | "loading-order" | "success" | "failure" | "delayed">(() => {
+    if (orderId && paymentSucceeded) {
+      if (orderQuery.isError) return "delayed";
+      if (orderQuery.data?.data?.order) return "success";
+      return "loading-order";
+    }
+    if (missingReference || isPaymentFailed(paymentStatus) || (returnedPayment === "failure" && !paymentStatusQuery.isFetching)) {
       return "failure";
     }
-    if (statusChecks >= MAX_STATUS_CHECKS || (paymentSucceeded && orderFinalizationFailed && !shouldPoll)) return "delayed";
+    if (paymentStatusQuery.isError || statusChecks >= MAX_STATUS_CHECKS || (paymentSucceeded && orderFinalizationFailed && !shouldPoll)) return "delayed";
     return "checking";
-  }, [missingReference, orderFinalizationFailed, orderId, paymentStatus, paymentStatusQuery.isError, paymentStatusQuery.isFetching, paymentSucceeded, returnedPayment, shouldPoll, statusChecks]);
+  }, [missingReference, orderFinalizationFailed, orderId, orderQuery.data?.data?.order, orderQuery.isError, paymentStatus, paymentStatusQuery.isError, paymentStatusQuery.isFetching, paymentSucceeded, returnedPayment, shouldPoll, statusChecks]);
+
+  const loadingCopy = useMemo(() => {
+    if (state === "loading-order") {
+      return {
+        title: "Loading your order",
+        message: "Your payment is verified. We are loading the order items and delivery details.",
+      };
+    }
+    if (paymentSucceeded || returnIndicatesSuccess) {
+      return {
+        title: "Payment received",
+        message: "Your payment is verified. We are finalizing your order now.",
+      };
+    }
+    if (statusChecks > 0) {
+      return {
+        title: "Waiting for PhonePe confirmation",
+        message: "The payment is still being processed. Please do not refresh or make another payment.",
+      };
+    }
+    return {
+      title: "Confirming your payment",
+      message: "Please stay on this page while we securely verify the transaction.",
+    };
+  }, [paymentSucceeded, returnIndicatesSuccess, state, statusChecks]);
 
   const stopCelebration = useCallback(() => {
     if (celebrationIntervalRef.current !== null) {
@@ -232,11 +261,11 @@ const CheckoutConfirmation: React.FC = () => {
           <ConfirmationStep label="Confirmation" state={state === "success" ? "done" : "active"} value="3" />
         </div>
 
-        {state === "checking" && (
+        {(state === "checking" || state === "loading-order") && (
           <StatusPanel
             icon={<Loader2 className="h-12 w-12 animate-spin" />}
-            title={paymentSucceeded || returnIndicatesSuccess ? "Payment received" : "Confirming your payment"}
-            message={paymentSucceeded || returnIndicatesSuccess ? "Your payment is complete. We are preparing your order details now." : "Please stay on this page while we verify the transaction."}
+            title={loadingCopy.title}
+            message={loadingCopy.message}
             tone="pending"
           />
         )}
@@ -322,26 +351,32 @@ const CheckoutConfirmation: React.FC = () => {
             )}
 
             {details && (
-              <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-                <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+              <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+                <section className="min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
                   <div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-[var(--color-secondary)]" /><h2 className="font-bold text-[var(--color-text)]">Order items</h2></div>
                   <div className="mt-4 divide-y divide-[var(--color-border)]">
                     {(details.orderlines || []).map((item, index) => {
                       const thumb = (item as { imageurl?: string; image?: string }).imageurl || (item as { imageurl?: string; image?: string }).image;
+                      const itemName = item.productname || "Product";
                       return (
-                        <div key={String(item.id || `${item.productid}-${index}`)} className="flex items-center gap-4 py-4">
+                        <div
+                          key={String(item.id || `${item.productid}-${index}`)}
+                          className="grid min-w-0 grid-cols-[56px_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-4 sm:grid-cols-[56px_minmax(0,1fr)_auto]"
+                        >
                           <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
                             {thumb ? (
-                              <img src={thumb} alt={item.productname || "Product"} className="h-full w-full object-cover" />
+                              <img src={thumb} alt={itemName} className="h-full w-full object-cover" />
                             ) : (
                               <ShoppingBag className="h-5 w-5 text-[var(--color-muted)]" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-semibold text-[var(--color-text)]">{item.productname || "Product"}</p>
+                            <p title={itemName} className="line-clamp-2 break-words font-semibold leading-5 text-[var(--color-text)]">{itemName}</p>
                             <p className="mt-1 text-xs text-[var(--color-muted)]">Quantity: {item.quantity || 1}</p>
                           </div>
-                          <p className="shrink-0 font-semibold text-[var(--color-text)]">{formatCurrency(item.orderamount ?? item.productamount)}</p>
+                          <p className="col-start-2 justify-self-start whitespace-nowrap font-semibold text-[var(--color-text)] sm:col-start-auto sm:justify-self-end sm:text-right">
+                            {formatCurrency(item.orderamount ?? item.productamount)}
+                          </p>
                         </div>
                       );
                     })}
@@ -356,7 +391,7 @@ const CheckoutConfirmation: React.FC = () => {
                   )}
                 </section>
 
-                <section className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+                <section className="min-w-0 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
                   <div className="flex items-center gap-2"><MapPin className="h-5 w-5 text-[var(--color-secondary)]" /><h2 className="font-bold text-[var(--color-text)]">Delivery address</h2></div>
                   {details.address ? (
                     <div className="mt-4 text-sm leading-6 text-[var(--color-muted)]">
@@ -414,7 +449,7 @@ function ConfirmationStep({ label, state, value }: { label: string; state: "done
 function StatusPanel({ icon, title, message, tone, children }: { icon: React.ReactNode; title: string; message: string; tone: "pending" | "error"; children?: React.ReactNode }) {
   const error = tone === "error";
   return (
-    <section className={`mt-8 rounded-[var(--radius-lg)] border bg-white p-7 text-center shadow-[var(--shadow-card)] sm:p-10 ${error ? "border-red-200" : "border-amber-200"}`}>
+    <section role={error ? "alert" : "status"} aria-live="polite" className={`mt-8 rounded-[var(--radius-lg)] border bg-white p-7 text-center shadow-[var(--shadow-card)] sm:p-10 ${error ? "border-red-200" : "border-amber-200"}`}>
       <div className={`mx-auto grid h-20 w-20 place-items-center rounded-full ${error ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"}`}>{icon}</div>
       <h2 className="mt-5 text-2xl font-bold text-[var(--color-text)]">{title}</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--color-muted)]">{message}</p>
@@ -428,7 +463,7 @@ function Detail({ label, value, accent = false }: { label: string; value: string
 }
 
 function SummaryRow({ label, value, green = false, strong = false }: { label: string; value: string; green?: boolean; strong?: boolean }) {
-  return <div className={`flex justify-between gap-4 ${strong ? "border-t border-[var(--color-border)] pt-3 text-base font-bold" : ""}`}><span className="text-[var(--color-muted)]">{label}</span><span className={green ? "font-semibold text-green-700" : "font-semibold text-[var(--color-text)]"}>{value}</span></div>;
+  return <div className={`flex min-w-0 justify-between gap-4 ${strong ? "border-t border-[var(--color-border)] pt-3 text-base font-bold" : ""}`}><span className="min-w-0 text-[var(--color-muted)]">{label}</span><span className={`shrink-0 whitespace-nowrap text-right ${green ? "font-semibold text-green-700" : "font-semibold text-[var(--color-text)]"}`}>{value}</span></div>;
 }
 
 function LinkButton({ to, children, primary = false, className = "" }: { to: string; children: React.ReactNode; primary?: boolean; className?: string }) {

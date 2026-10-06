@@ -61,6 +61,8 @@ import {
   type SelectedCartPromotion,
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 const imageFor = (product?: { medium: string[] | null; small: string[] | null; large: string[] | null }) =>
   product?.medium?.[0] || product?.small?.[0] || product?.large?.[0] || fallbackProduct;
@@ -503,8 +505,10 @@ const Cart: React.FC = () => {
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
 
   const promotionDetailsById = useMemo(
-    () => new Map(promotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
-    [promotionCandidates]
+    // Keep rule metadata for eligible and ineligible offers. Applied records
+    // are intentionally compact and need this data to enforce thresholds.
+    () => new Map(rawPromotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
+    [rawPromotionCandidates]
   );
   const backendEvaluation = useMemo(() => {
     const refreshedEvaluation = automaticPromotionsQuery.data?.data;
@@ -583,18 +587,10 @@ const Cart: React.FC = () => {
   );
   const appliedPromotionsForTotals =
     useV2PromotionResult
-      ? [
-        ...(liveV2AppliedPromotions.length > 0
-          ? liveV2AppliedPromotions
-          : selectedV2AppliedPromotions),
-        ...backendAppliedPromotions.filter(
-          (promotion) =>
-            isFreeShippingAppliedPromotion(promotion) &&
-            ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
-              (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
-            ),
-        ),
-      ]
+      // A live V2 quote is authoritative for the current cart signature.
+      // Never merge saved selections or legacy active evaluations into it:
+      // those records may describe an older, higher-value cart.
+      ? liveV2AppliedPromotions
       : backendAppliedPromotions.length > 0
         ? backendAppliedPromotions
         : selectedPromotionApplies
@@ -1219,7 +1215,7 @@ const Cart: React.FC = () => {
     const isApplied =
       freeShippingEligible && Boolean(
         appliedPromotion ||
-        (!hasSelectedV2Promotion && backendAppliedIds.has(id))
+        (!useV2PromotionResult && !hasSelectedV2Promotion && backendAppliedIds.has(id))
       );
     const canRemove = Boolean(
       isApplied &&
@@ -1279,9 +1275,15 @@ const Cart: React.FC = () => {
     );
   };
 
-  const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
-    (promotion) => getPromotionDisplayState(promotion).freeShippingEligible
+  const v2MinimumRejectedPromotionIds = new Set(
+    (promotionsV2Quote?.rejected_candidates ?? [])
+      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
+      .map((candidate) => candidate.promotion_id),
   );
+  const eligiblePromotionCandidates = visiblePromotionCandidates.filter((promotion) => {
+    const state = getPromotionDisplayState(promotion);
+    return state.freeShippingEligible && !v2MinimumRejectedPromotionIds.has(state.id);
+  });
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => getPromotionDisplayState(promotion).isApplied
   );
@@ -1352,10 +1354,13 @@ const Cart: React.FC = () => {
   );
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-6xl">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-bold text-[var(--color-text)]">Cart</h1>
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader
+          currentPage="Cart"
+          title="Cart"
+          subtitle={`${items.length} ${items.length === 1 ? "item" : "items"} in your cart${session ? "" : " as guest"}`}
+          action={
           <Link
             to="/wishlist"
             className="relative inline-flex min-h-10 shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-[var(--color-text)] shadow-sm md:hidden"
@@ -1367,10 +1372,8 @@ const Cart: React.FC = () => {
               </span>
             )}
           </Link>
-        </div>
-        <p className="mt-2 text-sm text-[var(--color-muted)]">
-          {items.length} items in your cart{session ? "" : " as guest"}
-        </p>
+          }
+        />
         {/* {!session && items.length > 0 && (
           <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
             Login before checkout and we will move these guest items into your account.

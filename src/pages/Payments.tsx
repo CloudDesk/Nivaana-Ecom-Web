@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, ReceiptText, UserRound } from "lucide-react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { CalendarDays, ChevronDown, ChevronUp, CreditCard, Hash, Package, ReceiptText, UserRound } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { paymentService, type PaymentResponseData, type TransactionRecord } from "../services/paymentService";
+import { paymentService, type PaymentResponseData } from "../services/paymentService";
 import { orderService, type OrderDetails, type OrderSummary } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
 import { clearSelectedCartPromotion } from "../lib/cartPromotions";
 import { saveWalletApplied } from "../lib/walletSelection";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
+
+const PAYMENTS_PAGE_SIZE = 10;
 
 const getStatusText = (data?: PaymentResponseData | null) =>
   data?.status || data?.message || data?.paymentData?.state || "Status received";
@@ -63,7 +66,7 @@ const formatDateTime = (value?: number | string | null) => {
   });
 };
 
-const getPaymentTimestamp = (details: OrderDetails, transaction?: TransactionRecord | null) => {
+const getPaymentTimestamp = (details: OrderDetails) => {
   const history = Array.isArray(details.order.status_history)
     ? details.order.status_history
     : Array.isArray(details.status_history)
@@ -73,7 +76,7 @@ const getPaymentTimestamp = (details: OrderDetails, transaction?: TransactionRec
     .filter((entry) => entry && typeof entry === "object" && /payment.*completed/i.test(String((entry as Record<string, unknown>).new_status || "")))
     .map((entry) => Number((entry as Record<string, unknown>).changed_date))
     .find((value) => Number.isFinite(value) && value > 0);
-  return completed || transaction?.createddate || details.order.createddate;
+  return completed || details.order.createddate;
 };
 
 const formatStatus = (status?: string | null) => {
@@ -86,12 +89,27 @@ const formatStatus = (status?: string | null) => {
     .join(" ");
 };
 
+const PAYMENT_MODE_LABELS: Record<string, string> = {
+  phonepe: "PhonePe",
+  cod: "Cash on delivery",
+  wallet: "Nivaana Wallet",
+  upi: "UPI",
+  card: "Card",
+  cash: "Cash",
+  promotion: "Promotion",
+};
+
+const formatPaymentMode = (mode: string) =>
+  PAYMENT_MODE_LABELS[mode.toLowerCase()] || (mode ? formatStatus(mode) : "Online");
+
 const getOrderIdentifier = (order?: OrderSummary | null) => order?.id ?? order?.orderid ?? "";
 
-const getOrderMerchantTransactionId = (order?: OrderSummary | null) =>
+/** Payment gateway reference (e.g. TXN_…), the ID support asks for. */
+const getMerchantTransactionId = (order?: OrderSummary | null) =>
   getString(order, ["merchanttransactionid", "merchantTransactionId"]);
 
-const getOrderGatewayTransactionId = (order?: OrderSummary | null) =>
+/** Nivaana transaction record ID (e.g. NIVAANA-TRAN-…). */
+const getTransactionId = (order?: OrderSummary | null) =>
   getString(order, ["transactionid", "transactionId"]);
 
 const getOrderAmount = (order?: OrderSummary | null) =>
@@ -103,60 +121,15 @@ const getWalletAmountApplied = (order?: OrderSummary | null) =>
 const getOrderTotalAmount = (order?: OrderSummary | null) =>
   (getOrderAmount(order) ?? 0) + (getWalletAmountApplied(order) ?? 0);
 
-const getTransactionMerchantTransactionId = (transaction?: TransactionRecord | null) =>
-  transaction?.merchanttransactionid || getString(transaction, ["merchantTransactionId"]);
-
-const getTransactionGatewayTransactionId = (transaction?: TransactionRecord | null) =>
-  transaction?.transactionid || getString(transaction, ["transactionId"]);
-
-const getDisplayTransactionId = (order?: OrderSummary | null, transaction?: TransactionRecord | null) =>
-  getOrderMerchantTransactionId(order) ||
-  getTransactionMerchantTransactionId(transaction) ||
-  getOrderGatewayTransactionId(order) ||
-  getTransactionGatewayTransactionId(transaction);
-
-const getTransactionRawAmount = (transaction?: TransactionRecord | null) =>
-  transaction?.amount ?? transaction?.transactiondata?.originalPayload?.transaction?.amount;
-
-const getTimestampMillis = (value?: number | string | null) => {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return 0;
-  return timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-};
-
-const findMatchingTransaction = (order: OrderSummary, transactions: TransactionRecord[]) => {
-  const merchantTransactionId = getOrderMerchantTransactionId(order);
-  if (merchantTransactionId) {
-    const exactMatch = transactions.find(
-      (transaction) => getTransactionMerchantTransactionId(transaction) === merchantTransactionId
-    );
-    if (exactMatch) return exactMatch;
-  }
-
-  const gatewayTransactionId = getOrderGatewayTransactionId(order);
-  if (gatewayTransactionId) {
-    const exactMatch = transactions.find(
-      (transaction) => getTransactionGatewayTransactionId(transaction) === gatewayTransactionId
-    );
-    if (exactMatch) return exactMatch;
-  }
-
-  const orderAmount = Number(getOrderAmount(order));
-  const orderTime = getTimestampMillis(order.createddate);
-
-  const candidates = transactions
-    .filter((transaction) => {
-      const transactionAmount = Number(getTransactionRawAmount(transaction));
-      return Number.isFinite(orderAmount) && Number.isFinite(transactionAmount) && transactionAmount === orderAmount;
-    })
-    .map((transaction) => ({
-      transaction,
-      diff: orderTime ? Math.abs(getTimestampMillis(transaction.createddate) - orderTime) : 0,
-    }))
-    .filter((candidate) => !orderTime || candidate.diff <= 60 * 60 * 1000)
-    .sort((a, b) => a.diff - b.diff);
-
-  return candidates[0]?.transaction ?? null;
+/**
+ * Orders that represent a payment by the customer: replacement shipments are
+ * free, and cash-on-delivery counts only once the cash has been collected.
+ */
+const isPaymentRecord = (order: OrderSummary) => {
+  const mode = getString(order, ["mode"]).toLowerCase();
+  if (mode === "replacement" || String(order.orderid ?? "").startsWith("REP-REP-")) return false;
+  if (mode === "cod") return Boolean(getNumber(order, ["cod_payment_received_date"]));
+  return getBoolean(order, ["ispaymentsucceed"]);
 };
 
 const Payments: React.FC = () => {
@@ -172,49 +145,50 @@ const Payments: React.FC = () => {
   const returnedPaymentStatus = searchParams.get("payment");
   const returnedMerchantTransactionId = searchParams.get("merchantTransactionId") || "";
 
-  const ordersQuery = useQuery({
-    queryKey: ["payments", userId],
-    queryFn: () => orderService.listUserDetails(userId!),
+  // Payments come from the customer's own orders, loaded 10 at a time (newest first).
+  const ordersQuery = useInfiniteQuery({
+    queryKey: ["payments", userId, "history"],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => orderService.listUserDetails(userId!, pageParam, PAYMENTS_PAGE_SIZE),
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasNext ? Number(lastPage.pagination.page) + 1 : undefined,
     enabled: Boolean(userId),
   });
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = ordersQuery;
 
-  const transactionsQuery = useQuery({
-    queryKey: ["payment-transactions", userId],
-    queryFn: () => paymentService.listUserTransactions(userId!, 1, 50),
-    enabled: Boolean(userId),
-  });
+  // Scroll marker held in state so the observer re-attaches whenever it mounts.
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
-  const returnedTransactionQuery = useQuery({
-    queryKey: ["payment-transaction", returnedMerchantTransactionId],
-    queryFn: () => paymentService.getTransaction(returnedMerchantTransactionId),
-    enabled: Boolean(userId && returnedMerchantTransactionId),
-    retry: 1,
-  });
+  useEffect(() => {
+    if (!loadMoreNode || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(loadMoreNode);
+    return () => observer.disconnect();
+  }, [loadMoreNode, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const paymentHistory = useMemo(() => {
-    const rawOrders = Array.isArray(ordersQuery.data?.data) ? ordersQuery.data.data : [];
-    const transactions = Array.isArray(transactionsQuery.data?.data) ? transactionsQuery.data.data : [];
-    const byOrderId = new Map<string, OrderDetails>();
+    const rawOrders = (ordersQuery.data?.pages ?? []).flatMap((page) => (Array.isArray(page.data) ? page.data : []));
+    const seen = new Set<string>();
 
-    rawOrders
+    return rawOrders
       .map(normalizeOrderDetails)
       .filter((details): details is OrderDetails => Boolean(details))
-      .forEach((details, index) => {
-        const identifier = String(getOrderIdentifier(details.order) || index);
-        const existing = byOrderId.get(identifier);
-
-        if (!existing || Number(details.order.createddate || 0) > Number(existing.order.createddate || 0)) {
-          byOrderId.set(identifier, details);
-        }
-      });
-
-    return Array.from(byOrderId.values())
-      .map((details) => ({
-        details,
-        transaction: findMatchingTransaction(details.order, transactions),
-      }))
-      .sort((a, b) => Number(b.details.order.createddate || 0) - Number(a.details.order.createddate || 0));
-  }, [ordersQuery.data?.data, transactionsQuery.data?.data]);
+      .filter((details) => isPaymentRecord(details.order))
+      // A new order can shift page boundaries; keep the first copy of each order.
+      .filter((details) => {
+        const key = String(getOrderIdentifier(details.order));
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => Number(b.order.createddate || 0) - Number(a.order.createddate || 0));
+  }, [ordersQuery.data?.pages]);
 
   const statusMutation = useMutation({
     mutationFn: async (merchantTransactionId: string) => {
@@ -257,7 +231,6 @@ const Payments: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ["cart", session.user.id] }),
             queryClient.invalidateQueries({ queryKey: ["orders", session.user.id] }),
             queryClient.invalidateQueries({ queryKey: ["payments", session.user.id] }),
-            queryClient.invalidateQueries({ queryKey: ["payment-transactions", session.user.id] }),
             queryClient.invalidateQueries({ queryKey: ["wallet"] }),
             queryClient.invalidateQueries({ queryKey: ["wallet-discount-quote"] }),
           ]);
@@ -305,7 +278,7 @@ const Payments: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login to view payments</h1>
@@ -318,19 +291,12 @@ const Payments: React.FC = () => {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-surface)] px-4 py-10">
-      <section className="mx-auto max-w-4xl">
-        <div className="mb-8">
-          <AccountBreadcrumb currentPage="Payments" />
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--color-text)]">Payments</h1>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">Review completed payments and transaction details.</p>
-          </div>
-        </div>
-
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader currentPage="Payments" title="Payments" subtitle="Review completed payments and transaction details." />
         {(message || statusData) && (
           <div
-            className={`mt-6 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
+            className={`mt-8 rounded-[var(--radius-md)] border bg-white p-4 text-sm font-semibold ${
               messageTone === "error" || (statusData && !isSuccessfulPayment(statusData))
                 ? "border-red-200 text-red-600"
                 : statusData && isSuccessfulPayment(statusData)
@@ -342,116 +308,53 @@ const Payments: React.FC = () => {
           </div>
         )}
 
-        <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-card)]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-[var(--color-text)]">Payment History</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">Completed payments grouped by order, matching order history.</p>
-            </div>
-            {ordersQuery.isFetching && <Loader2 className="h-5 w-5 animate-spin text-[var(--color-secondary)]" />}
-          </div>
-
+        <section className="mt-8">
           {ordersQuery.isLoading ? (
-            <div className="mt-5">
-              <PageSkeleton variant="payments" count={4} hideHeader />
-            </div>
+            <PageSkeleton variant="payments" count={4} hideHeader />
           ) : ordersQuery.isError ? (
-            <div className="mt-5 rounded-[var(--radius-sm)] border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-600">
+            <div className="rounded-[var(--radius-md)] border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-600">
               Could not load payment history. Please try again.
             </div>
           ) : paymentHistory.length > 0 ? (
-            <div className="mt-5 divide-y divide-[var(--color-border)] rounded-[var(--radius-sm)] border border-[var(--color-border)]">
-              {paymentHistory.map(({ details, transaction }, index) => {
-                const { order } = details;
-                const orderIdentifier = String(order.orderid ?? order.id ?? "Order");
-                const returnedOrderId = statusData?.orderCreation?.orderId;
-                const isReturnedOrder = Boolean(
-                  returnedMerchantTransactionId &&
-                  returnedOrderId &&
-                  String(order.id) === String(returnedOrderId)
-                );
-                const returnedTransaction = returnedTransactionQuery.data?.data;
-                const effectiveTransaction = transaction || (isReturnedOrder ? returnedTransaction : null);
-                const merchantTransactionId =
-                  getOrderMerchantTransactionId(order) ||
-                  getTransactionMerchantTransactionId(effectiveTransaction) ||
-                  (isReturnedOrder ? returnedMerchantTransactionId : "");
-                const transactionLabel =
-                  merchantTransactionId || getDisplayTransactionId(order, effectiveTransaction);
-                const amount = getOrderTotalAmount(order);
-                const key = String(getOrderIdentifier(order) || transactionLabel || index);
+            <div className="space-y-3">
+              {paymentHistory.map((details, index) => {
+                const key = String(getOrderIdentifier(details.order) || index);
                 const isExpanded = expandedPaymentKey === key;
-
                 return (
-                  <article key={key} className="p-4">
-                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                      <div className="grid min-w-0 gap-3 md:grid-cols-[1.1fr_1.2fr_0.8fr_0.9fr] md:items-center">
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-[var(--color-muted)]">Order</p>
-                          <Link
-                            to={`/orders?orderId=${encodeURIComponent(String(getOrderIdentifier(order) || orderIdentifier))}`}
-                            className="break-words text-sm font-bold text-[var(--color-secondary)] underline-offset-2 hover:underline"
-                          >
-                            {orderIdentifier}
-                          </Link>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-[var(--color-muted)]">Transaction</p>
-                          <p className="break-words text-sm font-bold text-[var(--color-text)]">{transactionLabel || "Not available from order API"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-[var(--color-muted)]">Amount</p>
-                          <p className="text-sm font-bold text-[var(--color-secondary)]">{formatCurrency(amount)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-[var(--color-muted)]">Paid on</p>
-                          <p className="text-sm text-[var(--color-muted)]">{formatDateTime(getPaymentTimestamp(details, transaction))}</p>
-                        </div>
-                        <p className="text-sm font-semibold text-[var(--color-text)] md:col-span-4">
-                          {formatStatus(order.orderstatus)}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
-                        <Button
-                          variant="secondary"
-                          className="gap-2"
-                          onClick={() => setExpandedPaymentKey(isExpanded ? null : key)}
-                        >
-                          <ReceiptText className="h-4 w-4" />
-                          {isExpanded ? "Hide details" : "Payment details"}
-                        </Button>
-                        {merchantTransactionId && (
-                          <Button
-                            variant="secondary"
-                            className="gap-2"
-                            disabled={statusMutation.isPending}
-                            onClick={() => {
-                              statusMutation.mutate(merchantTransactionId);
-                            }}
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Refresh status
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    {isExpanded && (
-                        <PaymentDetails
-                          details={details}
-                          transaction={effectiveTransaction}
-                          merchantTransactionId={merchantTransactionId}
-                          gatewayTransactionIdFallback={
-                            isReturnedOrder ? statusData?.paymentData?.transactionId || "" : ""
-                          }
-                        />
-                    )}
-                  </article>
+                  <PaymentCard
+                    key={key}
+                    details={details}
+                    isExpanded={isExpanded}
+                    onToggle={() => setExpandedPaymentKey(isExpanded ? null : key)}
+                  />
                 );
               })}
+              {/* Next page: scroll marker, placeholders while loading, and a manual fallback. */}
+              <div ref={setLoadMoreNode} className="h-1 w-full" aria-hidden="true" />
+              {isFetchingNextPage && <PageSkeleton variant="payments" count={2} hideHeader />}
+              {hasNextPage && !isFetchingNextPage && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => void fetchNextPage()}
+                    className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-5 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+                  >
+                    Load more payments
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : hasNextPage ? (
+            // Loaded pages held only non-payment orders; keep loading older ones.
+            <div>
+              <div ref={setLoadMoreNode} className="h-1 w-full" aria-hidden="true" />
+              <PageSkeleton variant="payments" count={2} hideHeader />
             </div>
           ) : (
-            <div className="mt-5 rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-5 text-sm text-[var(--color-muted)]">
-              No completed payment history found yet.
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center">
+              <ReceiptText className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
+              <h2 className="mt-4 text-xl font-bold text-[var(--color-text)]">No payments yet</h2>
+              <p className="mt-2 text-sm text-[var(--color-muted)]">Payments for your orders will appear here.</p>
             </div>
           )}
         </section>
@@ -460,69 +363,140 @@ const Payments: React.FC = () => {
   );
 };
 
-function PaymentDetails({
+function PaymentCard({
   details,
-  transaction,
-  merchantTransactionId,
-  gatewayTransactionIdFallback,
+  isExpanded,
+  onToggle,
 }: {
   details: OrderDetails;
-  transaction?: TransactionRecord | null;
-  merchantTransactionId: string;
-  gatewayTransactionIdFallback: string;
+  isExpanded: boolean;
+  onToggle: () => void;
 }) {
+  const { order } = details;
+  const orderNumber = String(order.orderid ?? order.id ?? "Order");
+  const merchantTransactionId = getMerchantTransactionId(order);
+  const mode = getString(order, ["mode", "paymentmode", "paymentMode"]);
+  const refundAmount = getNumber(order, ["refund_amount"]) ?? 0;
+  const cancelled = /cancel/i.test(String(order.orderstatus || ""));
+  // Opens Orders with this order expanded (it loads older pages until the order is found).
+  const orderLink = `/orders?orderId=${encodeURIComponent(String(getOrderIdentifier(order) || orderNumber))}`;
+
+  return (
+    <article className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white transition hover:border-[var(--color-muted)]">
+      <div className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <ReceiptText className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+            <Link
+              to={orderLink}
+              className="min-w-0 break-words text-sm font-semibold text-[var(--color-text)] underline-offset-2 hover:text-[var(--color-secondary)] hover:underline"
+            >
+              {orderNumber}
+            </Link>
+            <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">Paid</span>
+            {refundAmount > 0 ? (
+              <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                Refunded {formatCurrency(refundAmount)}
+              </span>
+            ) : cancelled ? (
+              <span className="rounded-full bg-[var(--color-surface)] px-2.5 py-0.5 text-xs font-semibold text-[var(--color-muted)]">
+                Order cancelled
+              </span>
+            ) : null}
+          </div>
+          <span className="text-base font-bold text-[var(--color-text)]">{formatCurrency(getOrderTotalAmount(order))}</span>
+        </div>
+
+        <div className="mt-4 grid gap-4 border-t border-[var(--color-border)] pt-4 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto] sm:items-center">
+          <PaymentFact icon={Hash} label="Transaction ID" value={merchantTransactionId || "—"} mono />
+          <PaymentFact icon={CalendarDays} label="Paid on" value={formatDateTime(getPaymentTimestamp(details))} />
+          <PaymentFact icon={CreditCard} label="Payment method" value={formatPaymentMode(mode)} />
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Link
+              to={orderLink}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-secondary)] bg-white px-4 text-sm font-semibold text-[var(--color-secondary)] transition hover:bg-[var(--color-secondary)] hover:text-white sm:flex-none"
+            >
+              <Package className="h-4 w-4" />
+              View order
+            </Link>
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={isExpanded}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-4 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)] sm:flex-none"
+            >
+              {isExpanded ? "Hide details" : "Details"}
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+      {isExpanded && <PaymentDetails details={details} />}
+    </article>
+  );
+}
+
+function PaymentFact({
+  icon: Icon,
+  label,
+  value,
+  mono,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-1 text-xs text-[var(--color-muted)]">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </p>
+      <p className={`mt-1 break-all text-sm font-semibold text-[var(--color-text)] ${mono ? "font-mono text-[13px]" : ""}`}>{value}</p>
+    </div>
+  );
+}
+
+function PaymentDetails({ details }: { details: OrderDetails }) {
   const { order, orderlines = [] } = details;
-  const transactionAmount = getTransactionRawAmount(transaction);
   const orderAmount = getOrderAmount(order);
-  const gatewayTransactionId =
-    getOrderGatewayTransactionId(order) ||
-    getTransactionGatewayTransactionId(transaction) ||
-    gatewayTransactionIdFallback;
-  const paymentMode = getString(order, ["mode", "paymentmode", "paymentMode"]) || "Online";
-  const paymentSucceeded = getBoolean(order, ["ispaymentsucceed", "isPaymentSucceed", "paymentSuccess"]);
-  const paymentStatus = paymentSucceeded ? "Completed" : formatStatus(getString(order, ["paymentstatus", "paymentStatus", "orderstatus", "status"]));
+  const walletAmount = getWalletAmountApplied(order) ?? 0;
+  const transactionId = getTransactionId(order);
   const itemsTotal = getNumber(order, ["items_total", "itemsTotal", "productamount", "productAmount"]);
   const discountTotal = getNumber(order, ["promotion_discount_total", "discountamount", "discountAmount"]);
   const shippingCost = getNumber(order, ["shipping_cost", "shippingCost"]);
   const gstAmount = getNumber(order, ["total_gst_amount", "taxAmount", "taxamount"]);
+  const refundAmount = getNumber(order, ["refund_amount"]) ?? 0;
 
   return (
-    <div className="mt-4 rounded-[var(--radius-sm)] bg-[var(--color-primary)]/10 p-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <PaymentMeta label="Order" value={String(order.orderid ?? order.id ?? "Order")} />
-        <PaymentMeta label="Merchant Transaction ID" value={merchantTransactionId || "Not available"} />
-        <PaymentMeta label="Gateway Transaction ID" value={gatewayTransactionId || "Not available"} />
-        <PaymentMeta label="Amount" value={formatCurrency(transactionAmount ?? orderAmount)} />
-        <PaymentMeta label="Payment Status" value={paymentStatus} />
-        <PaymentMeta label="Order Status" value={formatStatus(order.orderstatus)} />
-        <PaymentMeta label="Payment Mode" value={paymentMode} />
-        <PaymentMeta label="Transaction Date" value={formatDateTime(transaction?.createddate ?? order.createddate)} />
-        <PaymentMeta label="Last Updated" value={formatDateTime(transaction?.modifieddate ?? order.modifieddate)} />
-        <PaymentMeta label="Items Total" value={formatCurrency(itemsTotal, "rupees", true)} />
+    <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <PaymentMeta label="Reference" value={transactionId || "—"} />
+        <PaymentMeta label="Order status" value={formatStatus(order.orderstatus)} />
+        <PaymentMeta label="Items total" value={formatCurrency(itemsTotal, "rupees", true)} />
         <PaymentMeta label="Discount" value={formatCurrency(discountTotal, "rupees", true)} />
         <PaymentMeta label="Shipping" value={formatCurrency(shippingCost, "rupees", true)} />
         <PaymentMeta label="GST" value={formatCurrency(gstAmount, "rupees", true)} />
-        <PaymentMeta label="Source" value={transaction ? "PhonePe transaction matched to order" : "Order record"} />
+        {walletAmount > 0 && <PaymentMeta label="Paid from wallet" value={formatCurrency(walletAmount)} />}
+        <PaymentMeta label={walletAmount > 0 ? "Paid online" : "Amount paid"} value={formatCurrency(orderAmount, "rupees", true)} />
+        {refundAmount > 0 && <PaymentMeta label="Refunded" value={formatCurrency(refundAmount)} />}
       </div>
 
-      <div className="mt-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">Order Line Items</p>
-        {orderlines.length > 0 ? (
+      {orderlines.length > 0 && (
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">Items</p>
           <div className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white">
             {orderlines.map((line, index) => (
-              <div key={String(line.id ?? line.orderlinenumber ?? index)} className="grid gap-2 p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                <p className="text-sm font-bold text-[var(--color-text)]">{line.productname || "Product"}</p>
-                <p className="text-sm text-[var(--color-muted)]">Qty {Number(line.quantity || 0)}</p>
-                <p className="text-sm font-bold text-[var(--color-secondary)]">{formatCurrency(line.orderamount)}</p>
+              <div key={String(line.id ?? line.orderlinenumber ?? index)} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+                <p className="text-sm font-semibold text-[var(--color-text)]">{line.productname || "Product"}</p>
+                <p className="text-sm text-[var(--color-muted)] sm:text-right">Qty {Number(line.quantity || 0)}</p>
+                <p className="text-sm font-semibold text-[var(--color-text)] sm:min-w-24 sm:text-right">{formatCurrency(line.orderamount)}</p>
               </div>
             ))}
           </div>
-        ) : (
-          <p className="mt-2 rounded-[var(--radius-sm)] bg-white p-3 text-sm text-[var(--color-muted)]">
-            Line items are available in order history for this payment.
-          </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -558,8 +532,8 @@ function normalizeOrderDetails(raw: unknown): OrderDetails | null {
 function PaymentMeta({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">{label}</p>
-      <p className="mt-1 break-words text-sm font-bold text-[var(--color-text)]">{value}</p>
+      <p className="text-xs text-[var(--color-muted)]">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-[var(--color-text)]">{value}</p>
     </div>
   );
 }

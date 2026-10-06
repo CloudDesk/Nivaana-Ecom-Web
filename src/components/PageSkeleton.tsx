@@ -445,7 +445,7 @@ function PaymentsSkeleton({
   hideHeader?: boolean;
 }) {
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-6xl">
       {!hideHeader && (
         <>
           <BreadcrumbBones />
@@ -453,48 +453,29 @@ function PaymentsSkeleton({
         </>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-        {/* Section heading */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="space-y-2">
-            <Bone className="h-4 w-36" />
-            <Bone className="h-2.5 w-56" />
-          </div>
-          <Box className="h-8 w-8 rounded-full" />
-        </div>
-
-        {/* Table-like rows */}
-        <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
-          {Array.from({ length: count }).map((_, i) => (
-            <div key={i} className="p-4">
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                <div className="grid min-w-0 gap-4 md:grid-cols-[1.1fr_1.2fr_0.8fr_0.9fr] md:items-center">
-                  {/* Column 1: Date */}
-                  <div className="space-y-1.5">
-                    <Bone className="h-2 w-10" />
-                    <Bone className="h-2.5 w-20" />
-                  </div>
-                  {/* Column 2: Description */}
-                  <div className="space-y-1.5">
-                    <Bone className="h-2 w-14" />
-                    <Bone className="h-2.5 w-32" />
-                  </div>
-                  {/* Column 3: Amount */}
-                  <div className="space-y-1.5">
-                    <Bone className="h-2 w-12" />
-                    <Bone className="h-2.5 w-20" />
-                  </div>
-                  {/* Column 4: Status badge */}
-                  <div>
-                    <Box className="h-5 w-20 rounded-full" />
-                  </div>
-                </div>
-                {/* Chevron */}
-                <Box className="h-7 w-7 rounded-full justify-self-end" />
+      {/* One card per payment, matching the Payments page. */}
+      <div className="space-y-3">
+        {Array.from({ length: count }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-gray-100 bg-white p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Box className="h-4 w-4 rounded" />
+                <Bone className="h-3 w-40" />
+                <Box className="h-5 w-14 rounded-full" />
               </div>
+              <Bone className="h-4 w-20" />
             </div>
-          ))}
-        </div>
+            <div className="mt-4 grid gap-4 border-t border-gray-100 pt-4 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto] sm:items-center">
+              {Array.from({ length: 3 }).map((__, j) => (
+                <div key={j} className="space-y-1.5">
+                  <Bone className="h-2 w-16" />
+                  <Bone className="h-2.5 w-28" />
+                </div>
+              ))}
+              <Box className="h-9 w-28 rounded-lg" />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

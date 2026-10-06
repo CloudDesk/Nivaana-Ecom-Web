@@ -22,6 +22,14 @@ import { addressService, type Address, type AddressPayload } from "../services/a
 import { cartService } from "../services/cartService";
 import { couponWalletService } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
+import {
+  clearPendingPhonePePayment,
+  isPhonePeIframeCheckoutEnabled,
+  openPhonePeIframe,
+  readPendingPhonePePayment,
+  savePendingPhonePePayment,
+  type PhonePeCheckoutResult,
+} from "../services/phonePeCheckoutService";
 import { platformProductService } from "../services/productPlatformService";
 import {
   promotionService,
@@ -33,6 +41,7 @@ import { userService } from "../services/userService";
 import { Button } from "../components/ui/button";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AddressFormModal } from "../components/AddressFormModal";
+import { AddressForm } from "../components/AddressForm";
 import { productFallback as fallbackProduct } from "../assets/config.js";
 import type { Product } from "../types";
 import { getProductDisplayName } from "../lib/productDisplay";
@@ -69,6 +78,7 @@ import {
 } from "../lib/cartPromotions";
 import { readWalletApplied, saveWalletApplied } from "../lib/walletSelection";
 import { isOfferAlreadyUsedError } from "../lib/notificationMessages";
+import { canonicalIndianMobile, INVALID_MOBILE_MESSAGE, isValidIndianMobile } from "../lib/phone";
 
 const emptyAddressForm = (userId: number, mobileNumber: number, customerName = ""): AddressPayload => ({
   userid: userId,
@@ -103,6 +113,35 @@ const productImage = (product?: Product) =>
 
 const notificationDisplayMs = 4200;
 const notificationFadeMs = 350;
+
+const paymentStatusText = (status?: string) => String(status || "").toLowerCase();
+
+const paymentWasSuccessful = (status?: string) => {
+  const normalized = paymentStatusText(status);
+  return normalized === "success" || normalized.includes("payment_success") || normalized.includes("completed");
+};
+
+const paymentIsUncertain = (status?: string) => {
+  const normalized = paymentStatusText(status);
+  return !normalized || normalized.includes("pending") || normalized.includes("initiated") || normalized.includes("processing");
+};
+
+// Backend status for one PhonePe transaction. A failed request is "pending":
+// only the backend may decide that a payment failed.
+const fetchPaymentOutcome = async (merchantTransactionId: string): Promise<"success" | "pending" | "failed"> => {
+  try {
+    const response = await paymentService.getStatus(merchantTransactionId);
+    const status = response.data?.status || response.data?.paymentData?.state;
+    if (paymentWasSuccessful(status)) return "success";
+    return paymentIsUncertain(status) ? "pending" : "failed";
+  } catch {
+    return "pending";
+  }
+};
+
+const PENDING_PAYMENT_POLL_MS = 5000;
+// Matches the 120s Cloud Task that reconciles or releases the payment.
+const PENDING_PAYMENT_POLL_ATTEMPTS = 24;
 
 const quantityFor = (quantity: unknown) => {
   const parsed = Number(quantity);
@@ -209,31 +248,6 @@ const directCouponErrorMessage = (error: unknown) => {
   return message || "The coupon could not be applied. Please try again.";
 };
 
-const INDIAN_STATES = [
-  "Andhra Pradesh",
-  "Arunachal Pradesh",
-  "Assam",
-  "Bihar",
-  "Chhattisgarh",
-  "Delhi",
-  "Goa",
-  "Gujarat",
-  "Haryana",
-  "Himachal Pradesh",
-  "Jharkhand",
-  "Karnataka",
-  "Kerala",
-  "Madhya Pradesh",
-  "Maharashtra",
-  "Odisha",
-  "Punjab",
-  "Rajasthan",
-  "Tamil Nadu",
-  "Telangana",
-  "Uttar Pradesh",
-  "Uttarakhand",
-  "West Bengal",
-];
 
 const Checkout: React.FC = () => {
   const queryClient = useQueryClient();
@@ -254,6 +268,10 @@ const Checkout: React.FC = () => {
   );
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [phonePeCheckoutActive, setPhonePeCheckoutActive] = useState(false);
+  const [pendingPaymentId, setPendingPaymentId] = useState<string | null>(() => readPendingPhonePePayment(userId));
+  const [pendingPaymentPromptOpen, setPendingPaymentPromptOpen] = useState(false);
+  const [pendingPaymentChecking, setPendingPaymentChecking] = useState(false);
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [backendStockErrors, setBackendStockErrors] = useState<Record<number, string>>({});
   const [voucherCode, setVoucherCode] = useState("");
@@ -319,6 +337,44 @@ const Checkout: React.FC = () => {
       window.clearTimeout(clearTimer);
     };
   }, [statusMessage, errorMessage]);
+
+  useEffect(() => {
+    setPendingPaymentId(readPendingPhonePePayment(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    // Quietly follow a payment left pending when the PhonePe window closed.
+    // If the customer finished it in their UPI app, show the confirmation.
+    if (!pendingPaymentId || phonePeCheckoutActive) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+
+    const check = async () => {
+      attempts += 1;
+      const outcome = await fetchPaymentOutcome(pendingPaymentId);
+      if (cancelled) return;
+      if (outcome === "success") {
+        clearPendingPhonePePayment(userId);
+        navigate(`/checkout/confirmation?${new URLSearchParams({ merchantTransactionId: pendingPaymentId }).toString()}`, { replace: true });
+        return;
+      }
+      if (outcome === "failed") {
+        clearPendingPhonePePayment(userId);
+        setPendingPaymentId(null);
+        return;
+      }
+      if (attempts < PENDING_PAYMENT_POLL_ATTEMPTS) {
+        timer = window.setTimeout(() => void check(), PENDING_PAYMENT_POLL_MS);
+      }
+    };
+
+    timer = window.setTimeout(() => void check(), PENDING_PAYMENT_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [navigate, pendingPaymentId, phonePeCheckoutActive, userId]);
 
   const cartQuery = useQuery({
     queryKey: ["cart", userId],
@@ -631,8 +687,10 @@ const Checkout: React.FC = () => {
       });
   }, [eligibilityPromotionIds, legacyEligiblePromotionIds, promotionEligibilityQuery.data, rawPromotionCandidates]);
   const promotionDetailsById = useMemo(
-    () => new Map(promotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
-    [promotionCandidates],
+    // Preserve conditions/minimums even when an offer is currently
+    // ineligible; compact applied-evaluation records do not include them.
+    () => new Map(rawPromotionCandidates.map((promotion) => [promotionId(promotion), promotion])),
+    [rawPromotionCandidates],
   );
   const promotionEvaluation = promotionEvaluationQuery.data?.data;
   const selectedPromotionApplies = selectedPromotionMatchesOrder;
@@ -660,18 +718,9 @@ const Checkout: React.FC = () => {
   );
   const appliedPromotionsForTotals =
     promotionsV2Quote
-      ? [
-        ...(liveV2AppliedPromotions.length > 0
-          ? liveV2AppliedPromotions
-          : selectedV2AppliedPromotions),
-        ...backendAppliedPromotions.filter(
-          (promotion) =>
-            isFreeShippingAppliedPromotion(promotion) &&
-            ![...liveV2AppliedPromotions, ...selectedV2AppliedPromotions].some(
-              (selected) => appliedPromotionId(selected) === appliedPromotionId(promotion),
-            ),
-        ),
-      ]
+      // Current-cart V2 results override saved and legacy evaluations. A
+      // promotion absent from this quote is not applied to this checkout.
+      ? liveV2AppliedPromotions
       : backendAppliedPromotions.length > 0
         ? backendAppliedPromotions
         : promotionEvaluation?.applied_promotions?.length
@@ -832,10 +881,15 @@ const Checkout: React.FC = () => {
 
     return uniquePromotions([...appliedCandidates, ...promotionCandidates]);
   }, [appliedPromotionsForTotals, promotionCandidates]);
-  const eligiblePromotionCandidates = visiblePromotionCandidates.filter(
-    (promotion) =>
-      !isFreeShippingPromotion(promotion) ||
-      isFreeShippingPromotionEligible(promotion, cartTotals.subtotal)
+  const v2MinimumRejectedPromotionIds = new Set(
+    (promotionsV2Quote?.rejected_candidates ?? [])
+      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
+      .map((candidate) => candidate.promotion_id),
+  );
+  const eligiblePromotionCandidates = visiblePromotionCandidates.filter((promotion) =>
+    !v2MinimumRejectedPromotionIds.has(promotionId(promotion)) &&
+    (!isFreeShippingPromotion(promotion) ||
+      isFreeShippingPromotionEligible(promotion, cartTotals.subtotal))
   );
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => appliedPromotionIds.has(promotionId(promotion)),
@@ -1578,10 +1632,11 @@ const Checkout: React.FC = () => {
         throw new Error("Some cart items are missing product details. Please refresh the cart and try again.");
       }
 
-      const payerMobile = String(selectedAddress.mobilenumber).replace(/\D/g, "");
+      // Older saved addresses may hold "+91…"; strip the prefix but never truncate.
+      const payerMobile = canonicalIndianMobile(String(selectedAddress.mobilenumber));
       const orderItems = buildOrderItems(enrichedItems, user.id, selectedAddress.id);
 
-      if (payerMobile.length !== 10 || payerMobile.startsWith("0")) {
+      if (!isValidIndianMobile(payerMobile)) {
         throw new Error("Please use a valid 10-digit mobile number for payment.");
       }
 
@@ -1633,6 +1688,69 @@ const Checkout: React.FC = () => {
       }
 
       if (redirectUrl) {
+        if (isPhonePeIframeCheckoutEnabled && data.merchantTransactionId) {
+          const merchantTransactionId = data.merchantTransactionId;
+          let iframeResultHandled = false;
+          const goToConfirmation = () => {
+            const params = new URLSearchParams({ merchantTransactionId });
+            navigate(`/checkout/confirmation?${params.toString()}`, { replace: true });
+          };
+
+          const handleIframeResult = async (result: PhonePeCheckoutResult) => {
+            if (iframeResultHandled) return;
+            iframeResultHandled = true;
+            setPhonePeCheckoutActive(false);
+            setErrorMessage("");
+
+            if (result === "CONCLUDED") {
+              // PhonePe only promises that CONCLUDED is terminal at the
+              // checkout-UI level. The confirmation page verifies the actual
+              // payment state and polls while order reconciliation finishes.
+              goToConfirmation();
+              return;
+            }
+
+            setStatusMessage("Payment window closed. Checking the latest payment status...");
+            const outcome = await fetchPaymentOutcome(merchantTransactionId);
+            if (outcome === "success") {
+              clearPendingPhonePePayment(userId);
+              goToConfirmation();
+              return;
+            }
+
+            paymentSubmissionRef.current = false;
+            setStatusMessage("");
+            if (outcome === "pending") {
+              // Stay on Checkout. A late UPI approval is still turned into an
+              // order by the webhook/Cloud Task; the next Pay click checks this
+              // transaction first so the customer is not charged twice.
+              setPendingPaymentId(merchantTransactionId);
+              return;
+            }
+
+            clearPendingPhonePePayment(userId);
+            setPendingPaymentId(null);
+            setErrorMessage("Payment was cancelled. You can try again when you are ready.");
+          };
+
+          try {
+            setPhonePeCheckoutActive(true);
+            setPendingPaymentId(null);
+            savePendingPhonePePayment(userId, merchantTransactionId);
+            setStatusMessage("Opening secure PhonePe checkout...");
+            setErrorMessage("");
+            await openPhonePeIframe(redirectUrl, (result) => {
+              void handleIframeResult(result);
+            });
+            return;
+          } catch (error) {
+            setPhonePeCheckoutActive(false);
+            // Keep checkout available on browsers that block or cannot load
+            // PhonePe's iframe SDK. This uses the already-created transaction.
+            console.warn("PhonePe iframe checkout unavailable; using redirect fallback.", error);
+          }
+        }
+
         window.location.replace(redirectUrl);
         return;
       }
@@ -1682,12 +1800,45 @@ const Checkout: React.FC = () => {
     },
   });
 
-  const handlePaymentSubmission = () => {
+  const startPayment = () => {
+    paymentSubmissionRef.current = true;
+    paymentMutation.mutate();
+  };
+
+  const handlePaymentSubmission = async () => {
     // React Query updates isPending on the next render. This synchronous guard
     // closes the small window where a rapid double-click can submit twice.
     if (paymentSubmissionRef.current || paymentMutation.isPending) return;
     paymentSubmissionRef.current = true;
-    paymentMutation.mutate();
+
+    if (pendingPaymentId) {
+      // Check the earlier payment before charging the customer again.
+      setPendingPaymentChecking(true);
+      const outcome = await fetchPaymentOutcome(pendingPaymentId);
+      setPendingPaymentChecking(false);
+      if (outcome === "success") {
+        clearPendingPhonePePayment(userId);
+        navigate(`/checkout/confirmation?${new URLSearchParams({ merchantTransactionId: pendingPaymentId }).toString()}`, { replace: true });
+        return;
+      }
+      if (outcome === "pending") {
+        paymentSubmissionRef.current = false;
+        setPendingPaymentPromptOpen(true);
+        return;
+      }
+      clearPendingPhonePePayment(userId);
+      setPendingPaymentId(null);
+    }
+
+    startPayment();
+  };
+
+  const payAgainDespitePendingPayment = () => {
+    if (paymentSubmissionRef.current || paymentMutation.isPending) return;
+    setPendingPaymentPromptOpen(false);
+    clearPendingPhonePePayment(userId);
+    setPendingPaymentId(null);
+    startPayment();
   };
 
   const handleAddressSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -1702,8 +1853,12 @@ const Checkout: React.FC = () => {
       return;
     }
 
-    if (String(addressForm.mobilenumber).length !== 10 || String(addressForm.pincode).length !== 6) {
-      setErrorMessage("Please enter a valid 10-digit mobile number and 6-digit pincode.");
+    if (!isValidIndianMobile(String(addressForm.mobilenumber))) {
+      setErrorMessage(INVALID_MOBILE_MESSAGE);
+      return;
+    }
+    if (String(addressForm.pincode).length !== 6) {
+      setErrorMessage("Please enter a valid 6-digit pincode.");
       return;
     }
 
@@ -1791,6 +1946,16 @@ const Checkout: React.FC = () => {
           </div>
         )}
 
+        {pendingPaymentId && !phonePeCheckoutActive && (
+          <div role="status" className="mb-5 rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+            <p className="font-semibold">Payment window closed.</p>
+            <p>
+              If you completed the payment in your UPI app, we'll confirm it automatically. You can also check{" "}
+              <Link to="/payments" className="font-semibold underline">Payments</Link> in a few minutes.
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
             <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-5">
@@ -1808,7 +1973,7 @@ const Checkout: React.FC = () => {
                         setShowAddressForm(false);
                         setEditingAddressId(null);
                       } else {
-                        setAddressForm(emptyAddressForm(userId ?? 0, userMobile));
+                        setAddressForm(emptyAddressForm(userId ?? 0, userMobile, storedCustomerName));
                         setEditingAddressId(null);
                         setShowAddressForm(true);
                       }
@@ -1902,12 +2067,12 @@ const Checkout: React.FC = () => {
               {showAddressForm && (
                 <AddressFormModal
                   open={showAddressForm}
-                  title={editingAddressId ? "Edit Address" : "Add New Address"}
+                  title={editingAddressId ? "Edit address" : "Add new address"}
                   onClose={() => {
                     setShowAddressForm(false);
                     setEditingAddressId(null);
                     if (userId) {
-                      setAddressForm(emptyAddressForm(userId, userMobile));
+                      setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
                     }
                   }}
                 >
@@ -1920,7 +2085,7 @@ const Checkout: React.FC = () => {
                       setShowAddressForm(false);
                       setEditingAddressId(null);
                       if (userId) {
-                        setAddressForm(emptyAddressForm(userId, userMobile));
+                        setAddressForm(emptyAddressForm(userId, userMobile, storedCustomerName));
                       }
                     }}
                     onSubmit={handleAddressSubmit}
@@ -2179,6 +2344,8 @@ const Checkout: React.FC = () => {
               disabled={
                 !selectedAddress ||
                 paymentMutation.isPending ||
+                phonePeCheckoutActive ||
+                pendingPaymentChecking ||
                 createAddressMutation.isPending ||
                 updateAddressMutation.isPending ||
                 applyPromotionMutation.isPending ||
@@ -2188,10 +2355,14 @@ const Checkout: React.FC = () => {
                 Object.keys(backendStockErrors).length > 0 ||
                 finalCheckoutTotal < 0
               }
-              onClick={handlePaymentSubmission}
+              onClick={() => void handlePaymentSubmission()}
             >
-              {paymentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              {paymentMutation.isPending
+              {paymentMutation.isPending || phonePeCheckoutActive || pendingPaymentChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+              {phonePeCheckoutActive
+                ? "Complete payment in PhonePe"
+                : pendingPaymentChecking
+                ? "Checking previous payment..."
+                : paymentMutation.isPending
                 ? walletCoversOrder || finalCheckoutTotal <= 0
                   ? "Placing order..."
                   : "Starting payment..."
@@ -2214,6 +2385,25 @@ const Checkout: React.FC = () => {
           <section role="dialog" aria-modal="true" aria-labelledby="checkout-offers-title" className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b border-[#e5e9f0] px-5 py-4"><div><h2 id="checkout-offers-title" className="text-lg font-extrabold text-[#172033]">Offers</h2><p className="mt-1 text-xs text-[#68748a]">Apply or remove an offer for this order.</p>{(applyPromotionMutation.isPending || removePromotionMutation.isPending || isPromotionResolving) && <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[#9a6b00]" role="status"><Loader2 className="h-3 w-3 animate-spin" />Updating total...</p>}</div><button type="button" onClick={() => setOffersModalOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1f3f7] text-[#26344f] transition hover:bg-[#e3e7ee]" aria-label="Close eligible offers"><X className="h-5 w-5" /></button></header>
             <div className="overflow-y-auto px-5 py-4"><div className="space-y-2.5">{eligiblePromotionCandidates.map(renderCheckoutPromotionOffer)}</div></div>
+          </section>
+        </div>
+      )}
+
+      {pendingPaymentPromptOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#111827]/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={() => setPendingPaymentPromptOpen(false)}>
+          <section role="alertdialog" aria-modal="true" aria-labelledby="pending-payment-title" aria-describedby="pending-payment-text" className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
+            <h2 id="pending-payment-title" className="text-lg font-extrabold text-[#172033]">Previous payment still processing</h2>
+            <p id="pending-payment-text" className="mt-2 text-sm leading-6 text-[#68748a]">
+              If money was debited, please don't pay again. It will be confirmed shortly and your order will appear in Payments.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={payAgainDespitePendingPayment} className="min-h-10 rounded-xl border border-[#d5dae3] px-4 text-sm font-bold text-[#26344f] transition hover:bg-[#f1f3f7]">
+                Pay again
+              </button>
+              <Button autoFocus className="rounded-xl" onClick={() => setPendingPaymentPromptOpen(false)}>
+                Wait
+              </Button>
+            </div>
           </section>
         </div>
       )}
@@ -2282,188 +2472,6 @@ function buildOrderItems(
       userid: userId,
     };
   });
-}
-
-function AddressForm({
-  form,
-  isEditing,
-  isPending,
-  onChange,
-  onCancel,
-  onSubmit,
-}: {
-  form: AddressPayload;
-  isEditing: boolean;
-  isPending: boolean;
-  onChange: React.Dispatch<React.SetStateAction<AddressPayload>>;
-  onCancel: () => void;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-}) {
-  const [alternatePhone, setAlternatePhone] = useState("");
-  const [addressType, setAddressType] = useState<"home" | "work">("home");
-
-  const setField = (field: keyof AddressPayload, value: string | boolean) => {
-    onChange((current) => ({
-      ...current,
-      [field]: field === "mobilenumber" || field === "pincode" ? Number(value) : value,
-    }));
-  };
-
-  return (
-    <form onSubmit={onSubmit}>
-      <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white p-5 shadow-[0_10px_24px_rgba(17,24,39,0.04)] sm:p-6">
-        <p className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-secondary)]">
-          {isEditing ? "Edit Address" : "Add New Address"}
-        </p>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Field label="Name" value={form.name} onChange={(value) => setField("name", value)} required />
-          <Field
-            label="10-digit mobile number"
-            value={form.mobilenumber ? String(form.mobilenumber) : ""}
-            inputMode="numeric"
-            onChange={(value) => setField("mobilenumber", value.replace(/\D/g, "").slice(0, 10))}
-            required
-          />
-          <Field
-            label="Pincode"
-            value={form.pincode ? String(form.pincode) : ""}
-            inputMode="numeric"
-            onChange={(value) => setField("pincode", value.replace(/\D/g, "").slice(0, 6))}
-            required
-          />
-          <Field label="Locality" value={form.doornumber} onChange={(value) => setField("doornumber", value)} required />
-          <Field
-            className="sm:col-span-2"
-            label="Address (Area and Street)"
-            value={form.address}
-            onChange={(value) => setField("address", value)}
-            multiline
-            required
-          />
-          <Field label="City/District/Town" value={form.city} onChange={(value) => setField("city", value)} required />
-          <Field
-            label="State"
-            value={form.state}
-            onChange={(value) => setField("state", value)}
-            options={INDIAN_STATES}
-            required
-          />
-          <Field label="Landmark (Optional)" value={form.landmark} onChange={(value) => setField("landmark", value)} />
-          <Field
-            label="Alternate Phone (Optional)"
-            value={alternatePhone}
-            inputMode="numeric"
-            onChange={(value) => setAlternatePhone(value.replace(/\D/g, "").slice(0, 10))}
-          />
-        </div>
-
-        <div className="mt-5">
-          <p className="text-sm font-medium text-[var(--color-muted)]">Address Type</p>
-          <div className="mt-3 flex flex-wrap gap-8">
-            {(["home", "work"] as const).map((type) => (
-              <label key={type} className="inline-flex items-center gap-3 text-sm font-semibold capitalize text-[var(--color-text)]">
-                <input
-                  type="radio"
-                  name="address-type"
-                  checked={addressType === type}
-                  onChange={() => setAddressType(type)}
-                  className="h-5 w-5 accent-[var(--color-secondary)]"
-                />
-                {type}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <label className="mt-5 flex items-center gap-3 text-sm font-semibold text-[var(--color-text)]">
-          <input
-            type="checkbox"
-            checked={Boolean(form.isdefaultaddress)}
-            onChange={(event) => setField("isdefaultaddress", event.target.checked)}
-            className="h-4 w-4 accent-[var(--color-secondary)]"
-          />
-          Default address
-        </label>
-
-        <div className="mt-6 flex flex-wrap items-center gap-5">
-          <Button className="h-12 min-w-48 bg-[var(--color-secondary)] text-white shadow-none hover:bg-[var(--color-text)] hover:text-white hover:shadow-none" disabled={isPending}>
-            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEditing ? "Update" : "Save"}
-          </Button>
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={onCancel}
-            className="h-12 px-4 text-sm font-bold uppercase tracking-[0.04em] text-[var(--color-secondary)] transition hover:text-[var(--color-text)] disabled:opacity-50"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  className = "",
-  inputMode,
-  multiline,
-  options,
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  className?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-  multiline?: boolean;
-  options?: string[];
-  required?: boolean;
-}) {
-  const shellClass =
-    "block rounded-none border border-[var(--color-border)] bg-white px-4 py-3 transition focus-within:border-[var(--color-secondary)] focus-within:ring-1 focus-within:ring-[var(--color-secondary)]";
-  const controlClass =
-    "mt-1 w-full border-0 bg-transparent p-0 text-base font-medium text-[#050505] outline-none placeholder:text-[#858b94]";
-
-  return (
-    <label className={`${shellClass} ${multiline ? "min-h-28" : "min-h-[62px]"} ${className}`}>
-      <span className="block text-sm font-medium text-[#767d87]">{label}</span>
-      {options ? (
-        <select
-          value={value}
-          required={required}
-          onChange={(event) => onChange(event.target.value)}
-          className={`${controlClass} appearance-auto`}
-        >
-          <option value="">Select state</option>
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      ) : multiline ? (
-        <textarea
-          value={value}
-          required={required}
-          onChange={(event) => onChange(event.target.value)}
-          className={`${controlClass} min-h-16 resize-none`}
-        />
-      ) : (
-        <input
-          value={value}
-          inputMode={inputMode}
-          required={required}
-          onChange={(event) => onChange(event.target.value)}
-          className={controlClass}
-        />
-      )}
-    </label>
-  );
 }
 
 function PaymentOption({

@@ -6,6 +6,7 @@ import { authService } from "../services/authService";
 import { sessionService } from "../services/sessionService";
 import { guestStoreService } from "../services/guestStoreService";
 import { Button } from "../components/ui/button";
+import { INVALID_MOBILE_MESSAGE, isValidIndianMobile, normalizeIndianMobileInput } from "../lib/phone";
 
 const Login: React.FC = () => {
   const queryClient = useQueryClient();
@@ -58,8 +59,8 @@ const Login: React.FC = () => {
 
   const requestOtp = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (mobile.length < 10) {
-      setMessage("Please enter a valid 10-digit mobile number.");
+    if (!isValidIndianMobile(mobile)) {
+      setMessage(INVALID_MOBILE_MESSAGE);
       return;
     }
 
@@ -210,13 +211,13 @@ const Login: React.FC = () => {
                   id="mobile"
                   value={mobile}
                   onChange={(event) => {
-                    const cleaned = event.target.value.replace(/\D/g, "").slice(0, 10);
+                    const cleaned = normalizeIndianMobileInput(event.target.value);
                     setMobile(cleaned);
                     if (message) setMessage("");
                   }}
                   placeholder="10-digit mobile number"
                   inputMode="numeric"
-                  autoComplete="tel"
+                  autoComplete="tel-national"
                   className="min-w-0 flex-1 px-3 text-sm text-[#33271b] outline-none placeholder:text-[#b9aea0]"
                   required
                   autoFocus

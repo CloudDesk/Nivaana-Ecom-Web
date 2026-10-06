@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
   CalendarDays,
@@ -26,7 +26,6 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { AccountBreadcrumb } from "../components/AccountBreadcrumb";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { cn } from "../lib/utils";
 import {
@@ -41,6 +40,8 @@ import {
   type TrackingDetails,
 } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 import {
   returnSourceService,
   type AllowedReturnReason,
@@ -50,6 +51,8 @@ import {
   type ReturnRequestType,
   type ReturnRequestSummary,
 } from "../services/returnSourceService";
+
+const ORDERS_PAGE_SIZE = 10;
 
 const currencyFormatter = new Intl.NumberFormat("en-IN");
 
@@ -95,9 +98,6 @@ const formatStatus = (status?: string | null) => {
 
 const getWalletAmountApplied = (order: OrderSummary) =>
   Number(order.wallet_amount_applied ?? order.wallet_discount_total ?? 0);
-
-const getOrderTotal = (order: OrderSummary) =>
-  Number(order.orderamount || 0) + getWalletAmountApplied(order);
 
 const getPromotionDisplayRows = (promotions: PromotionCostBreakdown[]) =>
   promotions.flatMap((promotion, promotionIndex) => {
@@ -188,11 +188,28 @@ const Orders: React.FC = () => {
   const [refreshOrderKey, setRefreshOrderKey] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
 
-  const ordersQuery = useQuery({
-    queryKey: ["orders", userId],
-    queryFn: () => orderService.listUserDetails(userId!),
+  // Order history loads page by page (newest first). Keys stay under ["orders", userId]
+  // so existing invalidations after cancel/payment refresh these queries too.
+  const ordersQuery = useInfiniteQuery({
+    queryKey: ["orders", userId, "history"],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => orderService.listUserDetails(userId!, pageParam, ORDERS_PAGE_SIZE),
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasNext ? Number(lastPage.pagination.page) + 1 : undefined,
     enabled: Boolean(userId),
   });
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = ordersQuery;
+
+  // Totals across all orders, not just the loaded pages.
+  const orderSummaryQuery = useQuery({
+    queryKey: ["orders", userId, "summary"],
+    queryFn: () => orderService.summary(userId!),
+    enabled: Boolean(userId),
+  });
+
+  // Scroll marker held in state so the observer re-attaches whenever it mounts.
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -202,13 +219,22 @@ const Orders: React.FC = () => {
   }, [statusMessage]);
 
   const orders = useMemo(() => {
-    const rawOrders = Array.isArray(ordersQuery.data?.data) ? ordersQuery.data.data : [];
+    const rawOrders = (ordersQuery.data?.pages ?? []).flatMap((page) => (Array.isArray(page.data) ? page.data : []));
+    const seen = new Set<string>();
     return rawOrders
       .map(normalizeOrderDetails)
       .filter((details): details is OrderDetails => Boolean(details))
       .filter((details) => !isReplacementFulfillmentOrder(details.order))
+      // A new order can shift page boundaries; keep the first copy of each order.
+      .filter((details) => {
+        const key = String(details.order.id ?? details.order.orderid ?? "");
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .sort((a, b) => Number(b.order.createddate || 0) - Number(a.order.createddate || 0));
-  }, [ordersQuery.data?.data]);
+  }, [ordersQuery.data?.pages]);
 
   useEffect(() => {
     const requestedOrderId = searchParams.get("orderId");
@@ -217,24 +243,36 @@ const Orders: React.FC = () => {
     const orderIndex = orders.findIndex(({ order }) =>
       [order.id, order.orderid].some((identifier) => String(identifier ?? "") === requestedOrderId)
     );
-    if (orderIndex < 0) return;
+    if (orderIndex < 0) {
+      // A linked older order may be on a later page.
+      if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+      return;
+    }
 
     const orderKey = getOrderKey(orders[orderIndex].order, orderIndex);
     setExpandedOrderKey(orderKey);
     scrollToOrderStatus(orderKey);
-  }, [orders, searchParams]);
+  }, [orders, searchParams, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const orderSummary = useMemo(() => {
-    const totalSpent = orders.reduce((sum, details) => sum + getOrderTotal(details.order), 0);
-    const cancelled = orders.filter((details) => isCancelledStatus(details.order.orderstatus)).length;
+  const summaryData = orderSummaryQuery.data?.data;
+  const orderSummary = {
+    total: summaryData?.total_orders ?? 0,
+    totalSpent: summaryData?.total_spent ?? 0,
+    active: summaryData?.active_orders ?? 0,
+    cancelled: summaryData?.cancelled_orders ?? 0,
+  };
 
-    return {
-      total: orders.length,
-      totalSpent,
-      active: Math.max(orders.length - cancelled, 0),
-      cancelled,
-    };
-  }, [orders]);
+  useEffect(() => {
+    if (!loadMoreNode || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(loadMoreNode);
+    return () => observer.disconnect();
+  }, [loadMoreNode, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   useEffect(() => {
     if (!orders.length) return;
@@ -613,7 +651,7 @@ const Orders: React.FC = () => {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-12">
+      <main className={ACCOUNT_PAGE_MAIN}>
         <section className="mx-auto max-w-lg rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <UserRound className="mx-auto h-10 w-10 text-[var(--color-secondary)]" />
           <h1 className="mt-5 text-2xl font-bold text-[var(--color-text)]">Login to view orders</h1>
@@ -635,18 +673,12 @@ const Orders: React.FC = () => {
           onSubmit={handleRequestSubmit}
         />
       )}
-      <main className="min-h-screen bg-[var(--color-surface)] px-4 py-8 sm:px-6">
-      <section className="mx-auto max-w-5xl">
-        <div className="mb-8">
-          <AccountBreadcrumb currentPage="Orders" />
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--color-text)]">Orders</h1>
-            <p className="mt-2 text-sm text-[var(--color-muted)]">Manage order history, tracking, and purchased items.</p>
-          </div>
-        </div>
+      <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader currentPage="Orders" title="Orders" subtitle="Manage order history, tracking, and purchased items." />
 
-        {orders.length > 0 && (
-          <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {(summaryData?.total_orders ?? 0) > 0 && (
+          <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
             <SummaryStat label="Total orders" value={String(orderSummary.total)} />
             <SummaryStat label="Total spent" value={formatCurrency(orderSummary.totalSpent)} />
             <SummaryStat label="Active" value={String(orderSummary.active)} />
@@ -654,7 +686,7 @@ const Orders: React.FC = () => {
           </div>
         )}
 
-        <section>
+        <section className="mt-8">
           {statusMessage && (
             <div className="mb-5 rounded-[var(--radius-sm)] border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
               {statusMessage}
@@ -750,6 +782,20 @@ const Orders: React.FC = () => {
                   />
                 );
               })}
+              {/* Next page: scroll marker, placeholders while loading, and a manual fallback. */}
+              <div ref={setLoadMoreNode} className="h-1 w-full" aria-hidden="true" />
+              {ordersQuery.isFetchingNextPage && <PageSkeleton variant="orders" count={2} hideHeader />}
+              {ordersQuery.hasNextPage && !ordersQuery.isFetchingNextPage && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => void ordersQuery.fetchNextPage()}
+                    className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-5 text-sm font-semibold text-[var(--color-text)] transition hover:bg-[var(--color-surface)]"
+                  >
+                    Load more orders
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-8 text-center">

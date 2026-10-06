@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
-import { AccountBreadcrumb } from '../components/AccountBreadcrumb';
 import type { User } from '../types';
+import { AccountPageHeader } from "../components/AccountPageHeader";
+import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
 
 type Step = 1 | 2 | 3;
 type ApiErrorLike = {
@@ -177,13 +178,14 @@ const DeleteMyAccount: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-secondary-extra-light-gray py-12">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        <AccountBreadcrumb currentPage="Delete My Account" />
-        <div className="bg-white rounded-xl shadow-md p-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-secondary-dark-gray mb-6 text-center">
-            Delete My Account
-          </h1>
+    <main className={ACCOUNT_PAGE_MAIN}>
+      <section className={ACCOUNT_PAGE_CONTAINER}>
+        <AccountPageHeader
+          currentPage="Delete My Account"
+          title="Delete My Account"
+          subtitle="Request account deletion using mobile OTP verification."
+        />
+        <div className="mx-auto mt-8 max-w-2xl rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
 
           {/* Progress Indicator */}
           <div className="mb-8">
@@ -393,8 +395,8 @@ const DeleteMyAccount: React.FC = () => {
             </p>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 
