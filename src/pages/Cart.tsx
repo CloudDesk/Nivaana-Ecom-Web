@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { cartService } from "../services/cartService";
-import { couponWalletService } from "../services/couponWalletService";
+import { couponWalletService, isUsableUnclaimedCoupon } from "../services/couponWalletService";
 import { platformProductService } from "../services/productPlatformService";
 import { promotionService, type ApplicablePromotion, type AppliedPromotion, type CurrentEvaluation } from "../services/promotionService";
 import { sessionService } from "../services/sessionService";
@@ -282,6 +282,20 @@ const Cart: React.FC = () => {
     apiId: "id" in item && typeof item.id === "number" ? item.id : undefined,
     product: products.find((product) => product.id === item.productid),
   }));
+  // Same stock rule Checkout uses to block payment, so customers fix the cart
+  // here instead of discovering it on Checkout. Totals/offers are unchanged.
+  const cartStockIssueCount = enriched.filter(
+    ({ product, quantity }) => isOutOfStock(product) || quantity > getAvailableStock(product)
+  ).length;
+  const hasCartStockIssues = cartStockIssueCount > 0;
+  // Same query/key as the navbar wallet badge, so this adds no request.
+  const walletCouponsQuery = useQuery({
+    queryKey: ["wallet", session?.user.id],
+    queryFn: () => couponWalletService.getWallet(),
+    enabled: Boolean(session),
+    staleTime: 1000 * 60,
+  });
+  const unclaimedCouponCount = (walletCouponsQuery.data?.data?.available_coupons ?? []).filter(isUsableUnclaimedCoupon).length;
   const promotionRows = useMemo(
     () =>
       enriched
@@ -1619,7 +1633,11 @@ const Cart: React.FC = () => {
                   <div className="mt-3 flex items-start gap-2 rounded-2xl border border-[#dfe4ee] bg-[#f7f8fb] p-3 text-[11px] leading-4 text-[#68748a]">
                     <TicketPercent className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />
                     <p>
-                      {session
+                      {session && unclaimedCouponCount > 0 ? (
+                        <strong className="text-[#26344f]">
+                          You have {unclaimedCouponCount} {unclaimedCouponCount === 1 ? "coupon" : "coupons"}. Apply at checkout.
+                        </strong>
+                      ) : session
                         ? "Have a coupon code? Apply it securely at checkout."
                         : "Have a coupon code? Sign in and apply it securely at checkout."}
                     </p>
@@ -1664,10 +1682,17 @@ const Cart: React.FC = () => {
                   </p>
                 </div>
               )}
+              {hasCartStockIssues && (
+                <p role="alert" className="mt-5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+                  {cartStockIssueCount === 1
+                    ? "1 item is unavailable. Remove it or save it for later to continue."
+                    : `${cartStockIssueCount} items are unavailable. Remove them or save them for later to continue.`}
+                </p>
+              )}
               {session ? (
                 <Button
                   className="mt-5 w-full"
-                  disabled={checkoutValidationMutation.isPending || isPricingRecalculating}
+                  disabled={checkoutValidationMutation.isPending || isPricingRecalculating || hasCartStockIssues}
                   onClick={() => checkoutValidationMutation.mutate()}
                 >
                   {checkoutValidationMutation.isPending && (
@@ -1678,10 +1703,11 @@ const Cart: React.FC = () => {
               ) : (
                 <Link
                   to="/login?redirect=/checkout"
-                  className={`mt-5 block ${isPricingRecalculating ? "pointer-events-none" : ""}`}
-                  aria-disabled={isPricingRecalculating}
+                  className={`mt-5 block ${isPricingRecalculating || hasCartStockIssues ? "pointer-events-none" : ""}`}
+                  aria-disabled={isPricingRecalculating || hasCartStockIssues}
+                  tabIndex={hasCartStockIssues ? -1 : undefined}
                 >
-                  <Button className="w-full" disabled={isPricingRecalculating}>
+                  <Button className="w-full" disabled={isPricingRecalculating || hasCartStockIssues}>
                     Login to Checkout
                   </Button>
                 </Link>

@@ -112,11 +112,11 @@ const getPromotionDisplayRows = (promotions: PromotionCostBreakdown[]) =>
       promotion.free_item_discount > 0
         ? { ...base, key: `${promotion.promotion_id ?? promotionIndex}-free-item`, label: `${promotion.promotion_name} · Free item`, amount: promotion.free_item_discount }
         : null,
-      promotion.shipping_discount > 0
-        ? { ...base, key: `${promotion.promotion_id ?? promotionIndex}-shipping`, label: `${promotion.promotion_name} · Shipping`, amount: promotion.shipping_discount }
-        : null,
     ].filter((row): row is NonNullable<typeof row> => Boolean(row));
 
+    // Shipping savings are shown on the Delivery row (struck price -> Free),
+    // not subtracted: waived shipping was never added to the order total.
+    if (rows.length === 0 && promotion.shipping_discount > 0) return [];
     return rows.length > 0
       ? rows
       : promotion.discount_amount > 0
@@ -895,8 +895,19 @@ function OrderCard({
   const promotionDiscount = Number(costBreakdown?.promotion_discount ?? order.promotion_discount_total ?? 0);
   const combinedDiscount = Number(order.discountamount || 0);
   const productDiscount = Number(costBreakdown?.product_discount ?? Math.max(0, combinedDiscount - promotionDiscount));
-  const totalDiscount = Number(costBreakdown?.total_discount ?? combinedDiscount);
+  const shippingSaved = Number(costBreakdown?.shipping_discount ?? 0);
+  // Fallback row only: promotion_discount includes free shipping, which is
+  // already shown on the Delivery row.
+  const itemPromotionDiscount = Math.max(0, promotionDiscount - shippingSaved);
+  // Item discounts only (product + offers + coupon); shipping savings are on
+  // the Delivery row so the breakdown adds up to the final amount.
+  const totalSaved = Number(costBreakdown?.total_discount ?? combinedDiscount);
+  const totalDiscount = Math.max(0, totalSaved - shippingSaved);
   const deliveryCharges = Number(costBreakdown?.delivery_charges ?? order.shipping_cost ?? 0);
+  const shippingPromotionNames = (costBreakdown?.promotions ?? [])
+    .filter((promotion) => Number(promotion.shipping_discount || 0) > 0)
+    .map((promotion) => promotion.promotion_name)
+    .join(", ");
   const originalCartValue = Number(costBreakdown?.original_cart_value ?? order.original_total ?? order.productamount ?? 0);
   const orderTotal = Number(costBreakdown?.final_payable_amount ?? order.orderamount ?? 0);
   const promotionBreakdownRows = getPromotionDisplayRows(costBreakdown?.promotions ?? []);
@@ -1131,9 +1142,9 @@ function OrderCard({
                           <span className="shrink-0">-{formatCurrency(promotion.amount)}</span>
                         </div>
                       ))
-                    : promotionDiscount > 0 && (
+                    : itemPromotionDiscount > 0 && (
                         <div className="flex items-center justify-between text-emerald-700">
-                          <span>Promotion discount</span><span>-{formatCurrency(promotionDiscount)}</span>
+                          <span>Promotion discount</span><span>-{formatCurrency(itemPromotionDiscount)}</span>
                         </div>
                       )}
                   {totalDiscount > 0 && (
@@ -1141,14 +1152,27 @@ function OrderCard({
                       <span>Total discount</span><span>-{formatCurrency(totalDiscount)}</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between text-[var(--color-muted)]">
-                    <span>Delivery charges</span>
-                    <span>{deliveryCharges > 0 ? formatCurrency(deliveryCharges) : "Free"}</span>
+                  <div className="flex items-center justify-between gap-3 text-[var(--color-muted)]">
+                    <span>
+                      Delivery charges
+                      {shippingSaved > 0 && shippingPromotionNames ? (
+                        <span className="ml-1.5 text-xs">({shippingPromotionNames})</span>
+                      ) : null}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {shippingSaved > 0 && (
+                        <span className="text-xs line-through">{formatCurrency(deliveryCharges + shippingSaved)}</span>
+                      )}
+                      <span className={deliveryCharges > 0 ? "" : "font-semibold text-emerald-700"}>
+                        {deliveryCharges > 0 ? formatCurrency(deliveryCharges) : "Free"}
+                      </span>
+                    </span>
                   </div>
-                  {walletAmountApplied > 0 && walletCouponNames ? (
+                  {walletAmountApplied > 0 ? (
                     <div className="flex items-center justify-between font-semibold text-amber-700">
                       <span>
-                        Coupons <span className="text-xs font-medium">({walletCouponNames})</span>
+                        Wallet
+                        {walletCouponNames ? <span className="ml-1 text-xs font-medium">({walletCouponNames})</span> : null}
                       </span>
                       <span>-{formatCurrency(walletAmountApplied)}</span>
                     </div>
@@ -1171,6 +1195,12 @@ function OrderCard({
                   <span>Final payable amount</span>
                   <span>{formatCurrency(orderTotal)}</span>
                 </div>
+                {totalSaved > 0 && (
+                  <p className="mt-1 text-right text-xs font-semibold text-emerald-700">
+                    You saved {formatCurrency(totalSaved)}
+                    {shippingSaved > 0 ? ` (incl. ${formatCurrency(shippingSaved)} free shipping)` : ""}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">

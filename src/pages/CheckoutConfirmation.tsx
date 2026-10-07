@@ -21,6 +21,7 @@ import { orderService } from "../services/orderService";
 import { sessionService } from "../services/sessionService";
 import { clearSelectedCartPromotion } from "../lib/cartPromotions";
 import { saveWalletApplied } from "../lib/walletSelection";
+import { clearPendingPhonePePayment, readPendingPhonePePayment } from "../services/phonePeCheckoutService";
 
 const MAX_STATUS_CHECKS = 10;
 const CONFETTI_DURATION_MS = 6400;
@@ -112,6 +113,17 @@ const CheckoutConfirmation: React.FC = () => {
       statusChecks < MAX_STATUS_CHECKS &&
       (isPaymentPending(paymentStatus) || (paymentSucceeded && (!orderId || orderFinalizationFailed)))
   );
+
+  // Once this payment's outcome is known, Checkout must not treat it as
+  // pending any more (otherwise a later order could be redirected here).
+  const paymentOutcomeKnown = paymentSucceeded || isPaymentFailed(paymentStatus);
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!merchantTransactionId || !paymentOutcomeKnown) return;
+    if (readPendingPhonePePayment(userId) === merchantTransactionId) {
+      clearPendingPhonePePayment(userId);
+    }
+  }, [merchantTransactionId, paymentOutcomeKnown, session?.user.id]);
 
   useEffect(() => {
     if (!shouldPoll || paymentStatusQuery.isFetching) return;
