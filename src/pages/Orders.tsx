@@ -17,6 +17,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShoppingBag,
+  Store,
   Truck,
   UserRound,
   Upload,
@@ -74,17 +75,6 @@ const formatDate = (value?: number | string | null) => {
     month: "short",
     year: "numeric",
   });
-};
-
-const formatDuration = (milliseconds?: number | null) => {
-  const totalMinutes = Math.max(0, Math.floor(Number(milliseconds || 0) / 60000));
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
 };
 
 const formatStatus = (status?: string | null) => {
@@ -730,33 +720,13 @@ const Orders: React.FC = () => {
                     isRefreshing={refreshOrderKey === orderKey}
                     isLoadingReturnRequests={isLoadingReturnRequests}
                     isLoadingReturnEligibility={isLoadingReturnEligibility[orderKey]}
-                    hasCheckedReturnEligibility={Boolean(returnEligibility[orderKey] || returnEligibilityError[orderKey])}
-                    hasReturnableItems={Boolean(returnEligibility[orderKey] && returnEligibility[orderKey].eligibleitemcount > 0)}
                     isExpanded={isExpanded}
                     onTrack={async () => {
-                      if (isExpanded) {
-                        setExpandedOrderKey(null);
-                        return;
-                      }
-
                       setExpandedOrderKey(orderKey);
                       scrollToOrderStatus(orderKey);
                       await handleTrackOrder(displayedDetails, index);
                     }}
-                    onRefreshTracking={async () => {
-                      setExpandedOrderKey(orderKey);
-                      await handleTrackOrder(displayedDetails, index);
-                    }}
                     onRefreshOrder={() => handleRefreshOrder(displayedDetails, index)}
-                    onShowReturnOptions={() => {
-                      if (!isExpanded) {
-                        setExpandedOrderKey(orderKey);
-                      }
-                      if (!hasLoadedDetails) {
-                        handleLoadDetails(displayedDetails, index);
-                      }
-                      handleFetchEligibility(displayedDetails, index);
-                    }}
                     onToggleDetails={() => {
                       if (isExpanded) {
                         setExpandedOrderKey(null);
@@ -831,13 +801,9 @@ function OrderCard({
   isRefreshing,
   isLoadingReturnRequests,
   isLoadingReturnEligibility,
-  hasCheckedReturnEligibility,
-  hasReturnableItems,
   isExpanded,
   onTrack,
-  onRefreshTracking,
   onRefreshOrder,
-  onShowReturnOptions,
   onToggleDetails,
   onRequestReturn,
   onCancel,
@@ -858,13 +824,9 @@ function OrderCard({
   isRefreshing: boolean;
   isLoadingReturnRequests: boolean;
   isLoadingReturnEligibility: boolean;
-  hasCheckedReturnEligibility: boolean;
-  hasReturnableItems: boolean;
   isExpanded: boolean;
   onTrack: () => void;
-  onRefreshTracking: () => void;
   onRefreshOrder: () => void;
-  onShowReturnOptions: () => void;
   onToggleDetails: () => void;
   onRequestReturn: (line: OrderLine, type: ReturnRequestType, item: any) => void;
   onCancel: () => void;
@@ -890,6 +852,8 @@ function OrderCard({
   const cancellable = isOrderCancellable(order.orderstatus);
   const statusTone = getStatusTone(displayStatus);
   const cancelled = isCancelledStatus(displayStatus);
+  const inStore = isInStoreOrder(order);
+  const trackable = isOrderTrackable(displayStatus || order.orderstatus);
   const walletAmountApplied = getWalletAmountApplied(order);
   const costBreakdown = order.cost_breakdown;
   const promotionDiscount = Number(costBreakdown?.promotion_discount ?? order.promotion_discount_total ?? 0);
@@ -933,18 +897,7 @@ function OrderCard({
     cancelled ? "opacity-75" : "",
   ].filter(Boolean).join(" ");
   const canUseReturnFlow = isOrderReturnFlowAvailable(displayStatus || order.orderstatus);
-  const hasPolicyEligibleItems = Boolean(returnEligibility?.items.some(hasAnyReturnPolicy));
   const returnEligibilityNotice = returnEligibility ? getReturnEligibilityNotice(returnEligibility) : "";
-
-  const returnBtnLabel = isLoadingReturnEligibility
-    ? "Checking"
-    : hasReturnableItems
-    ? "Return / Replace"
-    : hasCheckedReturnEligibility && hasPolicyEligibleItems
-    ? "View Return Policy"
-    : hasCheckedReturnEligibility
-    ? "View Return Status"
-    : "Return / Replace";
 
   return (
     <article className={cardClass}>
@@ -972,6 +925,12 @@ function OrderCard({
               {String(order.orderid ?? order.id ?? "Order")}
             </span>
             <StatusBadge status={displayStatus} tone={statusTone} />
+            {inStore && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                <Store className="h-3.5 w-3.5" />
+                In-store purchase
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -1029,26 +988,12 @@ function OrderCard({
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             ) : null}
-            {canUseReturnFlow ? (
-              <Button
-                variant={hasReturnableItems ? "primary" : "secondary"}
-                className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
-                disabled={isLoadingReturnEligibility}
-                onClick={onShowReturnOptions}
-                title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
-              >
-                {isLoadingReturnEligibility ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                )}
-                {returnBtnLabel}
+            {trackable && (
+              <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
+                {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                Track
               </Button>
-            ) : null}
-            <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
-              {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-              Track
-            </Button>
+            )}
             {cancellable && (
               <Button variant="secondary" className="min-h-9 gap-2 border-red-200 px-3 text-xs text-red-600 hover:bg-red-50 sm:px-4" disabled={isCancelling} onClick={onCancel}>
                 {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -1080,16 +1025,14 @@ function OrderCard({
 
             {orderlines.length > 0 ? (
               <div className="space-y-2">
-                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && (
-                  returnEligibility.eligibleitemcount > 0 || 
-                  normalizeStatusKey(order.orderstatus || "") === "delivered" || 
-                  normalizeStatusKey(order.orderstatus || "") === "completed"
-                ) && (
-                  <div className={cn(
-                    "rounded-[var(--radius-sm)] border p-3 text-xs font-semibold",
-                    returnEligibility.eligibleitemcount > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-800"
-                  )}>
-                    {returnEligibility.eligibleitemcount > 0 ? "Select Return or Replace on the item you need help with." : returnEligibilityNotice}
+                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && returnEligibility.eligibleitemcount > 0 && orderlines.length > 1 && (
+                  <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-xs font-semibold text-[var(--color-secondary)]">
+                    Choose an item below to return or replace.
+                  </div>
+                )}
+                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && returnEligibility.eligibleitemcount === 0 && (
+                  <div className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                    {returnEligibilityNotice}
                   </div>
                 )}
                 {returnEligibilityError && (
@@ -1217,8 +1160,15 @@ function OrderCard({
                 {returnRequestsError}
               </section>
             )}
-            {(tracking || trackingError) && <TrackingPanel tracking={tracking} trackingError={trackingError} />}
-            {statusHistory.length > 0 && <StatusHistory history={statusHistory} isRefreshing={isTracking} onRefresh={onRefreshTracking} />}
+            {trackable && (tracking || trackingError) && <TrackingPanel tracking={tracking} trackingError={trackingError} />}
+            {statusHistory.length > 0 && (
+              <StatusHistory
+                history={statusHistory}
+                currentStatus={displayStatus}
+                isRefreshing={isRefreshing}
+                onRefresh={onRefreshOrder}
+              />
+            )}
           </aside>
         </div>
       )}
@@ -1317,8 +1267,25 @@ function isOrderCancellable(status?: string | null) {
 }
 
 function isOrderReturnFlowAvailable(status?: string | null) {
+  return isDeliveredStatus(status);
+}
+
+function isDeliveredStatus(status?: string | null) {
   const normalized = normalizeStatusKey(status || "");
   return ["delivered", "cod_payment_received"].includes(normalized);
+}
+
+// Tracking only means something while the parcel is still on its way.
+function isOrderTrackable(status?: string | null) {
+  const normalized = normalizeStatusKey(status || "");
+  if (!normalized || isDeliveredStatus(normalized) || isCancelledStatus(normalized)) return false;
+  return !/(return|replace|rto|refund|payment_failed)/.test(normalized);
+}
+
+function isInStoreOrder(order?: OrderSummary | null) {
+  return normalizeStatusKey(String(order?.order_type || "")) === "instore" ||
+    String(order?.vendor || "").trim().toUpperCase() === "INSTORE" ||
+    String(order?.orderid || "").toUpperCase().startsWith("INS-");
 }
 
 function isCancelledStatus(status?: string | null) {
@@ -1521,9 +1488,9 @@ function OrderLineRow({
                   </Button>
                 )}
               </div>
-              {getRemainingClaimDuration(eligibilityItem) && (
+              {getPolicyWindowLabel(eligibilityItem) && (
                 <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-[var(--radius-sm)] border border-amber-100">
-                  Remaining: {getRemainingClaimDuration(eligibilityItem)}
+                  {getPolicyWindowLabel(eligibilityItem)}
                 </span>
               )}
             </div>
@@ -1904,7 +1871,24 @@ function TrackingPanel({ tracking, trackingError }: { tracking?: TrackingDetails
   );
 }
 
-function StatusHistory({ history, isRefreshing, onRefresh }: { history: unknown[]; isRefreshing: boolean; onRefresh: () => void }) {
+function StatusHistory({
+  history,
+  currentStatus,
+  isRefreshing,
+  onRefresh,
+}: {
+  history: unknown[];
+  currentStatus?: string | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const normalizedCurrentStatus = normalizeStatusKey(currentStatus || "");
+  const currentStatusIndex = history.reduce(
+    (match, item, index) =>
+      normalizeStatusKey(getHistoryStatus(item, index)) === normalizedCurrentStatus ? index : match,
+    -1
+  );
+
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4">
       <div className="flex items-center justify-between gap-3">
@@ -1917,19 +1901,19 @@ function StatusHistory({ history, isRefreshing, onRefresh }: { history: unknown[
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] disabled:opacity-60"
           onClick={onRefresh}
           disabled={isRefreshing}
-          aria-label="Refresh tracking status"
-          title="Refresh tracking status"
+          aria-label="Refresh order status"
+          title="Refresh order status"
         >
           <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
         </button>
       </div>
       <div className="mt-3">
-        {history.slice(0, 4).map((item, index) => {
+        {history.map((item, index) => {
           const row = isRecord(item) ? item : {};
           const status = getHistoryStatus(item, index);
           const date = getHistoryDate(row);
           const description = getHistoryDescription(item);
-          const isCurrent = index === 0;
+          const isCurrent = index === currentStatusIndex;
 
           return (
             <div key={index} className="flex gap-3 pb-4 last:pb-0">
@@ -1940,7 +1924,7 @@ function StatusHistory({ history, isRefreshing, onRefresh }: { history: unknown[
                     isCurrent ? "bg-[#378ADD] outline-[#378ADD]" : "bg-[var(--color-muted)] outline-[var(--color-border)]"
                   )}
                 />
-                {index < history.slice(0, 4).length - 1 && <span className="mt-2 min-h-5 w-px flex-1 bg-[var(--color-border)]" />}
+                {index < history.length - 1 && <span className="mt-2 min-h-5 w-px flex-1 bg-[var(--color-border)]" />}
               </div>
               <div className="min-w-0 flex-1">
                 <p className={cn("text-sm font-semibold", isCurrent ? "text-[var(--color-text)]" : "text-[var(--color-muted)]")}>
@@ -2097,11 +2081,11 @@ function getStatusHistory(details: OrderDetails, tracking?: TrackingDetails, dis
     getString(details.order, ["createddate"]);
 
   return [
+    ...history,
     {
       status: currentStatus,
       changeddate: changedDate,
     },
-    ...history,
   ];
 }
 
@@ -2649,6 +2633,23 @@ function guessAttachmentType(file: File, reason: AllowedReturnReason | undefined
   return "other";
 }
 
+// Latest moment any allowed reason can still be raised; falls back to delivery + policy window.
+function getReturnDeadline(item: ReturnEligibilityItem): number | null {
+  const reasonDeadlines = (item.allowedreasons || [])
+    .map((reason) => Number(reason.reasondeadline || 0))
+    .filter((deadline) => deadline > 0);
+  if (reasonDeadlines.length) return Math.max(...reasonDeadlines);
+
+  const delivered = Number(item.delivereddate || 0);
+  const windowDays = Math.max(
+    item.return.eligible ? Number(item.return.windowdays || 0) : 0,
+    item.replacement.eligible ? Number(item.replacement.windowdays || 0) : 0
+  );
+  if (!delivered || !windowDays) return null;
+  const deliveredMs = delivered < 1000000000000 ? delivered * 1000 : delivered;
+  return deliveredMs + windowDays * 24 * 60 * 60 * 1000;
+}
+
 function getEvidenceFileError(file: File, type: AttachmentType): string {
   const sizeMb = file.size / (1024 * 1024);
 
@@ -2675,18 +2676,27 @@ function getEvidenceFileError(file: File, type: AttachmentType): string {
   return "";
 }
 
-function getRemainingClaimDuration(item: ReturnEligibilityItem | undefined): string {
-  if (!item?.allowedreasons?.length) return "";
-  let minMs = Infinity;
-  for (const reason of item.allowedreasons) {
-    if (reason.remainingclaimmilliseconds !== null && reason.remainingclaimmilliseconds !== undefined) {
-      if (reason.remainingclaimmilliseconds < minMs) {
-        minMs = reason.remainingclaimmilliseconds;
-      }
-    }
+function getPolicyWindowLabel(item: ReturnEligibilityItem | undefined): string {
+  if (!item) return "";
+
+  const deadline = getReturnDeadline(item);
+  if (deadline) {
+    const types = [item.return.eligible && "Return", item.replacement.eligible && "Replace"].filter(Boolean).join(" / ");
+    return `${types || "Return / Replace"} by ${formatDateTime(deadline)}`;
   }
-  if (minMs === Infinity) return "";
-  return formatDuration(minMs);
+
+  const returnDays = item.return.eligible ? Number(item.return.windowdays || 0) : 0;
+  const replacementDays = item.replacement.eligible ? Number(item.replacement.windowdays || 0) : 0;
+
+  if (returnDays > 0 && replacementDays > 0 && returnDays === replacementDays) {
+    return `${returnDays}-day return & replacement window`;
+  }
+  if (returnDays > 0 && replacementDays > 0) {
+    return `Return: ${returnDays} days · Replace: ${replacementDays} days`;
+  }
+  if (returnDays > 0) return `${returnDays}-day return window`;
+  if (replacementDays > 0) return `${replacementDays}-day replacement window`;
+  return "";
 }
 
 export default Orders;
