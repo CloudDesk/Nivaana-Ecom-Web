@@ -198,6 +198,15 @@ export const returnSourceService = {
     return apiService.post<unknown>("/returns", payload);
   },
 
+  // "Return / Replace all items": one reason, resolution and evidence for several items of one order.
+  createGroupRequest(
+    payload: Omit<CreateReturnRequestInput, "orderlineid" | "requestedquantity" | "policyreasonruleid"> & {
+      items: Array<{ orderlineid: number; requestedquantity: number }>;
+    }
+  ): Promise<ApiResponse<unknown>> {
+    return apiService.post<unknown>("/returns/group", payload);
+  },
+
   getMyRequests(customerId?: number | string): Promise<ApiResponse<ReturnRequestSummary[]>> {
     const query = new URLSearchParams({
       source: "customer",
