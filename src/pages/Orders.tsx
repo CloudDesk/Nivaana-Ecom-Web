@@ -17,6 +17,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShoppingBag,
+  Store,
   Truck,
   UserRound,
   Upload,
@@ -53,6 +54,10 @@ import {
 } from "../services/returnSourceService";
 
 const ORDERS_PAGE_SIZE = 10;
+// Same limits as mobile and the backend (RETURN_EVIDENCE_MAX_PHOTOS, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES).
+const MAX_RETURN_EVIDENCE_PHOTOS = 5;
+const MAX_RETURN_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_RETURN_VIDEO_BYTES = 60 * 1024 * 1024;
 
 const currencyFormatter = new Intl.NumberFormat("en-IN");
 
@@ -74,17 +79,6 @@ const formatDate = (value?: number | string | null) => {
     month: "short",
     year: "numeric",
   });
-};
-
-const formatDuration = (milliseconds?: number | null) => {
-  const totalMinutes = Math.max(0, Math.floor(Number(milliseconds || 0) / 60000));
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
 };
 
 const formatStatus = (status?: string | null) => {
@@ -167,6 +161,7 @@ const Orders: React.FC = () => {
     line: OrderLine;
     item: ReturnEligibilityItem;
     requesttype: ReturnRequestType;
+    groupItems?: Array<{ line: OrderLine; item: ReturnEligibilityItem }>;
   } | null>(null);
 
   const [returnEligibility, setReturnEligibility] = useState<Record<string, OrderReturnEligibility>>({});
@@ -392,9 +387,10 @@ const Orders: React.FC = () => {
     ispackageopened: boolean;
     additionalremarks: string;
     evidence: Array<{ file: File; attachmenttype: AttachmentType; isrequired?: boolean }>;
+    groupItems?: Array<{ orderlineid: number; requestedquantity: number }>;
   }) => {
     const submissionKey = [
-      payload.orderlineid,
+      payload.groupItems?.map((item) => item.orderlineid).join("+") || payload.orderlineid,
       payload.requesttype,
       payload.policyreasonruleid || payload.reasoncode,
       payload.reasoncode,
@@ -415,7 +411,22 @@ const Orders: React.FC = () => {
         uploadedAttachments.push(response);
       }
 
-      await returnSourceService.createRequest({
+      const attachments = uploadedAttachments.map((item) => ({
+        attachmenttype: item.attachmenttype,
+        fileurl: item.fileurl,
+        isrequired: payload.evidence.some((draft) => draft.attachmenttype === item.attachmenttype && draft.isrequired),
+      }));
+      if (payload.groupItems && payload.groupItems.length > 1) {
+        await returnSourceService.createGroupRequest({
+          requesttype: payload.requesttype,
+          reasoncode: payload.reasoncode,
+          requestedresolution: payload.requestedresolution as any,
+          ispackageopened: payload.ispackageopened,
+          additionalremarks: payload.additionalremarks,
+          attachments,
+          items: payload.groupItems,
+        });
+      } else await returnSourceService.createRequest({
         orderlineid: payload.orderlineid,
         requesttype: payload.requesttype,
         requestedquantity: payload.requestedquantity,
@@ -424,11 +435,7 @@ const Orders: React.FC = () => {
         requestedresolution: payload.requestedresolution as any,
         ispackageopened: payload.ispackageopened,
         additionalremarks: payload.additionalremarks,
-        attachments: uploadedAttachments.map((item) => ({
-          attachmenttype: item.attachmenttype,
-          fileurl: item.fileurl,
-          isrequired: payload.evidence.some((draft) => draft.attachmenttype === item.attachmenttype && draft.isrequired),
-        })),
+        attachments,
       });
 
       const identifier = getOrderIdentifier(payload.order);
@@ -450,7 +457,9 @@ const Orders: React.FC = () => {
 
       await queryClient.invalidateQueries({ queryKey: ["orders", userId] });
       await fetchReturnRequests();
-      setStatusMessage(`${payload.requesttype === "replacement" ? "Replacement" : "Return"} request submitted successfully.`);
+      setStatusMessage(
+        `${payload.requesttype === "replacement" ? "Replacement" : "Return"} request${payload.groupItems && payload.groupItems.length > 1 ? ` for ${payload.groupItems.length} items` : ""} submitted successfully.`
+      );
       setActiveModal(null);
     } finally {
       pendingReturnSubmissionKeys.current.delete(submissionKey);
@@ -627,12 +636,27 @@ const Orders: React.FC = () => {
           return;
         }
 
-        // Keep the submitted state and silently refresh the list. A transport
-        // timeout does not mean the server rejected the cancellation.
+        // Not confirmed: show what the server has saved instead of the optimistic "cancelled",
+        // so a refresh never contradicts the page.
+        const serverDetails = await orderService
+          .details(identifier)
+          .then((response) => normalizeOrderDetails(response.data))
+          .catch(() => null);
+        setDetailsByOrder((current) => {
+          const next = { ...current };
+          if (serverDetails) next[orderKey] = serverDetails;
+          else if (previousDetails) next[orderKey] = previousDetails;
+          else delete next[orderKey];
+          return next;
+        });
         await queryClient
           .refetchQueries({ queryKey: ["orders", userId], type: "active" })
           .catch(() => undefined);
-        setStatusMessage("Cancellation is still processing. The status will update automatically.");
+        setStatusMessage("");
+        setCancelErrorByOrder((current) => ({
+          ...current,
+          [orderKey]: "We could not confirm the cancellation yet. Please check again in a minute.",
+        }));
         return;
       }
 
@@ -730,33 +754,13 @@ const Orders: React.FC = () => {
                     isRefreshing={refreshOrderKey === orderKey}
                     isLoadingReturnRequests={isLoadingReturnRequests}
                     isLoadingReturnEligibility={isLoadingReturnEligibility[orderKey]}
-                    hasCheckedReturnEligibility={Boolean(returnEligibility[orderKey] || returnEligibilityError[orderKey])}
-                    hasReturnableItems={Boolean(returnEligibility[orderKey] && returnEligibility[orderKey].eligibleitemcount > 0)}
                     isExpanded={isExpanded}
                     onTrack={async () => {
-                      if (isExpanded) {
-                        setExpandedOrderKey(null);
-                        return;
-                      }
-
                       setExpandedOrderKey(orderKey);
                       scrollToOrderStatus(orderKey);
                       await handleTrackOrder(displayedDetails, index);
                     }}
-                    onRefreshTracking={async () => {
-                      setExpandedOrderKey(orderKey);
-                      await handleTrackOrder(displayedDetails, index);
-                    }}
                     onRefreshOrder={() => handleRefreshOrder(displayedDetails, index)}
-                    onShowReturnOptions={() => {
-                      if (!isExpanded) {
-                        setExpandedOrderKey(orderKey);
-                      }
-                      if (!hasLoadedDetails) {
-                        handleLoadDetails(displayedDetails, index);
-                      }
-                      handleFetchEligibility(displayedDetails, index);
-                    }}
                     onToggleDetails={() => {
                       if (isExpanded) {
                         setExpandedOrderKey(null);
@@ -776,6 +780,16 @@ const Orders: React.FC = () => {
                         line,
                         item,
                         requesttype: type,
+                      });
+                    }}
+                    onRequestReturnAll={(type, entries) => {
+                      setActiveModal({
+                        orderKey,
+                        order: displayedDetails.order,
+                        line: entries[0]!.line,
+                        item: entries[0]!.item,
+                        requesttype: type,
+                        groupItems: entries,
                       });
                     }}
                     onCancel={() => handleCancelOrder(displayedDetails, index)}
@@ -831,15 +845,12 @@ function OrderCard({
   isRefreshing,
   isLoadingReturnRequests,
   isLoadingReturnEligibility,
-  hasCheckedReturnEligibility,
-  hasReturnableItems,
   isExpanded,
   onTrack,
-  onRefreshTracking,
   onRefreshOrder,
-  onShowReturnOptions,
   onToggleDetails,
   onRequestReturn,
+  onRequestReturnAll,
   onCancel,
 }: {
   statusAnchorId: string;
@@ -858,15 +869,12 @@ function OrderCard({
   isRefreshing: boolean;
   isLoadingReturnRequests: boolean;
   isLoadingReturnEligibility: boolean;
-  hasCheckedReturnEligibility: boolean;
-  hasReturnableItems: boolean;
   isExpanded: boolean;
   onTrack: () => void;
-  onRefreshTracking: () => void;
   onRefreshOrder: () => void;
-  onShowReturnOptions: () => void;
   onToggleDetails: () => void;
   onRequestReturn: (line: OrderLine, type: ReturnRequestType, item: any) => void;
+  onRequestReturnAll: (type: ReturnRequestType, entries: Array<{ line: OrderLine; item: ReturnEligibilityItem }>) => void;
   onCancel: () => void;
 }) {
   const { order, orderlines = [], address } = details;
@@ -890,6 +898,8 @@ function OrderCard({
   const cancellable = isOrderCancellable(order.orderstatus);
   const statusTone = getStatusTone(displayStatus);
   const cancelled = isCancelledStatus(displayStatus);
+  const inStore = isInStoreOrder(order);
+  const trackable = isOrderTrackable(displayStatus || order.orderstatus);
   const walletAmountApplied = getWalletAmountApplied(order);
   const costBreakdown = order.cost_breakdown;
   const promotionDiscount = Number(costBreakdown?.promotion_discount ?? order.promotion_discount_total ?? 0);
@@ -932,19 +942,22 @@ function OrderCard({
       : "rounded-[var(--radius-md)] border-[var(--color-border)]",
     cancelled ? "opacity-75" : "",
   ].filter(Boolean).join(" ");
-  const canUseReturnFlow = isOrderReturnFlowAvailable(displayStatus || order.orderstatus);
-  const hasPolicyEligibleItems = Boolean(returnEligibility?.items.some(hasAnyReturnPolicy));
+  // Use the delivery status, not the return/refund display status: after one return completes, the
+  // remaining units must stay returnable (backend eligibility still decides per item).
+  const canUseReturnFlow = isOrderReturnFlowAvailable(order.fulfillment_status || order.orderstatus || displayStatus);
+  // Items eligible for "Return / Replace all items" (each still needs remaining quantity for that type).
+  const groupReturnEntries = (["return", "replacement"] as const).reduce(
+    (entries, type) => {
+      entries[type] = orderlines
+        .map((line) => ({ line, item: returnEligibility?.items?.find((entry) => Number(entry.orderlineid) === Number(line.id)) }))
+        .filter((entry): entry is { line: OrderLine; item: ReturnEligibilityItem } =>
+          Boolean(entry.item && entry.item[type]?.eligible && entry.item.remainingeligiblequantity > 0)
+        );
+      return entries;
+    },
+    { return: [], replacement: [] } as Record<ReturnRequestType, Array<{ line: OrderLine; item: ReturnEligibilityItem }>>
+  );
   const returnEligibilityNotice = returnEligibility ? getReturnEligibilityNotice(returnEligibility) : "";
-
-  const returnBtnLabel = isLoadingReturnEligibility
-    ? "Checking"
-    : hasReturnableItems
-    ? "Return / Replace"
-    : hasCheckedReturnEligibility && hasPolicyEligibleItems
-    ? "View Return Policy"
-    : hasCheckedReturnEligibility
-    ? "View Return Status"
-    : "Return / Replace";
 
   return (
     <article className={cardClass}>
@@ -972,6 +985,12 @@ function OrderCard({
               {String(order.orderid ?? order.id ?? "Order")}
             </span>
             <StatusBadge status={displayStatus} tone={statusTone} />
+            {inStore && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                <Store className="h-3.5 w-3.5" />
+                In-store purchase
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -1029,26 +1048,12 @@ function OrderCard({
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             ) : null}
-            {canUseReturnFlow ? (
-              <Button
-                variant={hasReturnableItems ? "primary" : "secondary"}
-                className={cn("min-h-9 gap-2 px-3 text-xs sm:px-4", hasReturnableItems && "ring-1 ring-[var(--color-primary)]")}
-                disabled={isLoadingReturnEligibility}
-                onClick={onShowReturnOptions}
-                title={hasReturnableItems ? "Start a return or replacement" : "View return and replacement options"}
-              >
-                {isLoadingReturnEligibility ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                )}
-                {returnBtnLabel}
+            {trackable && (
+              <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
+                {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                Track
               </Button>
-            ) : null}
-            <Button variant="secondary" className="min-h-9 gap-2 px-3 text-xs sm:px-4" disabled={isTracking} onClick={onTrack}>
-              {isTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-              Track
-            </Button>
+            )}
             {cancellable && (
               <Button variant="secondary" className="min-h-9 gap-2 border-red-200 px-3 text-xs text-red-600 hover:bg-red-50 sm:px-4" disabled={isCancelling} onClick={onCancel}>
                 {isCancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -1080,16 +1085,36 @@ function OrderCard({
 
             {orderlines.length > 0 ? (
               <div className="space-y-2">
-                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && (
-                  returnEligibility.eligibleitemcount > 0 || 
-                  normalizeStatusKey(order.orderstatus || "") === "delivered" || 
-                  normalizeStatusKey(order.orderstatus || "") === "completed"
-                ) && (
-                  <div className={cn(
-                    "rounded-[var(--radius-sm)] border p-3 text-xs font-semibold",
-                    returnEligibility.eligibleitemcount > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-800"
-                  )}>
-                    {returnEligibility.eligibleitemcount > 0 ? "Select Return or Replace on the item you need help with." : returnEligibilityNotice}
+                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && returnEligibility.eligibleitemcount > 0 && orderlines.length > 1 && (
+                  <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-xs font-semibold text-[var(--color-secondary)]">
+                    <p>Choose an item below to return or replace{groupReturnEntries.return.length > 1 || groupReturnEntries.replacement.length > 1 ? ", or do all items together" : ""}.</p>
+                    {(groupReturnEntries.return.length > 1 || groupReturnEntries.replacement.length > 1) && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {groupReturnEntries.return.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => onRequestReturnAll("return", groupReturnEntries.return)}
+                            className="min-h-9 rounded-[var(--radius-sm)] bg-[#fbbc05] px-3 text-xs font-bold text-slate-900 hover:bg-[#e6a800]"
+                          >
+                            Return all items ({groupReturnEntries.return.length})
+                          </button>
+                        )}
+                        {groupReturnEntries.replacement.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => onRequestReturnAll("replacement", groupReturnEntries.replacement)}
+                            className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-xs font-bold text-[var(--color-text)] hover:bg-[var(--color-surface)]"
+                          >
+                            Replace all items ({groupReturnEntries.replacement.length})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {canUseReturnFlow && returnEligibility && !isLoadingReturnEligibility && returnEligibility.eligibleitemcount === 0 && (
+                  <div className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                    {returnEligibilityNotice}
                   </div>
                 )}
                 {returnEligibilityError && (
@@ -1217,8 +1242,15 @@ function OrderCard({
                 {returnRequestsError}
               </section>
             )}
-            {(tracking || trackingError) && <TrackingPanel tracking={tracking} trackingError={trackingError} />}
-            {statusHistory.length > 0 && <StatusHistory history={statusHistory} isRefreshing={isTracking} onRefresh={onRefreshTracking} />}
+            {trackable && (tracking || trackingError) && <TrackingPanel tracking={tracking} trackingError={trackingError} />}
+            {statusHistory.length > 0 && (
+              <StatusHistory
+                history={statusHistory}
+                currentStatus={displayStatus}
+                isRefreshing={isRefreshing}
+                onRefresh={onRefreshOrder}
+              />
+            )}
           </aside>
         </div>
       )}
@@ -1317,8 +1349,25 @@ function isOrderCancellable(status?: string | null) {
 }
 
 function isOrderReturnFlowAvailable(status?: string | null) {
+  return isDeliveredStatus(status);
+}
+
+function isDeliveredStatus(status?: string | null) {
   const normalized = normalizeStatusKey(status || "");
   return ["delivered", "cod_payment_received"].includes(normalized);
+}
+
+// Tracking only means something while the parcel is still on its way.
+function isOrderTrackable(status?: string | null) {
+  const normalized = normalizeStatusKey(status || "");
+  if (!normalized || isDeliveredStatus(normalized) || isCancelledStatus(normalized)) return false;
+  return !/(return|replace|rto|refund|payment_failed)/.test(normalized);
+}
+
+function isInStoreOrder(order?: OrderSummary | null) {
+  return normalizeStatusKey(String(order?.order_type || "")) === "instore" ||
+    String(order?.vendor || "").trim().toUpperCase() === "INSTORE" ||
+    String(order?.orderid || "").toUpperCase().startsWith("INS-");
 }
 
 function isCancelledStatus(status?: string | null) {
@@ -1521,9 +1570,9 @@ function OrderLineRow({
                   </Button>
                 )}
               </div>
-              {getRemainingClaimDuration(eligibilityItem) && (
+              {getPolicyWindowLabel(eligibilityItem) && (
                 <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-[var(--radius-sm)] border border-amber-100">
-                  Remaining: {getRemainingClaimDuration(eligibilityItem)}
+                  {getPolicyWindowLabel(eligibilityItem)}
                 </span>
               )}
             </div>
@@ -1678,6 +1727,11 @@ function isReturnRequestTerminal(status?: string | null) {
 
 function getCustomerReturnStatus(request: ReturnRequestSummary) {
   const status = normalizeStatusKey(request.status || "");
+  const kind = request.requesttype === "replacement" ? "Replacement" : "Return";
+  if (status === "requested") return `${kind} requested`;
+  if (status === "rejected") return `${kind} rejected`;
+  if (status === "cancelled") return `${kind} cancelled`;
+  if (status === "completed") return `${kind} completed`;
   if (status === "evidence_pending") return "Evidence under review";
   if (status === "evidence_approved") return "Evidence approved";
   if (status === "evidence_rejected") return "Evidence rejected";
@@ -1904,7 +1958,24 @@ function TrackingPanel({ tracking, trackingError }: { tracking?: TrackingDetails
   );
 }
 
-function StatusHistory({ history, isRefreshing, onRefresh }: { history: unknown[]; isRefreshing: boolean; onRefresh: () => void }) {
+function StatusHistory({
+  history,
+  currentStatus,
+  isRefreshing,
+  onRefresh,
+}: {
+  history: unknown[];
+  currentStatus?: string | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const normalizedCurrentStatus = normalizeStatusKey(currentStatus || "");
+  const currentStatusIndex = history.reduce(
+    (match, item, index) =>
+      normalizeStatusKey(getHistoryStatus(item, index)) === normalizedCurrentStatus ? index : match,
+    -1
+  );
+
   return (
     <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4">
       <div className="flex items-center justify-between gap-3">
@@ -1917,19 +1988,19 @@ function StatusHistory({ history, isRefreshing, onRefresh }: { history: unknown[
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-white text-[var(--color-secondary)] transition hover:bg-[var(--color-surface)] disabled:opacity-60"
           onClick={onRefresh}
           disabled={isRefreshing}
-          aria-label="Refresh tracking status"
-          title="Refresh tracking status"
+          aria-label="Refresh order status"
+          title="Refresh order status"
         >
           <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
         </button>
       </div>
       <div className="mt-3">
-        {history.slice(0, 4).map((item, index) => {
+        {history.map((item, index) => {
           const row = isRecord(item) ? item : {};
           const status = getHistoryStatus(item, index);
           const date = getHistoryDate(row);
           const description = getHistoryDescription(item);
-          const isCurrent = index === 0;
+          const isCurrent = index === currentStatusIndex;
 
           return (
             <div key={index} className="flex gap-3 pb-4 last:pb-0">
@@ -1940,7 +2011,7 @@ function StatusHistory({ history, isRefreshing, onRefresh }: { history: unknown[
                     isCurrent ? "bg-[#378ADD] outline-[#378ADD]" : "bg-[var(--color-muted)] outline-[var(--color-border)]"
                   )}
                 />
-                {index < history.slice(0, 4).length - 1 && <span className="mt-2 min-h-5 w-px flex-1 bg-[var(--color-border)]" />}
+                {index < history.length - 1 && <span className="mt-2 min-h-5 w-px flex-1 bg-[var(--color-border)]" />}
               </div>
               <div className="min-w-0 flex-1">
                 <p className={cn("text-sm font-semibold", isCurrent ? "text-[var(--color-text)]" : "text-[var(--color-muted)]")}>
@@ -2097,11 +2168,11 @@ function getStatusHistory(details: OrderDetails, tracking?: TrackingDetails, dis
     getString(details.order, ["createddate"]);
 
   return [
+    ...history,
     {
       status: currentStatus,
       changeddate: changedDate,
     },
-    ...history,
   ];
 }
 
@@ -2148,6 +2219,7 @@ function ReturnRequestModal({
     line: OrderLine;
     item: ReturnEligibilityItem;
     requesttype: ReturnRequestType;
+    groupItems?: Array<{ line: OrderLine; item: ReturnEligibilityItem }>;
   };
   onClose: () => void;
   onSubmit: (payload: {
@@ -2162,13 +2234,34 @@ function ReturnRequestModal({
     ispackageopened: boolean;
     additionalremarks: string;
     evidence: Array<{ file: File; attachmenttype: AttachmentType; isrequired?: boolean }>;
+    groupItems?: Array<{ orderlineid: number; requestedquantity: number }>;
   }) => Promise<void>;
 }) {
-  const availableReasons = modal.item.allowedreasons.filter((reason) =>
+  const isGroup = Boolean(modal.groupItems && modal.groupItems.length > 1);
+  const reasonFitsType = (reason: AllowedReturnReason) =>
     modal.requesttype === "replacement"
       ? reason.allowedresolutions.includes("replacement")
-      : reason.allowedresolutions.some((resolution) => resolution !== "replacement")
+      : reason.allowedresolutions.some((resolution) => resolution !== "replacement");
+  // Group: only reasons (by code) that every included item allows for this request type.
+  const availableReasons = modal.item.allowedreasons.filter((reason) =>
+    reasonFitsType(reason) &&
+    (!isGroup || modal.groupItems!.every((entry) =>
+      entry.item.allowedreasons.some((other) => other.reasoncode === reason.reasoncode && reasonFitsType(other))
+    ))
   );
+  const [groupSelection, setGroupSelection] = useState<Record<number, { selected: boolean; quantity: number }>>(() =>
+    Object.fromEntries((modal.groupItems || []).map((entry) => [
+      Number(entry.item.orderlineid),
+      { selected: true, quantity: Math.max(1, entry.item.remainingeligiblequantity || 1) },
+    ]))
+  );
+  const selectedGroupItems = (modal.groupItems || [])
+    .filter((entry) => groupSelection[Number(entry.item.orderlineid)]?.selected)
+    .map((entry) => ({
+      orderlineid: Number(entry.item.orderlineid),
+      requestedquantity: groupSelection[Number(entry.item.orderlineid)]!.quantity,
+      max: Math.max(1, entry.item.remainingeligiblequantity || 1),
+    }));
   const getReasonOptionValue = (reason: AllowedReturnReason) => String(reason.policyreasonruleid || reason.reasoncode);
   const [reasonOptionValue, setReasonOptionValue] = useState(availableReasons[0] ? getReasonOptionValue(availableReasons[0]) : "");
   const selectedReason = availableReasons.find((reason) => getReasonOptionValue(reason) === reasonOptionValue) || availableReasons[0];
@@ -2176,7 +2269,8 @@ function ReturnRequestModal({
   const [resolution, setResolution] = useState<"replacement" | "refund" | "partial_refund" | "ship_missing_item" | "complete_return">(
     resolutionOptions[0] || (modal.requesttype === "replacement" ? "replacement" : "refund")
   );
-  const [quantity, setQuantity] = useState(1);
+  // Default to every unit still returnable so customers do not return only part of a line by accident.
+  const [quantity, setQuantity] = useState(() => Math.max(1, modal.item.remainingeligiblequantity || 1));
   const [isPackageOpened, setIsPackageOpened] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [evidence, setEvidence] = useState<Array<{ id: string; file: File; attachmenttype: AttachmentType }>>([]);
@@ -2205,8 +2299,27 @@ function ReturnRequestModal({
       file,
       attachmenttype: guessAttachmentType(file, selectedReason),
     }));
-    setEvidence((current) => [...current, ...drafts]);
-    setFieldErrors((current) => ({ ...current, evidence: "" }));
+    // Keep photos within the per-request limit the backend enforces; videos are not counted.
+    let photoCount = evidence.filter((item) => item.attachmenttype !== "defect_video").length;
+    const sizeAllowed = drafts.filter((draft) =>
+      draft.file.size <= (draft.attachmenttype === "defect_video" ? MAX_RETURN_VIDEO_BYTES : MAX_RETURN_IMAGE_BYTES)
+    );
+    const accepted = sizeAllowed.filter((draft) => {
+      if (draft.attachmenttype === "defect_video") return true;
+      if (photoCount >= MAX_RETURN_EVIDENCE_PHOTOS) return false;
+      photoCount += 1;
+      return true;
+    });
+    setEvidence((current) => [...current, ...accepted]);
+    setFieldErrors((current) => ({
+      ...current,
+      evidence:
+        sizeAllowed.length < drafts.length
+          ? "Photos must be under 8 MB and videos under 60 MB."
+          : accepted.length < drafts.length
+            ? `You can upload up to ${MAX_RETURN_EVIDENCE_PHOTOS} photos.`
+            : "",
+    }));
   };
 
   
@@ -2219,7 +2332,13 @@ function ReturnRequestModal({
     if (!resolution) {
       errs.resolution = "Choose what you want us to do.";
     }
-    if (quantity <= 0 || quantity > maxQty) {
+    if (isGroup) {
+      if (selectedGroupItems.length === 0) {
+        errs.quantity = "Select at least one item.";
+      } else if (selectedGroupItems.some((entry) => entry.requestedquantity <= 0 || entry.requestedquantity > entry.max)) {
+        errs.quantity = "Check the quantity of each selected item.";
+      }
+    } else if (quantity <= 0 || quantity > maxQty) {
       errs.quantity = `Quantity must be between 1 and ${maxQty}.`;
     }
     if (isPackageOpened && selectedReason && selectedReason.openedpackageallowed === false) {
@@ -2254,12 +2373,14 @@ function ReturnRequestModal({
     setFieldErrors({});
     setError("");
     try {
+      const groupPayload = isGroup ? selectedGroupItems.map(({ orderlineid, requestedquantity }) => ({ orderlineid, requestedquantity })) : undefined;
       await onSubmit({
         orderKey: modal.orderKey,
         order: modal.order,
-        orderlineid: modal.item.orderlineid,
+        orderlineid: groupPayload?.[0]?.orderlineid ?? modal.item.orderlineid,
         requesttype: modal.requesttype,
-        requestedquantity: quantity,
+        requestedquantity: groupPayload?.[0]?.requestedquantity ?? quantity,
+        groupItems: groupPayload,
         policyreasonruleid: selectedReason.policyreasonruleid || null,
         reasoncode: selectedReason.reasoncode,
         requestedresolution: resolution,
@@ -2286,7 +2407,7 @@ function ReturnRequestModal({
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#fbbc05]">
               {modal.requesttype === "replacement" ? "Replacement Request" : "Return Request"}
             </p>
-            <h2 className="mt-1 text-lg font-bold text-white">{modal.line.productname || "Order item"}</h2>
+            <h2 className="mt-1 text-lg font-bold text-white">{isGroup ? `All items (${modal.groupItems!.length})` : modal.line.productname || "Order item"}</h2>
             <p className="mt-1 text-xs text-slate-300">Eligible quantity: {maxQty}</p>
           </div>
           <button
@@ -2340,8 +2461,49 @@ function ReturnRequestModal({
                 </FormField>
               </div>
 
+              {isGroup && (
+                <FormField label="Items">
+                  <div className="space-y-2">
+                    {modal.groupItems!.map((entry) => {
+                      const id = Number(entry.item.orderlineid);
+                      const max = Math.max(1, entry.item.remainingeligiblequantity || 1);
+                      const current = groupSelection[id] || { selected: false, quantity: max };
+                      return (
+                        <div key={id} className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 py-2">
+                          <label className="flex min-w-0 items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+                            <input
+                              type="checkbox"
+                              checked={current.selected}
+                              onChange={(event) => {
+                                setGroupSelection((state) => ({ ...state, [id]: { ...current, selected: event.target.checked } }));
+                                setFieldErrors((errors) => ({ ...errors, quantity: "" }));
+                              }}
+                            />
+                            <span className="truncate">{entry.item.productname || entry.line.productname || `Item ${id}`}</span>
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={max}
+                            disabled={!current.selected}
+                            value={current.quantity}
+                            aria-label={`Quantity, up to ${max}`}
+                            onChange={(event) => {
+                              setGroupSelection((state) => ({ ...state, [id]: { ...current, quantity: Number(event.target.value || 1) } }));
+                              setFieldErrors((errors) => ({ ...errors, quantity: "" }));
+                            }}
+                            className="h-10 w-20 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-2 text-sm font-semibold text-[var(--color-text)] disabled:opacity-50"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {fieldErrors.quantity && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.quantity}</p>}
+                </FormField>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Quantity">
+                {!isGroup && <FormField label={maxQty > 1 ? `Quantity (up to ${maxQty})` : "Quantity"}>
                   <input
                     type="number"
                     min={1}
@@ -2354,7 +2516,7 @@ function ReturnRequestModal({
                     className="h-12 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
                   />
                   {fieldErrors.quantity && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.quantity}</p>}
-                </FormField>
+                </FormField>}
                 <FormField label="Package Status">
                   <label className="flex h-12 items-center gap-3 bg-white px-3 text-sm font-semibold text-[var(--color-text)]">
                     <input
@@ -2405,6 +2567,9 @@ function ReturnRequestModal({
                     Upload Photos / Videos
                     <input className="hidden" type="file" multiple accept="image/*,video/*" onChange={(event) => addFiles(event.target.files)} />
                   </label>
+                  <span className="text-xs text-[var(--color-muted)]">
+                    Up to {MAX_RETURN_EVIDENCE_PHOTOS} photos (max 8 MB each), videos max 60 MB.
+                  </span>
                 </div>
 
                 {fieldErrors.evidence && (
@@ -2649,6 +2814,23 @@ function guessAttachmentType(file: File, reason: AllowedReturnReason | undefined
   return "other";
 }
 
+// Latest moment any allowed reason can still be raised; falls back to delivery + policy window.
+function getReturnDeadline(item: ReturnEligibilityItem): number | null {
+  const reasonDeadlines = (item.allowedreasons || [])
+    .map((reason) => Number(reason.reasondeadline || 0))
+    .filter((deadline) => deadline > 0);
+  if (reasonDeadlines.length) return Math.max(...reasonDeadlines);
+
+  const delivered = Number(item.delivereddate || 0);
+  const windowDays = Math.max(
+    item.return.eligible ? Number(item.return.windowdays || 0) : 0,
+    item.replacement.eligible ? Number(item.replacement.windowdays || 0) : 0
+  );
+  if (!delivered || !windowDays) return null;
+  const deliveredMs = delivered < 1000000000000 ? delivered * 1000 : delivered;
+  return deliveredMs + windowDays * 24 * 60 * 60 * 1000;
+}
+
 function getEvidenceFileError(file: File, type: AttachmentType): string {
   const sizeMb = file.size / (1024 * 1024);
 
@@ -2675,18 +2857,27 @@ function getEvidenceFileError(file: File, type: AttachmentType): string {
   return "";
 }
 
-function getRemainingClaimDuration(item: ReturnEligibilityItem | undefined): string {
-  if (!item?.allowedreasons?.length) return "";
-  let minMs = Infinity;
-  for (const reason of item.allowedreasons) {
-    if (reason.remainingclaimmilliseconds !== null && reason.remainingclaimmilliseconds !== undefined) {
-      if (reason.remainingclaimmilliseconds < minMs) {
-        minMs = reason.remainingclaimmilliseconds;
-      }
-    }
+function getPolicyWindowLabel(item: ReturnEligibilityItem | undefined): string {
+  if (!item) return "";
+
+  const deadline = getReturnDeadline(item);
+  if (deadline) {
+    const types = [item.return.eligible && "Return", item.replacement.eligible && "Replace"].filter(Boolean).join(" / ");
+    return `${types || "Return / Replace"} by ${formatDateTime(deadline)}`;
   }
-  if (minMs === Infinity) return "";
-  return formatDuration(minMs);
+
+  const returnDays = item.return.eligible ? Number(item.return.windowdays || 0) : 0;
+  const replacementDays = item.replacement.eligible ? Number(item.replacement.windowdays || 0) : 0;
+
+  if (returnDays > 0 && replacementDays > 0 && returnDays === replacementDays) {
+    return `${returnDays}-day return & replacement window`;
+  }
+  if (returnDays > 0 && replacementDays > 0) {
+    return `Return: ${returnDays} days · Replace: ${replacementDays} days`;
+  }
+  if (returnDays > 0) return `${returnDays}-day return window`;
+  if (replacementDays > 0) return `${replacementDays}-day replacement window`;
+  return "";
 }
 
 export default Orders;
