@@ -62,6 +62,7 @@ import {
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   offerCombinationNote,
+  itemsHaveOwnOfferNote,
   offerNoticeClassName,
   offerPendingLabel,
   preserveAppliedStacking,
@@ -1270,7 +1271,7 @@ const Checkout: React.FC = () => {
       anyOfferActionPending: applyPromotionMutation.isPending || removePromotionMutation.isPending,
       pricingResolving: isPromotionResolving,
     });
-    const combinationNote = isApplied ? null : offerCombinationNote(promotion);
+    const combinationNote = isApplied ? null : itemsHaveOwnOfferNote(id, promotionsV2Quote) ?? offerCombinationNote(promotion);
     const offerSavings = Number(
       (v2AppliedOffer ? v2AppliedOffer.saving / 100 : 0) ||
       promotion.applied_discount ||
