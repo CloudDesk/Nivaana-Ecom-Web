@@ -45,6 +45,7 @@ import {
   isFreeShippingPromotionEligible,
   isFreeShippingAppliedPromotion,
   offerCombinationNote,
+  itemsHaveOwnOfferNote,
   offerNoticeClassName,
   offerPendingLabel,
   preserveAppliedStacking,
@@ -1281,7 +1282,7 @@ const Cart: React.FC = () => {
           anyOfferActionPending: applyPromotionMutation.isPending || removePromotionMutation.isPending,
           pricingResolving: isPricingRecalculating,
         })}
-        combinationNote={state.isApplied ? null : offerCombinationNote(promotion)}
+        combinationNote={state.isApplied ? null : itemsHaveOwnOfferNote(state.id, promotionsV2Quote) ?? offerCombinationNote(promotion)}
         shippingSavings={state.freeShippingApplied ? shippingSavings : 0}
         onApply={() => applyPromotionMutation.mutate(promotion)}
         onRemove={() => removePromotionMutation.mutate(state.id)}
