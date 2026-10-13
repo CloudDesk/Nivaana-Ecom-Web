@@ -18,6 +18,7 @@ export interface OrderSummary {
   tax_amount?: number;
   cost_breakdown?: OrderCostBreakdown;
   mode?: string;
+  order_type?: string | null;
   orderstatus?: string;
   fulfillment_status?: string;
   effective_status?: string;

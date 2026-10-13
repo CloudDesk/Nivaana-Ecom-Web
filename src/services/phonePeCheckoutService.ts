@@ -104,12 +104,17 @@ export const openPhonePeIframe = async (
   checkout.transact({ tokenUrl, type: "IFRAME", callback });
 };
 
-// A PhonePe payment whose outcome was unknown when the iframe closed. Kept per
-// customer in sessionStorage so a refresh in the same tab still checks it
-// before a new payment is started. Order creation never depends on this: the
-// webhook, status endpoint and Cloud Task reconcile the payment server-side.
+// A PhonePe payment that was still pending when the customer closed the
+// iframe (USER_CANCEL). Only that case is stored - never a payment that
+// concluded normally - so the duplicate-payment check on Checkout can only
+// point to a genuinely unfinished payment, not to a previous completed order.
+// Kept per customer in sessionStorage so a refresh in the same tab still
+// checks it. Order creation never depends on this: the webhook, status
+// endpoint and Cloud Task reconcile the payment server-side.
 const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
-const pendingPaymentKey = (userId: number) => `nivaana-phonepe-pending-${userId}`;
+// "v2": entries written by the earlier version (saved for every payment,
+// including completed ones) are ignored.
+const pendingPaymentKey = (userId: number) => `nivaana-phonepe-pending-v2-${userId}`;
 
 export const savePendingPhonePePayment = (userId: number | undefined, merchantTransactionId: string) => {
   if (!userId) return;

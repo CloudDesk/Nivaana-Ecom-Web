@@ -125,6 +125,9 @@ const Wishlist: React.FC = () => {
     apiId: "id" in item && typeof item.id === "number" ? item.id : undefined,
     product: products.find((product) => product.id === item.productid),
   }));
+  // Cards need the product catalogue for name/image/price, so hold the skeleton
+  // until it arrives too — otherwise "Product #id", the fallback image and Rs. 0 flash first.
+  const isLoading = (session && wishlistQuery.isLoading) || (items.length > 0 && productsQuery.isLoading);
 
   return (
     <main className={ACCOUNT_PAGE_MAIN}>
@@ -132,7 +135,7 @@ const Wishlist: React.FC = () => {
         <AccountPageHeader
           currentPage="Wishlist"
           title="Wishlist"
-          subtitle={`${items.length} saved ${items.length === 1 ? "item" : "items"}${session ? "" : " as guest"}`}
+          subtitle={session && wishlistQuery.isLoading ? "Loading saved items…" : `${items.length} saved ${items.length === 1 ? "item" : "items"}${session ? "" : " as guest"}`}
         />
         {!session && items.length > 0 && (
           <div className="mt-8 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white p-4 text-sm text-[var(--color-muted)]">
@@ -141,9 +144,9 @@ const Wishlist: React.FC = () => {
           </div>
         )}
 
-        {session && wishlistQuery.isLoading ? (
+        {isLoading ? (
           <div className="mt-8">
-            <PageSkeleton variant="wishlist" count={4} hideHeader />
+            <PageSkeleton variant="wishlist" count={Math.min(items.length || 4, 6)} hideHeader />
           </div>
         ) : items.length === 0 ? (
           <div className="mt-8 rounded-[var(--radius-md)] bg-white p-10 text-center shadow-[var(--shadow-card)]">
@@ -173,7 +176,7 @@ const Wishlist: React.FC = () => {
                     <img
                       src={imageFor(product)}
                       alt={displayName}
-                      className="h-full w-full object-cover"
+                      className={`h-full w-full object-cover ${outOfStock ? "opacity-70 grayscale" : ""}`}
                       onError={(event) => {
                         event.currentTarget.src = fallbackProduct;
                       }}
@@ -194,12 +197,6 @@ const Wishlist: React.FC = () => {
                         className="mt-2 line-clamp-2 max-h-12 overflow-hidden text-sm leading-6 text-[var(--color-muted)] [&_blockquote]:my-0 [&_h2]:my-0 [&_h2]:text-sm [&_h3]:my-0 [&_h3]:text-sm [&_li]:my-0 [&_ol]:my-0 [&_p]:my-0 [&_ul]:my-0"
                       />
                     )}
-                    {outOfStock && (
-                      <p className="mt-3 rounded-[var(--radius-sm)] bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
-                        <span className="sm:hidden">Out of Stock</span>
-                        <span className="hidden sm:inline">This item is currently out of stock.</span>
-                      </p>
-                    )}
                     {/* Price on the left, actions on the right, pinned to the card bottom. */}
                     <div className="mt-auto flex flex-wrap items-end justify-between gap-3 pt-3">
                       <div className="min-w-0">
@@ -212,15 +209,22 @@ const Wishlist: React.FC = () => {
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <Button
-                          className="h-10 gap-2 px-3 shadow-none hover:translate-y-0 hover:shadow-none sm:px-4"
-                          disabled={moveToCart.isPending || cannotAddToCart}
-                          onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
-                          aria-label={`Add ${displayName} to cart`}
-                        >
-                          <ShoppingBag className="h-4 w-4" />
-                          <span className="hidden sm:inline">Add to Cart</span>
-                        </Button>
+                        {outOfStock ? (
+                          // Status label, not a button: replaces Add to Cart so it can't be clicked.
+                          <span className="inline-flex h-10 items-center rounded-[var(--radius-sm)] bg-red-50 px-3 text-sm font-semibold text-red-600 sm:px-4">
+                            Out of Stock
+                          </span>
+                        ) : (
+                          <Button
+                            className="h-10 gap-2 px-3 shadow-none hover:translate-y-0 hover:shadow-none sm:px-4"
+                            disabled={moveToCart.isPending || cannotAddToCart}
+                            onClick={() => moveToCart.mutate({ itemId: apiId ?? item.productid, productid: item.productid, product })}
+                            aria-label={`Add ${displayName} to cart`}
+                          >
+                            <ShoppingBag className="h-4 w-4" />
+                            <span className="hidden sm:inline">Add to Cart</span>
+                          </Button>
+                        )}
                         <button
                           type="button"
                           className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white text-[var(--color-muted)] transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"

@@ -445,7 +445,25 @@ const formatPaise = (paise: number) =>
 const joinNames = (names: string[]) =>
   names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
+/**
+ * "Percent of entire cart value" is not applied when every item already has
+ * its own product / category / subcategory promotion (PLAN-2026-10-12-107).
+ */
+export const ITEMS_HAVE_OWN_OFFER_MESSAGE = "Items in your cart already have their own offer.";
+
+const isItemsHaveOwnOffer = (reason: string, details?: Record<string, unknown>) =>
+  reason === "NO_ELIGIBLE_PRODUCTS" && details?.reason === "ITEMS_HAVE_PRODUCT_PROMOTION";
+
+/** Card note for an offer the quote skipped because items have their own offer. */
+export const itemsHaveOwnOfferNote = (promotionIdToCheck: number, quote?: PromotionV2Quote | null) =>
+  quote?.rejected_candidates.some(
+    (item) => item.promotion_id === promotionIdToCheck && isItemsHaveOwnOffer(item.reason_code, item.details),
+  )
+    ? ITEMS_HAVE_OWN_OFFER_MESSAGE
+    : null;
+
 export const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
+  if (isItemsHaveOwnOffer(reason, details)) return ITEMS_HAVE_OWN_OFFER_MESSAGE;
   const messages: Record<string, string> = {
     MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
     MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,

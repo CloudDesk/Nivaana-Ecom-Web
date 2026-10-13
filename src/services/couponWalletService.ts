@@ -9,6 +9,7 @@ export interface WalletCoupon {
   claimed_at?: string | number | null;
   promotion: {
     name?: string | null;
+    status?: string | null;
     action?: { type?: string; value?: number } | null;
     conditions?: Array<{ attribute?: string; value?: number }> | null;
   };
@@ -87,6 +88,16 @@ export interface WalletActivityResponse {
   activity: WalletActivityItem[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
+
+// A coupon issued to the customer that is not in the wallet yet and can be
+// applied by code now. The wallet status reflects the assignment only, so a
+// coupon whose promotion was deactivated must be excluded here too (checkout
+// would reject it as COUPON_INACTIVE).
+export const isUsableUnclaimedCoupon = (coupon: WalletCoupon) =>
+  coupon.status === "available" &&
+  !coupon.wallet_credit &&
+  Boolean(coupon.code) &&
+  (!coupon.promotion?.status || coupon.promotion.status === "active");
 
 export const couponWalletService = {
   getWallet: () => apiService.get<CustomerWallet>("/coupon-wallet/me?channel=web"),

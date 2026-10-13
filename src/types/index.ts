@@ -169,6 +169,7 @@ export interface StorefrontButton {
 }
 
 export interface StorefrontHeroSlide {
+  is_active?: boolean;
   sort_order?: number;
   eyebrow?: string;
   title: string;
@@ -179,6 +180,7 @@ export interface StorefrontHeroSlide {
 }
 
 export interface StorefrontShowcaseItem {
+  is_active?: boolean;
   sort_order?: number;
   eyebrow?: string;
   title: string;

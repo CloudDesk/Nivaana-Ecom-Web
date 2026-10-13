@@ -505,7 +505,7 @@ const Home: React.FC = () => {
   const heroIntervalMs = heroSection?.attributes.interval_ms || heroSlideIntervalMs;
   const visibleHeroSlides = useMemo<HeroSlide[]>(() => {
     const slides = orderedBySort(heroSection?.attributes.slides || [])
-      .filter((item) => item.title?.trim() && mediaUrl(item.media))
+      .filter((item) => item.is_active !== false && item.title?.trim() && mediaUrl(item.media))
       .map((item, index) => {
         const primaryButton = item.button || item.buttons?.[0];
         const isVideo = item.media.type === "video";
@@ -704,7 +704,7 @@ const Home: React.FC = () => {
 
   const showcaseSlides = useMemo<CategorySlide[]>(() => {
     const items = orderedBySort(showcaseSection?.attributes.items || [])
-      .filter((item) => item.title?.trim() && mediaUrl(item.media))
+      .filter((item) => item.is_active !== false && item.title?.trim() && mediaUrl(item.media))
       .map((item, index) => ({
         id: `showcase:${index}:${item.title}`,
         name: item.eyebrow || "Nivaana",
