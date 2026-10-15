@@ -1,4 +1,4 @@
-import type { AppliedPromotion, ApplicablePromotion, PromotionV2Quote } from "../services/promotionService";
+import type { AppliedPromotion, ApplicablePromotion, PromotionEligibilityResult, PromotionV2Quote } from "../services/promotionService";
 import type { Product } from "../types";
 
 const SELECTED_PROMOTION_KEY = "nivaana_selected_cart_promotion";
@@ -425,9 +425,19 @@ export const createSeededQuoteTracker = () => {
   };
 };
 
+/**
+ * Product, category, subcategory and cart promotion types. Their combination
+ * follows the promotion priority (PLAN-2026-10-15-116), not the Stackable
+ * switch or the bigger saving.
+ */
+const PRIORITY_ORDER_TYPES = new Set(["PERCENT_OFF_ITEM", "FIXED_AMOUNT_OFF_ITEM", "PERCENT_OFF_CART", "FIXED_AMOUNT_OFF_CART"]);
+
 /** Note shown on offers that cannot be combined with other offers. */
 export const offerCombinationNote = (promotion: ApplicablePromotion) =>
-  !isAutomaticOffer(promotion) && !isFreeShippingPromotion(promotion) && promotion.stackable !== true
+  !isAutomaticOffer(promotion) &&
+  !isFreeShippingPromotion(promotion) &&
+  promotion.stackable !== true &&
+  !PRIORITY_ORDER_TYPES.has(String(promotion.type ?? "").toUpperCase())
     ? "Can't be combined with other offers. We'll keep whichever saves you more."
     : null;
 
@@ -462,10 +472,118 @@ export const itemsHaveOwnOfferNote = (promotionIdToCheck: number, quote?: Promot
     ? ITEMS_HAVE_OWN_OFFER_MESSAGE
     : null;
 
+/**
+ * "Add 1 more Incense item to get 25% off" for an offer that misses its
+ * minimum quantity (PLAN-2026-10-15-116). The count and category come from the
+ * backend, already added up per category / subcategory.
+ */
+export const minimumQuantityMessage = (details?: Record<string, unknown>) => {
+  const remaining = Math.max(1, Number(details?.remaining ?? 1));
+  const scope = typeof details?.scope_name === "string" && details.scope_name.trim() ? `${details.scope_name.trim()} ` : "";
+  const value = Number(details?.benefit_value ?? 0);
+  const benefit =
+    details?.benefit_type === "PERCENT_OFF" && value > 0
+      ? `${value}% off`
+      : details?.benefit_type === "FIXED_AMOUNT_OFF" && value > 0
+        ? `${formatPaise(value)} off`
+        : null;
+  return `Add ${remaining} more ${scope}${remaining === 1 ? "item" : "items"} ${benefit ? `to get ${benefit}` : "to unlock this offer"}.`;
+};
+
+/**
+ * Offers that only miss their minimum quantity. They stay visible as locked
+ * offers with the "Add N more" text instead of being hidden.
+ */
+export const lockedMinimumQuantityOffers = (
+  candidates: ApplicablePromotion[],
+  eligibility?: PromotionEligibilityResult | null,
+): Array<{ promotion: ApplicablePromotion; message: string; details?: Record<string, unknown> }> => {
+  if (!eligibility) return [];
+  const eligibleIds = new Set(eligibility.eligible_promotions.map((item) => item.promotion_id));
+  const missed = new Map(
+    eligibility.ineligible_promotions
+      .filter((item) => item.reason_code === "MINIMUM_QUANTITY_NOT_MET" && !eligibleIds.has(item.promotion_id))
+      .map((item) => [item.promotion_id, item.details]),
+  );
+  const byId = new Map<number, ApplicablePromotion>();
+  for (const promotion of candidates) {
+    const id = Number(promotion.promotion_id || (promotion as ApplicablePromotion & { id?: number }).id || 0);
+    if (id > 0 && !byId.has(id)) byId.set(id, promotion);
+  }
+  // Automatic offers are not in the offer list until they apply; the
+  // eligibility check returns them with their name.
+  return [...missed].map(([id, details]) => ({
+    promotion: byId.get(id) ?? ({ promotion_id: id, name: String(details?.promotion_name ?? "Offer") } as ApplicablePromotion),
+    message: minimumQuantityMessage(details),
+    details,
+  }));
+};
+
+/**
+ * Cart-row hint text (PLAN-2026-10-15-116):
+ * "Add 1 more Incense & Rituals item to get 20% off instead of 10%",
+ * "Add 1 more to get 20% off this item", "Add 1 more to get ₹100 off".
+ */
+export const cartRowHintText = (details: Record<string, unknown> | undefined, currentPercent?: number) => {
+  const remaining = Math.max(1, Number(details?.remaining ?? 1));
+  const value = Number(details?.benefit_value ?? 0);
+  const percent = details?.benefit_type === "PERCENT_OFF" && value > 0;
+  const benefit = percent ? `${value}% off` : value > 0 ? `${formatPaise(value)} off` : "this offer";
+  const instead = percent && currentPercent && currentPercent > 0 && currentPercent < value ? ` instead of ${currentPercent}%` : "";
+  const scope = typeof details?.scope_name === "string" ? details.scope_name.trim() : "";
+  if (scope) return `Add ${remaining} more ${scope} ${remaining === 1 ? "item" : "items"} to get ${benefit}${instead}`;
+  return `Add ${remaining} more to get ${benefit}${percent ? " this item" : ""}${instead}`;
+};
+
+/**
+ * Hint per cart product for offers that only miss their minimum quantity.
+ * Shown on every matching row, only when the offer would beat what the item
+ * has now (an applied product / category offer of the same or higher
+ * priority hides it). If two locked offers match one item, the higher
+ * priority wins.
+ */
+export const cartRowOfferHints = (
+  locked: Array<{ details?: Record<string, unknown> }>,
+  quote?: PromotionV2Quote | null,
+): Map<string, string> => {
+  const adjustmentsFor = (productId: string) =>
+    (quote?.adjustments ?? []).filter((adjustment) => adjustment.product_id === productId && adjustment.type !== "FREE_SHIPPING" && adjustment.amount > 0);
+  const best = new Map<string, { rank: number; text: string }>();
+  for (const { details } of locked) {
+    const rank = Number(details?.product_rank ?? 9);
+    const productIds = Array.isArray(details?.product_ids) ? details.product_ids.map(String) : [];
+    for (const productId of productIds) {
+      const current = adjustmentsFor(productId);
+      const appliedRank = Math.min(...current.map((adjustment) => Number(adjustment.metadata.product_rank ?? Infinity)));
+      if (appliedRank <= rank) continue;
+      const cartPercent = current.find((adjustment) => adjustment.metadata.group === "CART_PERCENT")?.metadata.benefit_percent;
+      const existing = best.get(productId);
+      if (existing && existing.rank <= rank) continue;
+      best.set(productId, { rank, text: cartRowHintText(details, Number(cartPercent ?? 0) || undefined) });
+    }
+  }
+  return new Map([...best].map(([productId, hint]) => [productId, hint.text]));
+};
+
+/**
+ * Offers the V2 quote did not apply because a minimum is not met. An offer
+ * applied on some items (another product or category met the minimum) is
+ * not in this list.
+ */
+export const minimumRejectedPromotionIds = (quote?: PromotionV2Quote | null) => {
+  const applied = new Set((quote?.applied_promotions ?? []).map((item) => item.promotion_id));
+  return new Set(
+    (quote?.rejected_candidates ?? [])
+      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
+      .map((candidate) => candidate.promotion_id)
+      .filter((id) => !applied.has(id)),
+  );
+};
+
 export const promotionReasonCopy = (reason: string, details?: Record<string, unknown>) => {
   if (isItemsHaveOwnOffer(reason, details)) return ITEMS_HAVE_OWN_OFFER_MESSAGE;
   const messages: Record<string, string> = {
-    MINIMUM_QUANTITY_NOT_MET: `Add ${Number(details?.remaining ?? 1)} more eligible item(s) to unlock this offer.`,
+    MINIMUM_QUANTITY_NOT_MET: minimumQuantityMessage(details),
     MINIMUM_VALUE_NOT_MET: `Add ₹${(Number(details?.remaining ?? 0) / 100).toFixed(2)} more from eligible products.`,
     GIFT_OUT_OF_STOCK: "This promotional gift is currently unavailable.",
     CONFLICTED_WITH_BETTER_OFFER: "Your current offers save more. This offer was not applied.",
