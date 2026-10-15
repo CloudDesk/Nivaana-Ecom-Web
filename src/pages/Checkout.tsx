@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { addressService, type Address, type AddressPayload } from "../services/addressService";
+import LockedOfferCard from "../components/LockedOfferCard";
 import { cartService } from "../services/cartService";
 import { couponWalletService, isUsableUnclaimedCoupon } from "../services/couponWalletService";
 import { paymentService, type PaymentOrderItem } from "../services/paymentService";
@@ -62,6 +63,8 @@ import {
   isFreeShippingPromotion,
   isFreeShippingPromotionEligible,
   offerCombinationNote,
+  lockedMinimumQuantityOffers,
+  minimumRejectedPromotionIds,
   itemsHaveOwnOfferNote,
   offerNoticeClassName,
   offerPendingLabel,
@@ -561,7 +564,7 @@ const Checkout: React.FC = () => {
       shippingAmount: cartTotals.shipping,
       channel: "web",
     }),
-    enabled: Boolean(userId && eligibilityPromotionIds.length > 0 && promotionRows.length > 0),
+    enabled: Boolean(userId && promotionRows.length > 0),
     staleTime: 0,
     retry: false,
   });
@@ -896,11 +899,7 @@ const Checkout: React.FC = () => {
 
     return uniquePromotions([...appliedCandidates, ...promotionCandidates]);
   }, [appliedPromotionsForTotals, promotionCandidates]);
-  const v2MinimumRejectedPromotionIds = new Set(
-    (promotionsV2Quote?.rejected_candidates ?? [])
-      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
-      .map((candidate) => candidate.promotion_id),
-  );
+  const v2MinimumRejectedPromotionIds = minimumRejectedPromotionIds(promotionsV2Quote);
   const eligiblePromotionCandidates = visiblePromotionCandidates.filter((promotion) =>
     !v2MinimumRejectedPromotionIds.has(promotionId(promotion)) &&
     (!isFreeShippingPromotion(promotion) ||
@@ -908,6 +907,12 @@ const Checkout: React.FC = () => {
   );
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => appliedPromotionIds.has(promotionId(promotion)),
+  );
+  const eligibleOfferIds = new Set(eligiblePromotionCandidates.map(promotionId));
+  const lockedOffers = lockedMinimumQuantityOffers(rawPromotionCandidates, promotionEligibilityQuery.data?.data)
+    .filter(({ promotion }) => !eligibleOfferIds.has(promotionId(promotion)));
+  const renderLockedOffer = ({ promotion, message }: { promotion: ApplicablePromotion; message: string }) => (
+    <LockedOfferCard key={`locked-${promotionId(promotion)}`} name={promotion.name || "Offer"} message={message} />
   );
   const applyPromotionMutation = useMutation({
     mutationFn: async (promotion: ApplicablePromotion) => {
@@ -2395,6 +2400,7 @@ const Checkout: React.FC = () => {
                         {eligiblePromotionCandidates.length} {eligiblePromotionCandidates.length === 1 ? "offer is" : "offers are"} available for this order.
                       </p>
                     )}
+                    {lockedOffers.slice(0, 2).map(renderLockedOffer)}
                     <button
                       type="button"
                       onClick={() => setOffersModalOpen(true)}
@@ -2403,6 +2409,8 @@ const Checkout: React.FC = () => {
                       {appliedSummaryPromotions.length > 0 ? "View / change offers" : "View offers"} ({eligiblePromotionCandidates.length})
                     </button>
                   </div>
+                ) : lockedOffers.length > 0 ? (
+                  <div className="mt-3 space-y-3">{lockedOffers.slice(0, 2).map(renderLockedOffer)}</div>
                 ) : (
                   <p className="mt-3 text-xs text-[var(--color-muted)]">
                     No additional promotion offers apply to this order right now.
@@ -2456,7 +2464,7 @@ const Checkout: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#111827]/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={() => setOffersModalOpen(false)}>
           <section role="dialog" aria-modal="true" aria-labelledby="checkout-offers-title" className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b border-[#e5e9f0] px-5 py-4"><div><h2 id="checkout-offers-title" className="text-lg font-extrabold text-[#172033]">Offers</h2><p className="mt-1 text-xs text-[#68748a]">Apply or remove an offer for this order.</p>{(applyPromotionMutation.isPending || removePromotionMutation.isPending || isPromotionResolving) && <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[#9a6b00]" role="status"><Loader2 className="h-3 w-3 animate-spin" />Updating total...</p>}</div><button type="button" onClick={() => setOffersModalOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1f3f7] text-[#26344f] transition hover:bg-[#e3e7ee]" aria-label="Close eligible offers"><X className="h-5 w-5" /></button></header>
-            <div className="overflow-y-auto px-5 py-4"><div className="space-y-2.5">{eligiblePromotionCandidates.map(renderCheckoutPromotionOffer)}</div></div>
+            <div className="overflow-y-auto px-5 py-4"><div className="space-y-2.5">{eligiblePromotionCandidates.map(renderCheckoutPromotionOffer)}{lockedOffers.map(renderLockedOffer)}</div></div>
           </section>
         </div>
       )}

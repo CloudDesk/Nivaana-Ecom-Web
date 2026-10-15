@@ -16,6 +16,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
+import LockedOfferCard from "../components/LockedOfferCard";
 import { cartService } from "../services/cartService";
 import { couponWalletService, isUsableUnclaimedCoupon } from "../services/couponWalletService";
 import { platformProductService } from "../services/productPlatformService";
@@ -46,6 +47,9 @@ import {
   isFreeShippingAppliedPromotion,
   offerCombinationNote,
   itemsHaveOwnOfferNote,
+  lockedMinimumQuantityOffers,
+  minimumRejectedPromotionIds,
+  cartRowOfferHints,
   offerNoticeClassName,
   offerPendingLabel,
   preserveAppliedStacking,
@@ -490,7 +494,9 @@ const Cart: React.FC = () => {
       shippingAmount: cartTotals.shipping,
       channel: "web",
     }),
-    enabled: Boolean(session?.user.id && eligibilityPromotionIds.length > 0 && promotionRows.length > 0 && !mutation.isPending),
+    // Runs with no listed offers too: automatic offers that miss their
+    // minimum quantity come back for the locked card and row hint.
+    enabled: Boolean(session?.user.id && promotionRows.length > 0 && !mutation.isPending),
     staleTime: 0,
     retry: false,
   });
@@ -1290,17 +1296,20 @@ const Cart: React.FC = () => {
     );
   };
 
-  const v2MinimumRejectedPromotionIds = new Set(
-    (promotionsV2Quote?.rejected_candidates ?? [])
-      .filter((candidate) => candidate.reason_code === "MINIMUM_VALUE_NOT_MET" || candidate.reason_code === "MINIMUM_QUANTITY_NOT_MET")
-      .map((candidate) => candidate.promotion_id),
-  );
+  const v2MinimumRejectedPromotionIds = minimumRejectedPromotionIds(promotionsV2Quote);
   const eligiblePromotionCandidates = visiblePromotionCandidates.filter((promotion) => {
     const state = getPromotionDisplayState(promotion);
     return state.freeShippingEligible && !v2MinimumRejectedPromotionIds.has(state.id);
   });
   const appliedSummaryPromotions = eligiblePromotionCandidates.filter(
     (promotion) => getPromotionDisplayState(promotion).isApplied
+  );
+  const eligibleOfferIds = new Set(eligiblePromotionCandidates.map(promotionId));
+  const lockedOffers = lockedMinimumQuantityOffers(rawPromotionCandidates, promotionEligibilityQuery.data?.data)
+    .filter(({ promotion }) => !eligibleOfferIds.has(promotionId(promotion)));
+  const cartRowHints = cartRowOfferHints(lockedOffers, promotionsV2Quote);
+  const renderLockedOffer = ({ promotion, message }: { promotion: ApplicablePromotion; message: string }) => (
+    <LockedOfferCard key={`locked-${promotionId(promotion)}`} name={promotion.name || "Offer"} message={message} />
   );
   const summaryPromotions = [
     // Never hide an applied benefit behind "View all". If three compatible
@@ -1543,6 +1552,12 @@ const Cart: React.FC = () => {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
+                      {cartRowHints.get(String(item.productid)) && (
+                        <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-[#fff6dd] px-3 py-2 text-xs font-semibold text-[#8a5a00]">
+                          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          {cartRowHints.get(String(item.productid))}
+                        </p>
+                      )}
                     </div>
                     <div className="absolute right-4 top-4 text-right text-sm font-bold text-[var(--color-secondary)]">
                       {formatCurrency(productUnitPrice(product))}
@@ -1653,10 +1668,11 @@ const Cart: React.FC = () => {
                     <p className="mt-3 text-xs font-semibold text-red-600">
                       Offers could not be checked. Please refresh and try again.
                     </p>
-                  ) : summaryPromotions.length > 0 ? (
+                  ) : summaryPromotions.length > 0 || lockedOffers.length > 0 ? (
                     <div className="mt-3 space-y-3">
                       {summaryPromotions.map(renderPromotionOffer)}
-                      <button
+                      {lockedOffers.slice(0, 2).map(renderLockedOffer)}
+                      {eligiblePromotionCandidates.length > 0 && <button
                         type="button"
                         onClick={() => {
                           setOfferActionError(null);
@@ -1665,7 +1681,7 @@ const Cart: React.FC = () => {
                         className="flex w-full items-center justify-center rounded-xl border border-[#d7deea] bg-white px-4 py-2.5 text-xs font-extrabold text-[#26344f] transition hover:border-[#fbbc05] hover:bg-[#fffaf0]"
                       >
                         View all offers ({eligiblePromotionCandidates.length})
-                      </button>
+                      </button>}
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-[var(--color-muted)]">No offers apply to this cart right now.</p>
@@ -1776,6 +1792,7 @@ const Cart: React.FC = () => {
             <div className="overflow-y-auto px-5 py-4">
               <div className="space-y-2.5">
                 {eligiblePromotionCandidates.map(renderPromotionOffer)}
+                {lockedOffers.map(renderLockedOffer)}
               </div>
             </div>
           </section>
