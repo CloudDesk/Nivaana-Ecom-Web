@@ -3,6 +3,7 @@ import { authService } from '../services/authService';
 import type { User } from '../types';
 import { AccountPageHeader } from "../components/AccountPageHeader";
 import { ACCOUNT_PAGE_CONTAINER, ACCOUNT_PAGE_MAIN } from "../lib/accountLayout";
+import { company } from '../config/company.config';
 
 type Step = 1 | 2 | 3;
 type ApiErrorLike = {
@@ -389,8 +390,8 @@ const DeleteMyAccount: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-secondary-light-gray">
             <p className="text-sm text-secondary-medium-gray text-center">
               Need help? Contact us at{' '}
-              <a href="mailto:support@nivaana.com" className="text-primary-gold hover:underline">
-                support@nivaana.com
+              <a href={`mailto:${company.email}`} className="text-primary-gold hover:underline">
+                {company.email}
               </a>
             </p>
           </div>

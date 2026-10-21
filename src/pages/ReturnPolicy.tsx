@@ -1,4 +1,6 @@
 import React from 'react';
+import { company } from '../config/company.config';
+import CompanyContactLines from '../components/CompanyContactLines';
 
 const ReturnPolicy: React.FC = () => {
   return (
@@ -11,7 +13,7 @@ const ReturnPolicy: React.FC = () => {
 
           <div className="prose prose-lg max-w-none text-secondary-dark-gray">
             <p className="text-center text-secondary-medium-gray mb-8">
-              <strong>VIP98 VENTURES LLP</strong><br />
+              <strong>{company.legalName}</strong><br />
               Last updated: {new Date().toLocaleDateString()}
             </p>
 
@@ -19,7 +21,7 @@ const ReturnPolicy: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">1. Return Policy Overview</h2>
                 <p className="leading-relaxed">
-                  At VIP98 VENTURES LLP, we want you to be completely satisfied with your purchase. Return,
+                  At {company.legalName}, we want you to be completely satisfied with your purchase. Return,
                   replacement, missing-item, and refund eligibility is evaluated by the applicable product
                   Category or Subcategory policy and the reason selected for the request.
                 </p>
@@ -226,13 +228,7 @@ const ReturnPolicy: React.FC = () => {
                   For return requests and queries, please contact us:
                 </p>
                 <div className="bg-secondary-extra-light-gray p-4 rounded-lg mt-4">
-                  <p><strong>VIP98 VENTURES LLP</strong></p>
-                  <p>516D, Lakshmi Sundaram Nagar</p>
-                  <p>Narasingapuram Road, Pandiyanallore Post</p>
-                  <p>Sholinghur - 631102, Tamil Nadu</p>
-                  <p>Phone: +91 8925662553</p>
-                  <p>Email: returns@nivaana.com</p>
-                  <p>Customer Service Hours: 9 AM - 6 PM (Mon-Sat)</p>
+                  <CompanyContactLines showHours />
                 </div>
               </section>
 
