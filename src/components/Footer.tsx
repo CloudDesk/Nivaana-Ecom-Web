@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { brandLogoGoogleYellow as logoIcon } from '../assets/config.js';
+import { company } from '../config/company.config';
 
 const quickLinks = [
   { label: 'Home', to: '/' },
@@ -45,12 +46,12 @@ const Footer: React.FC = () => {
               <img src={logoIcon} alt="" className="navbar-brand-icon footer-brand-icon" loading="eager" />
             </Link>
             <div className="max-w-md space-y-1 text-sm leading-6 text-[#ffe0a0]">
-              <p className="font-semibold text-[#fbbc05]">VIP98 VENTURES LLP</p>
-              <p>516D, Lakshmi Sundaram Nagar</p>
-              <p>Narasingapuram Road, Pandiyanallore Post</p>
-              <p>Sholinghur - 631102, Tamil Nadu</p>
-              <p>Phone: +91 8925662553</p>
-              <p>Email: support@nivaana.com</p>
+              <p className="font-semibold text-[#fbbc05]">{company.legalName}</p>
+              <p>{company.address.line1}</p>
+              <p>{company.address.line2}</p>
+              <p>{company.address.cityLine}</p>
+              <p>Phone: {company.phone}</p>
+              <p>Email: {company.email}</p>
             </div>
             {/* Social links hidden until real profile URLs are available for payment approval review. */}
           </div>

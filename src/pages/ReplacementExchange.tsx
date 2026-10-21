@@ -1,4 +1,6 @@
 import React from 'react';
+import { company } from '../config/company.config';
+import CompanyContactLines from '../components/CompanyContactLines';
 
 const ReplacementExchange: React.FC = () => {
   return (
@@ -11,7 +13,7 @@ const ReplacementExchange: React.FC = () => {
 
           <div className="prose prose-lg max-w-none text-secondary-dark-gray">
             <p className="text-center text-secondary-medium-gray mb-8">
-              <strong>VIP98 VENTURES LLP</strong><br />
+              <strong>{company.legalName}</strong><br />
               Last updated: {new Date().toLocaleDateString()}
             </p>
 
@@ -60,12 +62,7 @@ const ReplacementExchange: React.FC = () => {
                   For replacement queries, please contact us:
                 </p>
                 <div className="bg-secondary-extra-light-gray p-4 rounded-lg">
-                  <p><strong>VIP98 VENTURES LLP</strong></p>
-                  <p>516D, Lakshmi Sundaram Nagar</p>
-                  <p>Narasingapuram Road, Pandiyanallore Post</p>
-                  <p>Sholinghur - 631102, Tamil Nadu</p>
-                  <p>Phone: +91 8925662553</p>
-                  <p>Email: info@nivaana.com</p>
+                  <CompanyContactLines />
                 </div>
               </section>
             </div>

@@ -1,4 +1,6 @@
 import React from 'react';
+import { company } from '../config/company.config';
+import CompanyContactLines from '../components/CompanyContactLines';
 
 const CancellationPolicy: React.FC = () => {
   return (
@@ -11,7 +13,7 @@ const CancellationPolicy: React.FC = () => {
 
           <div className="prose prose-lg max-w-none text-secondary-dark-gray">
             <p className="text-center text-secondary-medium-gray mb-8">
-              <strong>VIP98 VENTURES LLP</strong><br />
+              <strong>{company.legalName}</strong><br />
               Last updated: {new Date().toLocaleDateString()}
             </p>
 
@@ -49,8 +51,8 @@ const CancellationPolicy: React.FC = () => {
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">2. How to Cancel an Order</h2>
                 <p className="leading-relaxed mb-4">To cancel your order, you can:</p>
                 <ul className="list-disc list-inside ml-4 space-y-1">
-                  <li>Call our customer service at +91 8925662553</li>
-                  <li>Email us at support@nivaana.com</li>
+                  <li>Call our customer service at {company.phone}</li>
+                  <li>Email us at {company.email}</li>
                   <li>Use the available cancellation action in your order flow where shown</li>
                 </ul>
 
@@ -184,13 +186,7 @@ const CancellationPolicy: React.FC = () => {
                   For cancellation and refund requests, please contact us:
                 </p>
                 <div className="bg-secondary-extra-light-gray p-4 rounded-lg mt-4">
-                  <p><strong>VIP98 VENTURES LLP</strong></p>
-                  <p>516D, Lakshmi Sundaram Nagar</p>
-                  <p>Narasingapuram Road, Pandiyanallore Post</p>
-                  <p>Sholinghur - 631102, Tamil Nadu</p>
-                  <p>Phone: +91 8925662553</p>
-                  <p>Email: support@nivaana.com</p>
-                  <p>Customer Service Hours: 9 AM - 6 PM (Mon-Sat)</p>
+                  <CompanyContactLines showHours />
                 </div>
               </section>
 
