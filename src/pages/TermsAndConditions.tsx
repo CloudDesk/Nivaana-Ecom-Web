@@ -1,4 +1,6 @@
 import React from 'react';
+import { company, companyAddressFull } from '../config/company.config';
+import CompanyContactLines from '../components/CompanyContactLines';
 
 const TermsAndConditions: React.FC = () => {
   return (
@@ -11,7 +13,7 @@ const TermsAndConditions: React.FC = () => {
           
           <div className="prose prose-lg max-w-none text-secondary-dark-gray">
             <p className="text-center text-secondary-medium-gray mb-8">
-              <strong>VIP98 VENTURES LLP</strong><br />
+              <strong>{company.legalName}</strong><br />
               Last updated: {new Date().toLocaleDateString()}
             </p>
 
@@ -26,10 +28,10 @@ const TermsAndConditions: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">2. Company Information</h2>
                 <p className="leading-relaxed">
-                  <strong>Business Name:</strong> VIP98 VENTURES LLP<br />
-                  <strong>Address:</strong> 516D, Lakshmi Sundaram Nagar, Narasingapuram Road, Pandiyanallore Post, Sholinghur - 631102, Tamil Nadu<br />
-                  <strong>Phone:</strong> +91 8925662553<br />
-                  <strong>Website:</strong> https://nivaana.in
+                  <strong>Business Name:</strong> {company.legalName}<br />
+                  <strong>Address:</strong> {companyAddressFull}<br />
+                  <strong>Phone:</strong> {company.phone}<br />
+                  <strong>Website:</strong> {company.website}
                 </p>
               </section>
 
@@ -80,21 +82,21 @@ const TermsAndConditions: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">8. Intellectual Property</h2>
                 <p className="leading-relaxed">
-                  All content on this website, including text, graphics, logos, images, and software, is the property of VIP98 VENTURES LLP and is protected by copyright and other intellectual property laws.
+                  All content on this website, including text, graphics, logos, images, and software, is the property of {company.legalName} and is protected by copyright and other intellectual property laws.
                 </p>
               </section>
 
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">9. Limitation of Liability</h2>
                 <p className="leading-relaxed">
-                  VIP98 VENTURES LLP shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use of our products or services.
+                  {company.legalName} shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use of our products or services.
                 </p>
               </section>
 
               <section>
                 <h2 className="text-2xl font-semibold text-primary-blue mb-4">10. Governing Law</h2>
                 <p className="leading-relaxed">
-                  These terms and conditions are governed by the laws of India. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts in Tamil Nadu, India.
+                  These terms and conditions are governed by the laws of India. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts in {company.jurisdiction}.
                 </p>
               </section>
 
@@ -104,12 +106,7 @@ const TermsAndConditions: React.FC = () => {
                   For any questions regarding these terms and conditions, please contact us at:
                 </p>
                 <div className="bg-secondary-extra-light-gray p-4 rounded-lg mt-4">
-                  <p><strong>VIP98 VENTURES LLP</strong></p>
-                  <p>516D, Lakshmi Sundaram Nagar</p>
-                  <p>Narasingapuram Road, Pandiyanallore Post</p>
-                  <p>Sholinghur - 631102, Tamil Nadu</p>
-                  <p>Phone: +91 8925662553</p>
-                  <p>Email: info@nivaana.com</p>
+                  <CompanyContactLines />
                 </div>
               </section>
 

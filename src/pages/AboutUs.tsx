@@ -1,4 +1,5 @@
 import React from 'react';
+import { company } from '../config/company.config';
 
 const AboutUs: React.FC = () => {
   return (
@@ -197,12 +198,12 @@ const AboutUs: React.FC = () => {
             Contact Us
           </h2>
           <div className="mx-auto mb-6 max-w-2xl space-y-2 text-primary-gold/85">
-            <p className="font-semibold text-primary-gold">VIP98 VENTURES LLP</p>
-            <p>516D, Lakshmi Sundaram Nagar, Narasingapuram Road, Pandiyanallore Post</p>
-            <p>Sholinghur - 631102, Tamil Nadu</p>
-            <p>Phone: +91 8925662553</p>
-            <p>Email: support@nivaana.com</p>
-            <p>Customer Service Hours: 9 AM - 6 PM (Mon-Sat)</p>
+            <p className="font-semibold text-primary-gold">{company.legalName}</p>
+            <p>{company.address.line1}, {company.address.line2}</p>
+            <p>{company.address.cityLine}</p>
+            <p>Phone: {company.phone}</p>
+            <p>Email: {company.email}</p>
+            <p>Customer Service Hours: {company.serviceHours}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
@@ -212,7 +213,7 @@ const AboutUs: React.FC = () => {
               Explore Our Products
             </a>
             <a
-              href="mailto:support@nivaana.com"
+              href={`mailto:${company.email}`}
               className="btn-secondary"
             >
               Email Support
